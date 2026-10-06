@@ -1,6 +1,6 @@
 {
-  "version": "2.6.0",
-  "notes": "Blocked sites fix: auto DNS bypass (DNS-over-HTTPS) + optional proxy (.setproxy), new .net <link> network check",
+  "version": "2.6.1",
+  "notes": ".net now tests every redirect hop (TCP/TLS/HTTP) and names the server that blocks; errors show the CDN host",
   "files": [
     "bot.js",
     "ai.js",
