@@ -27,6 +27,7 @@ const loadBaileys = async () => (B ||= await import('baileys'));
 const { download, human, MAX_BYTES } = require('./downloader');
 const ai = require('./ai');
 const updater = require('./updater');
+const netx = require('./net');
 
 const AUTH = path.join(__dirname, 'auth');
 const sentIds = new Set();
@@ -92,6 +93,8 @@ const HELP = `🤖 *Arena AI*
   • links කිහිපයක් එකට: .download link1 link2
 *.setkey gemini <KEY>*  /  *.setkey groq <KEY>*  — free API key දාන්න
 *.keys*  — keys තියෙනවද බලන්න
+*.net <link>*  — download fail නම් හේතුව බලන්න (DNS / IP block)
+*.setproxy <url|off>*  — block වෙන sites වලට proxy
 *.update*  — bot එක GitHub එකෙන් update කරන්න (pair කරන්න ඕනේ නෑ)
 *.version*  — දැන් තියෙන version එක
 *.ping*  — bot එක වැඩද බලන්න
@@ -210,6 +213,14 @@ async function onMessages({ messages, type }, send, del = async () => { }) {
                     try { const ch = await updater.check(); t += ch.upToDate ? '\n✅ අලුත්ම version එක' : `\n🆕 Update එකක් තියෙනවා: v${ch.latest.manifest.version}\n➡️ *.update* ගහන්න`; } catch (e) { t += '\n(update check fail: ' + e.message + ')'; }
                     await send(jid, { text: t }, { quoted: msg }); continue;
                 }
+                if (c === '.net' || c === '.netcheck') {
+                    const u = (text.match(/https?:\/\/\S+/) || [])[0];
+                    if (!u) { await send(jid, { text: '🔧 *.net <link>* — මේ server එකෙන් ඒ site එකට යන්න පුළුවන්ද බලනවා (DNS / IP block)' }, { quoted: msg }); continue; }
+                    const st = await send(jid, { text: '🔧 Network check කරනවා... (තත්පර 30 ක් විතර)' }, { quoted: msg });
+                    let rep; try { rep = await netx.diagnose(u); } catch (e) { rep = '❌ ' + e.message; }
+                    await send(jid, { text: '🔧 *Network check*\n\n' + rep, edit: st.key }); continue;
+                }
+                if (c === '.setproxy') { await handleProxy(send, del, jid, msg, rest.join(' ').trim()); continue; }
                 if (c === '.keys') { const k = ai.getKeys(); await send(jid, { text: `🔑 *API keys*\nGemini: ${k.gemini ? '✅ ' + mask(k.gemini) : '❌ නෑ'}\nGroq: ${k.groq ? '✅ ' + mask(k.groq) : '❌ නෑ'}` }, { quoted: msg }); continue; }
                 if (!['.download', '.dl', '.dn'].includes(c)) continue;
 
@@ -218,6 +229,18 @@ async function onMessages({ messages, type }, send, del = async () => { }) {
                 for (const link of links) await handleDownload(send, jid, msg, link);
             } catch (e) { log('handler error: ' + e.message); }
         }
+}
+
+async function handleProxy(send, del, jid, msg, arg) {
+    const f = require('path').join(__dirname, 'settings.json');
+    let d = {}; try { d = JSON.parse(require('fs').readFileSync(f, 'utf8')); } catch { }
+    const hide = (p) => p.replace(/\/\/[^@/]*@/, '//***@');
+    if (!arg) { await send(jid, { text: d.proxy ? `🧩 Proxy: ${hide(d.proxy)}\n(off කරන්න: *.setproxy off*)` : '🧩 Proxy නෑ.\nදාන්න: *.setproxy http://user:pass@host:port*\n(block වෙන sites වලට විතරයි පාවිච්චි වෙන්නේ)' }, { quoted: msg }); return; }
+    if (/^(off|delete|remove|none)$/i.test(arg)) { delete d.proxy; require('fs').writeFileSync(f, JSON.stringify(d, null, 2)); await send(jid, { text: '🧩 Proxy අයින් කළා ✅' }, { quoted: msg }); return; }
+    if (!/^https?:\/\/[^\s]+:\d+\/?$/i.test(arg)) { await send(jid, { text: '❌ Format එක: *.setproxy http://user:pass@host:port*  (http / https proxy විතරයි)' }, { quoted: msg }); return; }
+    d.proxy = arg.replace(/\/$/, ''); require('fs').writeFileSync(f, JSON.stringify(d, null, 2));
+    if (/@/.test(arg)) await del(msg.key);   // hide the password
+    await send(jid, { text: `🧩 Proxy save කළා ✅ ${hide(d.proxy)}\nBlock වෙන sites වලට ඉබේම පාවිච්චි වෙනවා. Test: *.net <link>*` });
 }
 
 const mask = (k) => k.slice(0, 4) + '••••' + k.slice(-3);

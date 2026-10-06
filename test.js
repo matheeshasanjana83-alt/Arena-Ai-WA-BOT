@@ -50,6 +50,21 @@ const mk = (text, fromMe = true, jid = ME) => ({ key: { id: 'IN' + (++n), remote
     t('.ping from device-LID self chat → reply sent to phone JID', out.length > 0 && out.every(x => x.jid === me.pn));
     me.pn = null; me.lid = null;
 
+    // ───────── v2.6: .setproxy / .net ─────────
+    {
+        const fs = require('fs'), sp = require('path').join(__dirname, 'settings.json');
+        const had = fs.existsSync(sp) ? fs.readFileSync(sp) : null;
+        const run = async (txt) => { out.length = 0; await onMessages({ type: 'notify', messages: [{ key: { id: 'P' + Math.random(), remoteJid: '94771234567@s.whatsapp.net', fromMe: true }, message: { conversation: txt } }] }, send, async () => { }); return out.map(x => x.text || '').join('\n'); };
+        t('.setproxy bad format → error', /Format/.test(await run('.setproxy socks5://1.2.3.4')));
+        await run('.setproxy http://u:p@10.0.0.1:8080');
+        t('.setproxy saves proxy', JSON.parse(fs.readFileSync(sp, 'utf8')).proxy === 'http://u:p@10.0.0.1:8080');
+        t('.setproxy hides password', /\*\*\*@/.test(await run('.setproxy')));
+        await run('.setproxy off');
+        t('.setproxy off removes', !JSON.parse(fs.readFileSync(sp, 'utf8')).proxy);
+        t('.net without link → help', /\.net <link>/.test(await run('.net')));
+        if (had) fs.writeFileSync(sp, had); else fs.rmSync(sp, { force: true });
+    }
+
     // ───────── AI tests (fake Gemini/Groq servers) ─────────
     const ai = require('./ai');
     const realFetch = global.fetch; const calls = [];

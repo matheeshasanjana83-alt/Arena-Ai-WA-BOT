@@ -1,6 +1,6 @@
 {
-  "version": "2.5.1",
-  "notes": "Updates from Arena-Ai-WA-BOT repo; version check works across repos",
+  "version": "2.6.0",
+  "notes": "Blocked sites fix: auto DNS bypass (DNS-over-HTTPS) + optional proxy (.setproxy), new .net <link> network check",
   "files": [
     "bot.js",
     "ai.js",
@@ -14,6 +14,7 @@
     "README-SI.txt",
     "manifest.json",
     ".gitignore",
-    "index.js"
+    "index.js",
+    "net.js"
   ]
 }

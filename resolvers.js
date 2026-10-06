@@ -8,7 +8,7 @@ const UA_BROWSER = 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, l
 const UA_CURL = 'curl/8.5.0';
 
 async function fetchText(url, ua = UA_BROWSER) {
-    const r = await fetch(url, { headers: { 'User-Agent': ua }, redirect: 'follow' });
+    const r = await require('./net').smartFetch(url, { headers: { 'User-Agent': ua }, redirect: 'follow' });
     return { status: r.status, url: r.url, text: await r.text() };
 }
 

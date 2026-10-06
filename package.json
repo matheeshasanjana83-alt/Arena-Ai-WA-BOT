@@ -1,6 +1,6 @@
 {
   "name": "arena-ai",
-  "version": "2.5.1",
+  "version": "2.6.0",
   "description": "Arena AI - private WhatsApp bot: .ai (Gemini/Groq) + .download",
   "main": "index.js",
   "scripts": {
@@ -11,7 +11,8 @@
   "dependencies": {
     "baileys": "7.0.0-rc14",
     "megajs": "^1.3.0",
-    "pino": "^9.5.0"
+    "pino": "^9.5.0",
+    "undici": "^6.21.3"
   },
   "engines": {
     "node": ">=20.0.0"

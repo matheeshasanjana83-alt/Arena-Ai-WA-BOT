@@ -3,6 +3,7 @@ const os = require('os');
 const path = require('path');
 const { Readable } = require('stream');
 const { resolve, driveConfirmUrl, UA_BROWSER, UA_CURL } = require('./resolvers');
+const { smartFetch } = require('./net');
 
 const MAX_BYTES = parseInt(process.env.DL_MAX_MB || '2000', 10) * 1024 * 1024; // WhatsApp document limit ≈ 2 GB
 const TMP = process.env.DL_TMP || os.tmpdir();
@@ -29,14 +30,8 @@ function explainNetErr(e, url) {
     err.code = c; return err;
 }
 async function fetchExplained(url, opts) {
-    for (let i = 0; ; i++) {
-        try { return await fetch(url, opts); }
-        catch (e) {
-            const c = e?.cause?.code || e?.code || '';
-            if (i < 1 && /ECONNRESET|UND_ERR_SOCKET|EAI_AGAIN|ETIMEDOUT|UND_ERR_CONNECT_TIMEOUT/.test(c)) { await new Promise(r => setTimeout(r, 2000)); continue; }
-            throw explainNetErr(e, url);
-        }
-    }
+    try { return await smartFetch(url, opts); }   // direct → DNS bypass (DoH) → proxy
+    catch (e) { if (e.netErrors) throw e; throw explainNetErr(e, url); }
 }
 
 function safeName(n) {

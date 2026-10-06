@@ -22,6 +22,12 @@ litterbox/catbox, x0.at, transfer.archivete.am, filebin. (gofile / LimeWire / fo
 
 🔒 Private: ඔයා යවන messages විතරයි. වෙන අය commands යැව්වත් ignore.
 
+v2.6 — Block වෙන sites fix:
+  • Download එකක් network error එකකින් fail වුණොත් bot එක ඉබේම DNS-over-HTTPS (1.1.1.1/8.8.8.8) එකෙන් ආයෙත් try කරනවා
+    (server එකේ ISP/රට DNS block කරනවා නම් ඒක පනිනවා). වැඩ කරපු route එක මතක තියාගන්නවා.
+  • .net <link> — server එකෙන් ඒ site එකට යන්න පුළුවන්ද, DNS block ද IP block ද කියලා report එකක්.
+  • .setproxy http://user:pass@host:port — IP block වෙන sites වලට proxy (off: .setproxy off).
+
 v2.5 — Updates දැන් එන්නේ අලුත් repo එකෙන්: https://github.com/matheeshasanjana83-alt/Arena-Ai-WA-BOT
   (.update / .version ඒ විදියටම. Panel එකේත් වැඩ — launcher එක bot එක auto restart කරනවා.)
 
