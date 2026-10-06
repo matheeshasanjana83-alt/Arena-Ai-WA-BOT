@@ -4,3 +4,5 @@ settings.json
 .version.json
 .backup/
 package-lock.json
+logo.img
+.announce-next

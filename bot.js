@@ -31,6 +31,10 @@ const netx = require('./net');
 const guard = require('./guard');
 
 const AUTH = path.join(__dirname, 'auth');
+const LOGO = path.join(__dirname, 'logo.img');        // your own photo (.setlogo) — never touched by .update
+const BANNER = path.join(__dirname, 'banner.jpg');    // default Arena AI banner
+const ANNOUNCE_NEXT = path.join(__dirname, '.announce-next');
+let SOCK = null;
 const sentIds = new Set();
 const msgStore = new Map();          // recent messages → getMessage() for retry requests ("Waiting for this message" fix)
 const seen = new Set();              // processed message ids (dedupe notify/append)
@@ -99,6 +103,8 @@ const HELP = `🤖 *Arena AI*
 *.update*  — bot එක GitHub එකෙන් update කරන්න (pair කරන්න ඕනේ නෑ)
 *.version*  — දැන් තියෙන version එක
 *.ping*  — bot එක වැඩද බලන්න
+*.alive*  — bot status card එක
+*.setlogo*  — photo එකකට reply කරලා ගහන්න → online card එකේ logo එක
 *.mode self|all*  — commands වැඩ කරන chats (default: Message yourself විතරයි)
 
 🔒 Commands පාවිච්චි කරන්න පුළුවන් *ඔයාට විතරයි*  •  🛡️ Anti-ban ON
@@ -133,6 +139,7 @@ async function start() {
         msgRetryCounterCache: retryCache,
         getMessage: async (key) => msgStore.get(key?.id),
     });
+    SOCK = sock;
     sock.ev.on('creds.update', saveCreds);
 
     const send = async (jid, content, opts) => {
@@ -173,7 +180,8 @@ async function start() {
             reconnects = 0; replaced = 0;
             if (announced) return;
             announced = true;
-            if (guard.shouldAnnounce()) { try { await send(ME.pn, { text: '✅ *Arena AI online!*\n\n' + HELP }); } catch { } }   // 🛡️ max once / 6h
+            const afterUpdate = fs.existsSync(ANNOUNCE_NEXT); fs.rmSync(ANNOUNCE_NEXT, { force: true });
+            if (guard.shouldAnnounce() || afterUpdate) { try { await sendAlive(send, ME.pn, null, afterUpdate ? 'updated' : 'online'); } catch (e) { log('alive: ' + e.message); } }   // 🛡️ max once / 6h (+ after .update)
         }
         if (connection === 'close') {
             const code = lastDisconnect?.error?.output?.statusCode;
@@ -230,6 +238,9 @@ async function onMessages({ messages, type }, send, del = async () => { }) {
                 const [cmd, ...rest] = text.split(/\s+/);
                 const c = cmd.toLowerCase();
 
+                if (c === '.alive' || c === '.status') { await sendAlive(send, jid, msg, 'alive'); continue; }
+                if (c === '.setlogo') { await handleSetLogo(send, jid, msg); continue; }
+                if (c === '.dellogo') { fs.rmSync(LOGO, { force: true }); await send(jid, { text: '🗑️ Logo එක අයින් කළා — default Arena AI banner එක පාවිච්චි වෙනවා' }, { quoted: msg }); continue; }
                 if (c === '.mode') { await handleMode(send, jid, msg, (rest[0] || '').toLowerCase()); continue; }
                 if (c === '.ping') { await send(jid, { text: '🏓 Pong! Arena AI වැඩ ✅' }, { quoted: msg }); continue; }
                 if (c === '.help' || c === '.menu') { await send(jid, { text: HELP }, { quoted: msg }); continue; }
@@ -271,6 +282,56 @@ function isFromOwner(key) {
 
 let dlChain = Promise.resolve();
 function dlQueue(fn) { const p = dlChain.then(fn, fn); dlChain = p.catch(() => { }); return p; }
+
+// ───────── online / alive card ─────────
+function fmtUptime(sec) { sec = Math.floor(sec); const d = Math.floor(sec / 86400), h = Math.floor(sec % 86400 / 3600), m = Math.floor(sec % 3600 / 60); return d ? `${d}d ${h}h` : h ? `${h}h ${m}m` : `${m}m ${sec % 60}s`; }
+function nowLK() {
+    try { return new Date().toLocaleString('en-GB', { timeZone: 'Asia/Colombo', day: '2-digit', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true }); }
+    catch { return new Date().toISOString().slice(0, 16).replace('T', ' '); }
+}
+function aliveCaption(kind = 'online') {
+    const v = (() => { try { return updater.localInfo().version; } catch { return require('./package.json').version; } })();
+    const head = kind === 'updated' ? '🔄 ᴜᴘᴅᴀᴛᴇᴅ & ᴏɴʟɪɴᴇ' : kind === 'alive' ? '💠 sᴛɪʟʟ ʜᴇʀᴇ' : '🟢 ᴏɴʟɪɴᴇ';
+    return [
+        `*◈ ARENA AI ◈*  ${head}`,
+        '',
+        `┊ ⚡ *v${v}*`,
+        `┊ 🕒 ${nowLK()}`,
+        `┊ 🖥️ ${process.env.ARENA_ON_PANEL ? 'Panel server' : 'Termux'}${kind === 'alive' ? '  •  ⏱️ ' + fmtUptime(process.uptime()) : ''}`,
+        `┊ 🔒 Private  •  🛡️ Anti-ban`,
+        '',
+        '> 💬 *.menu* — commands',
+    ].join('\n');
+}
+async function sendAlive(send, jid, quoted, kind) {
+    const caption = aliveCaption(kind);
+    const img = fs.existsSync(LOGO) ? LOGO : fs.existsSync(BANNER) ? BANNER : null;
+    const opts = quoted ? { quoted } : undefined;
+    if (img) return send(jid, { image: fs.readFileSync(img), caption }, opts);
+    return send(jid, { text: caption }, opts);
+}
+
+let mediaDownloader = async (m) => { const b = await loadBaileys(); return b.downloadMediaMessage(m, 'buffer', {}, { logger: pino({ level: 'silent' }), reuploadRequest: SOCK?.updateMediaMessage }); };
+async function handleSetLogo(send, jid, msg) {
+    const unwrap = (m) => m?.viewOnceMessage?.message || m?.viewOnceMessageV2?.message || m?.ephemeralMessage?.message || m;
+    const own = unwrap(msg.message);
+    const ctx = own?.extendedTextMessage?.contextInfo || own?.imageMessage?.contextInfo;
+    let target = null;
+    if (own?.imageMessage) target = { key: msg.key, message: own };
+    else if (ctx?.quotedMessage && unwrap(ctx.quotedMessage)?.imageMessage) target = { key: { remoteJid: msg.key.remoteJid, id: ctx.stanzaId, fromMe: true, participant: ctx.participant }, message: unwrap(ctx.quotedMessage) };
+    if (!target) return send(jid, { text: '🖼️ *.setlogo*\n\n1. ඔයාට ඕනේ photo එක මේ chat එකට යවන්න\n2. ඒ photo එකට *reply* කරලා *.setlogo* ගහන්න\n   (නැත්නම් photo එක යවද්දී caption එකට *.setlogo* දාන්න)\n\nDefault එකට ආපහු: *.dellogo*' }, { quoted: msg });
+    const st = await send(jid, { text: '🖼️ Photo එක ගන්නවා...' }, { quoted: msg });
+    try {
+        const buf = await mediaDownloader(target);
+        if (!buf || buf.length < 1000) throw new Error('photo එක හිස්');
+        if (buf.length > 5 * 1024 * 1024) throw new Error('photo එක 5 MB ට වඩා ලොකුයි');
+        fs.writeFileSync(LOGO, buf);
+        await send(jid, { text: '✅ Logo එක save කළා! Preview එක 👇', edit: st.key });
+        await sendAlive(send, jid, null, 'online');
+    } catch (e) {
+        await send(jid, { text: '❌ Photo එක ගන්න බැරි වුණා: ' + e.message + '\n(photo එක ආයෙත් යවලා ඒකට reply කරලා *.setlogo* ගහන්න)', edit: st.key });
+    }
+}
 
 async function handleMode(send, jid, msg, arg) {
     if (arg === 'all' || arg === 'self') {
@@ -357,6 +418,7 @@ async function handleUpdate(send, jid, msg, force) {
         await edit(`✅ *Update වුණා!*  v${r.from} → v${r.to}\n\n📝 ${r.notes}\n\n🔄 Restart වෙනවා... තත්පර 10 කින් *.ping* ගහලා බලන්න.\n(WhatsApp link එක / API keys වෙනස් වෙන්නේ නෑ)`);
         log(`🔄 Updated v${r.from} → v${r.to} — restarting`);
         if (!process.env.ARENA_LAUNCHER) await send(jid, { text: '⚠️ Bot එක *npm start* එකෙන් start කරලා නැති නිසා auto restart වෙන්නේ නෑ. Termux එකේ CTRL+C කරලා *npm start* ගහන්න.' });
+        try { fs.writeFileSync(ANNOUNCE_NEXT, '1'); } catch { }   // show the online card after restart
         setTimeout(() => process.exit(100), 2500);
     } catch (e) {
         updating = false;
@@ -396,7 +458,7 @@ async function handleDownload(send, jid, msg, link) {
 
 process.on('unhandledRejection', (e) => log('unhandled: ' + (e?.message || e)));
 process.on('uncaughtException', (e) => log('uncaught: ' + e.message));
-module.exports = { handleDownload, getText, onMessages, replyJid, ME };
+module.exports = { handleDownload, getText, onMessages, replyJid, ME, aliveCaption, _setMediaDownloader: (f) => { mediaDownloader = f; } };
 if (require.main === module) {
     console.log('🚀 Arena AI starting...');
     start().catch((e) => { log('Startup fail: ' + e.message); process.exit(1); });

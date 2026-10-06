@@ -22,6 +22,11 @@ litterbox/catbox, x0.at, transfer.archivete.am, filebin. (gofile / LimeWire / fo
 
 🔒 Private: ඔයා යවන messages විතරයි. වෙන අය commands යැව්වත් ignore.
 
+v2.9 — 🖼️ ලස්සන online card එක (photo + කෙටි status)
+  • Bot start වුණාම / .update එකෙන් පස්සේ photo එකක් එක්ක පොඩි card එකක් එනවා.  .alive = ඕනෑම වෙලාවක බලන්න.
+  • .setlogo — ඔයාගේ photo එක Message yourself chat එකට යවලා ඒකට reply කරලා .setlogo ගහන්න (update වලින් මැකෙන්නේ නෑ).
+  • .dellogo — default Arena AI banner එකට ආපහු.
+
 v2.8 — 🔒 සම්පූර්ණ Safe mode + 🛡️ Anti-ban
   • Commands පාවිච්චි කරන්න පුළුවන් ඔයාට විතරයි (fromMe + sender double check). වෙන කෙනෙක් ගැහුවොත් reply එකක්වත් නෑ.
   • Default: "Message yourself" chat එකේ විතරයි වැඩ.  .mode all = ඔයා ඕනෑම chat එකක ගහන commands වැඩ.

@@ -151,6 +151,29 @@ const mk = (text, fromMe = true, jid = ME) => ({ key: { id: 'IN' + (++n), remote
         me2.pn = null; me2.lid = null;
     }
 
+    // ───────── v2.9: online card + .setlogo ─────────
+    {
+        const bot = require('./bot'); const path = require('path');
+        const LOGO = path.join(__dirname, 'logo.img'); const hadLogo = fs.existsSync(LOGO) ? fs.readFileSync(LOGO) : null;
+        fs.rmSync(LOGO, { force: true });
+        r = await run(mk('.alive')); const card = r.find(x => x.image);
+        t('.alive → banner photo + card', !!card && card.image.length === fs.statSync(path.join(__dirname, 'banner.jpg')).size && /ARENA AI/.test(card.caption) && /v\d+\.\d+/.test(card.caption));
+        t('card එක කෙටියි (පේළි 9 ට අඩුයි)', card && card.caption.split('\n').length <= 9);
+        r = await run(mk('.setlogo')); t('.setlogo photo නැතුව → උදව් message', r.some(x => /reply/.test(x.text || '')) && !fs.existsSync(LOGO));
+        const fake = Buffer.alloc(4000, 7); let got = null;
+        bot._setMediaDownloader(async (m) => { got = m; return fake; });
+        const q = mk('.setlogo'); q.message = { extendedTextMessage: { text: '.setlogo', contextInfo: { stanzaId: 'IMG1', quotedMessage: { imageMessage: { mimetype: 'image/jpeg' } } } } };
+        r = await run(q);
+        t('photo එකට reply කරලා .setlogo → logo save වෙනවා', fs.existsSync(LOGO) && fs.readFileSync(LOGO).equals(fake) && got.key.id === 'IMG1');
+        t('.setlogo → අලුත් logo එකෙන් preview card', r.some(x => x.image && x.image.equals(fake)));
+        const cap = mk('.setlogo'); cap.message = { imageMessage: { caption: '.setlogo', mimetype: 'image/jpeg' } };
+        r = await run(cap); t('photo + caption .setlogo → වැඩ', r.some(x => x.image && x.image.equals(fake)));
+        r = await run(mk('.alive')); t('.alive → දැන් ඔයාගේ logo එක', r.some(x => x.image && x.image.equals(fake)));
+        r = await run(mk('.dellogo')); t('.dellogo → logo අයින්', !fs.existsSync(LOGO));
+        t('updater: logo.img protected', /logo\\.img/.test(fs.readFileSync(path.join(__dirname, 'updater.js'), 'utf8')));
+        if (hadLogo) fs.writeFileSync(LOGO, hadLogo);
+    }
+
     console.log(bad ? `\n⚠️ ${ok} passed, ${bad} failed` : `\n🎉 ALL ${ok} TESTS PASSED`);
     process.exit(bad ? 1 : 0);
 })();
