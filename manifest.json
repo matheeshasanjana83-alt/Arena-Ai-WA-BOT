@@ -1,6 +1,6 @@
 {
-  "version": "2.11.0",
-  "notes": "SUPER update: YouTube (.yts .song .video), TikTok no watermark, Facebook/Instagram/X video, .wiki, .gitclone, stickers (.s .take), group tools (.tagall .kick .promote .demote .grouplink .groupinfo), .restart. New menu with 11 categories",
+  "version": "2.12.0",
+  "notes": "TOOLS update (ideas from Knightbot-MD, MIT): .tr translate, .tts voice (Sinhala OK), .weather, .lyrics, .imagine AI image, .toimg, .tourl, .ss screenshot, .qr, .short, .calc, .github, .del, .setpp, fun (.joke .fact .quote .8ball), group (.mute .unmute .tagadmins .resetlink). Menu now 13 categories",
   "files": [
     "bot.js",
     "ai.js",
@@ -19,6 +19,7 @@
     "guard.js",
     "banner.jpg",
     "media.js",
-    "features.js"
+    "features.js",
+    "tools.js"
   ]
 }

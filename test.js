@@ -182,8 +182,8 @@ const mk = (text, fromMe = true, jid = ME) => ({ key: { id: 'IN' + (++n), remote
         const q1 = mk('1'); q1.message = { extendedTextMessage: { text: '1', contextInfo: { stanzaId: menuId } } };
         r = await run(q1); t('menu එකට reply කරලා 1 → Download category', r.some(x => /DOWNLOAD/.test(x.text || '')));
         r = await run(mk('2')); t('menu එකෙන් පස්සේ 2 විතරක් → YouTube category', r.some(x => /\*🎬 YOUTUBE\*/.test(x.text || '')));
-        r = await run(mk('7')); t('7 → AI category', r.some(x => /\*🤖 AI\*/.test(x.text || '')));
-        r = await run(mk('11')); t('11 → status card (photo)', r.some(x => x.image && /ARENA AI/.test(x.caption)));
+        r = await run(mk('9')); t('9 → AI category', r.some(x => /\*🤖 AI\*/.test(x.text || '')));
+        r = await run(mk('13')); t('13 → status card (photo)', r.some(x => x.image && /ARENA AI/.test(x.caption)));
         r = await run(mk('99')); t('වැරදි number → error', r.some(x => /අතර number/.test(x.text || '')));
         const other = mk('1'); other.message = { extendedTextMessage: { text: '1', contextInfo: { stanzaId: 'SOMETHING_ELSE' } } };
         r = await run(other); t('වෙන message එකකට reply කරපු "1" → ignore', r.length === 0);
@@ -249,6 +249,58 @@ const mk = (text, fromMe = true, jid = ME) => ({ key: { id: 'IN' + (++n), remote
         r = await run(mk('.tagall again', true, G)); t('🛡️ .tagall විනාඩි 10 limit', /විනාඩි 10/.test(txt()));
         r = await run(mk('.kick', false, G)); t('🔒 group එකේ වෙන කෙනෙක් .kick → ignore', r.length === 0);
         bot._setSock(null); me3.pn = null; me3.lid = null;
+    }
+
+    // ───────── v2.12: tools + fun (Knightbot-MD ideas) ─────────
+    {
+        const bot = require('./bot'), path = require('path');
+        const txt = () => out.map(x => x.text || x.caption || '').join('\n');
+        r = await run(mk('.tr si good morning my friend')); t('.tr si → සිංහල', /[\u0D80-\u0DFF]/.test(txt()));
+        r = await run(mk('.tr සුභ උදෑසනක්')); t('.tr (සිංහල text) → English auto', /good|morning/i.test(txt()));
+        const rq = mk('.tr si'); rq.message = { extendedTextMessage: { text: '.tr si', contextInfo: { stanzaId: 'Q', quotedMessage: { conversation: 'How are you?' } } } };
+        r = await run(rq); t('reply කරලා .tr si → translate', /[\u0D80-\u0DFF]/.test(txt()));
+        r = await run(mk('.tts ආයුබෝවන් ඔබට')); const vo = r.find(x => x.audio); t('.tts සිංහල → voice note (mp3)', !!vo && vo.ptt === true && vo.audio.length > 2000);
+        r = await run(mk('.weather Kandy')); t('.weather Kandy → කාලගුණය + දින 3', /Kandy/.test(txt()) && /°C/.test(txt()) && /දින 3/.test(txt()));
+        r = await run(mk('.lyrics faded alan walker')); t('.lyrics → lyrics', /Faded/i.test(txt()) && txt().length > 300);
+        r = await run(mk('.calc (25+15)*3')); t('.calc (25+15)*3 = 120', /\*120\*/.test(txt()));
+        r = await run(mk('.calc 15% of 2000')); t('.calc 15% of 2000 = 300', /\*300\*/.test(txt()));
+        r = await run(mk('.calc sqrt(144)+2^3')); t('.calc sqrt(144)+2^3 = 20', /\*20\*/.test(txt()));
+        r = await run(mk('.calc process.exit()')); t('🔒 .calc code run කරන්න බෑ', /විතරයි/.test(txt()));
+        r = await run(mk('.qr hello arena')); t('.qr → QR image', r.some(x => x.image && x.image.length > 300));
+        r = await run(mk('.short https://example.com')); t('.short → is.gd link', /https:\/\/is\.gd\//.test(txt()));
+        r = await run(mk('.github torvalds')); t('.github torvalds → profile', /Linus/.test(txt()));
+        r = await run(mk('.joke')); t('.joke', /😂/.test(txt()) && txt().length > 10);
+        r = await run(mk('.fact')); t('.fact (+සිංහල)', /Fact/.test(txt()));
+        r = await run(mk('.quote')); t('.quote', /—/.test(txt()));
+        r = await run(mk('.8ball will it rain')); t('.8ball', /🎱/.test(txt()));
+        r = await run(mk('.ss example.com')); t('.ss example.com → screenshot', r.some(x => x.image && x.image.length > 5000));
+        r = await run(mk('.imagine a cute robot drinking tea')); t('.imagine → AI image', r.some(x => x.image && x.image.length > 5000));
+        // media tools (mock download)
+        globalThis.__st = null;
+        bot._setMediaDownloader(async (m) => m.message.stickerMessage ? globalThis.__st : fs.readFileSync(path.join(__dirname, 'banner.jpg')));
+        const sm = mk('.s'); sm.message = { imageMessage: { caption: '.s', mimetype: 'image/jpeg' } }; r = await run(sm); globalThis.__st = (r.find(x => x.sticker) || {}).sticker;
+        const ti = mk('.toimg'); ti.message = { extendedTextMessage: { text: '.toimg', contextInfo: { stanzaId: 'S', quotedMessage: { stickerMessage: { mimetype: 'image/webp' } } } } };
+        r = await run(ti); t('.toimg sticker → PNG photo', r.some(x => x.image && x.image.slice(1, 4).toString() === 'PNG'));
+        const tu = mk('.tourl'); tu.message = { extendedTextMessage: { text: '.tourl', contextInfo: { stanzaId: 'I', quotedMessage: { imageMessage: { mimetype: 'image/jpeg' } } } } };
+        r = await run(tu); t('.tourl photo → link (catbox / litterbox)', /https:\/\/(files\.catbox\.moe|litter\.catbox\.moe)\//.test(txt()));
+        // .del + .setpp + group extras (mock socket)
+        const me4 = bot.ME; me4.pn = ME; me4.lid = '35189220741167@lid';
+        const sc = [];
+        bot._setSock({ sendMessage: async (j, c) => { sc.push([j, c]); return {}; }, updateProfilePicture: async (j, b) => { sc.push(['pp', j, b.length]); },
+            groupMetadata: async () => ({ subject: 'G', participants: [{ id: '35189220741167@lid', admin: 'admin' }, { id: '94771111111@s.whatsapp.net', admin: 'admin' }, { id: '94772222222@s.whatsapp.net' }] }),
+            groupSettingUpdate: async (j, s) => { sc.push(['set', s]); }, groupRevokeInvite: async () => 'NEWCODE' });
+        const dl = mk('.del', true, '94770000000@s.whatsapp.net'); dl.message = { extendedTextMessage: { text: '.del', contextInfo: { stanzaId: 'MSG9' } } };
+        r = await run(dl); t('.del (mode self වුණත් ඕනෑම chat එකක) → message delete', sc.some(x => x[1]?.delete?.id === 'MSG9' && x[1].delete.fromMe === true));
+        const pp = mk('.setpp'); pp.message = { extendedTextMessage: { text: '.setpp', contextInfo: { stanzaId: 'I2', quotedMessage: { imageMessage: { mimetype: 'image/jpeg' } } } } };
+        r = await run(pp); t('.setpp photo → profile photo', sc.some(x => x[0] === 'pp' && x[1] === ME));
+        const G2 = '120363222@g.us';
+        r = await run(mk('.mute', true, G2)); t('.mute → announcement', sc.some(x => x[0] === 'set' && x[1] === 'announcement'));
+        r = await run(mk('.unmute', true, G2)); t('.unmute → open', sc.some(x => x[0] === 'set' && x[1] === 'not_announcement'));
+        r = await run(mk('.resetlink', true, G2)); t('.resetlink → අලුත් link', /NEWCODE/.test(txt()));
+        r = await run(mk('.tagadmins', true, G2)); t('.tagadmins → admins 2', (r.find(x => x.mentions) || {}).mentions?.length === 2);
+        r = await run(mk('.joke', true, G2)); t('mode self: group එකේ .joke → ignore', r.length === 0);
+        r = await run(mk('.del', false, '94770000000@s.whatsapp.net')); t('🔒 වෙන කෙනෙක් .del → ignore', r.length === 0);
+        bot._setSock(null); me4.pn = null; me4.lid = null;
     }
 
     console.log(bad ? `\n⚠️ ${ok} passed, ${bad} failed` : `\n🎉 ALL ${ok} TESTS PASSED`);

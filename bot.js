@@ -30,6 +30,7 @@ const updater = require('./updater');
 const netx = require('./net');
 const guard = require('./guard');
 const features = require('./features');
+const tools = require('./tools');
 
 const AUTH = path.join(__dirname, 'auth');
 const LOGO = path.join(__dirname, 'logo.img');        // your own photo (.setlogo) — never touched by .update
@@ -97,6 +98,9 @@ const HELP = `🤖 *Arena AI* — ඔක්කොම commands
 🔍 *.wiki* <මාතෘකාව>  •  🐙 *.gitclone* user/repo
 🖼️ *.s* (photo/video reply)  •  *.take* Pack | Author
 👥 *.groupinfo*  •  *.grouplink*  •  *.tagall*  •  *.kick*  •  *.promote*  •  *.demote*  •  *.jid*
+🛠️ *.tr*  •  *.tts*  •  *.weather*  •  *.lyrics*  •  *.imagine*  •  *.toimg*  •  *.tourl*  •  *.ss*  •  *.qr*  •  *.short*  •  *.calc*  •  *.github*  •  *.del*  •  *.setpp*
+🎉 *.joke*  •  *.fact*  •  *.quote*  •  *.8ball*
+👥 *.mute*  •  *.unmute*  •  *.tagadmins*  •  *.resetlink*
 🔄 *.restart*
 
 *.ai <ප්‍රශ්නය>*  — AI එකෙන් අහන්න (සිංහල OK)
@@ -239,7 +243,8 @@ async function onMessages({ messages, type }, send, del = async () => { }) {
                 }
                 if (!text.startsWith('.')) continue;
                 const jid = replyJid(msg.key);
-                const groupOk = jid.endsWith('@g.us') && features.GROUP_CMDS.includes(text.split(/\s+/)[0].toLowerCase());   // your group tools work in groups
+                const c0 = text.split(/\s+/)[0].toLowerCase();
+                const groupOk = (jid.endsWith('@g.us') && features.GROUP_CMDS.includes(c0)) || c0 === '.del' || c0 === '.delete';   // group tools work in groups, .del anywhere
                 if (guard.chatMode() === 'self' && ME.pn && jid !== ME.pn && !groupOk) continue;   // 🔒 default: "Message yourself" chat only (.mode all)
                 const rl = guard.rateCheck();
                 if (!rl.ok) {                                                     // 🛡️ anti-ban rate limit
@@ -281,6 +286,7 @@ async function onMessages({ messages, type }, send, del = async () => { }) {
                 if (c === '.setproxy') { await handleProxy(send, del, jid, msg, rest.join(' ').trim()); continue; }
                 if (c === '.keys') { const k = ai.getKeys(); await send(jid, { text: `🔑 *API keys*\nGemini: ${k.gemini ? '✅ ' + mask(k.gemini) : '❌ නෑ'}\nGroq: ${k.groq ? '✅ ' + mask(k.groq) : '❌ නෑ'}` }, { quoted: msg }); continue; }
                 if (c === '.restart') { await send(jid, { text: '🔄 Restart වෙනවා... තත්පර 10 කින් *.ping*' }, { quoted: msg }); setTimeout(() => process.exit(process.env.ARENA_LAUNCHER ? 100 : 0), 1500); continue; }
+                if (await tools.handle(c, { send, jid, msg, rest, sock: SOCK, me: ME })) continue;
                 if (await features.handle(c, { send, jid, msg, rest, sock: SOCK, me: ME, download })) continue;
                 if (!['.download', '.dl', '.dn'].includes(c)) continue;
 
@@ -323,7 +329,9 @@ const CATS = [
     ['📱', 'Social', '*📱 SOCIAL MEDIA*\n\n┃ *.tiktok <link>*  — watermark නැතුව (*.tt*)\n┃ *.fb <link>*  — Facebook video\n┃ *.ig <link>*  — Instagram reel / video\n┃ *.x <link>*  — X / Twitter video\n\n🔓 Public videos විතරයි'],
     ['🔍', 'Search', '*🔍 SEARCH*\n\n┃ *.wiki <මාතෘකාව>*  — Wikipedia\n┃ *.wiki si <මාතෘකාව>*  — සිංහල Wikipedia\n┃ *.yts <නම>*  — YouTube search'],
     ['🖼️', 'Sticker', '*🖼️ STICKER*\n\n┃ *.s*  — photo / video එකකට reply කරලා (නැත්නම් caption එකට)\n┃ *.take Pack | Author*  — sticker එකක නම වෙනස් කරන්න\n\n🎞️ Video stickers තත්පර 6 දක්වා'],
-    ['👥', 'Group', '*👥 GROUP*  (group එකේ ඔයා ගහන්න)\n\n┃ *.groupinfo*  — group විස්තර\n┃ *.grouplink*  — invite link (admin)\n┃ *.tagall [message]*  — ඔක්කොටම mention (විනාඩි 10 කට 1)\n┃ *.kick @user*  — අයින් කරන්න (admin)\n┃ *.promote @user*  /  *.demote @user*\n┃ *.jid*  — chat ID එක\n\n💡 @mention නැත්නම් message එකකට reply කරලා ගහන්න'],
+    ['🛠️', 'Tools', '*🛠️ TOOLS*\n\n┃ *.tr <භාෂාව> <text>*  — translate (reply කරලත්)\n┃ *.tts <text>*  — voice එකක් (සිංහල OK)\n┃ *.weather <නගරය>*  — කාලගුණය (දින 3)\n┃ *.lyrics <සින්දුව>*  — lyrics\n┃ *.imagine <විස්තරය>*  — AI image\n┃ *.toimg*  — sticker → photo\n┃ *.tourl*  — media → download link\n┃ *.ss <website>*  — screenshot\n┃ *.qr <text>*  •  *.short <link>*  •  *.calc <ගණනය>*\n┃ *.github <user>*  — GitHub profile\n┃ *.del*  — reply කරපු message එක මකන්න\n┃ *.setpp*  — photo reply → profile photo'],
+    ['🎉', 'Fun', '*🎉 FUN*\n\n┃ *.joke*  — විහිළුවක්\n┃ *.fact*  — රසවත් කරුණක් (+සිංහල)\n┃ *.quote*  — quote එකක්\n┃ *.8ball <ප්‍රශ්නය>*  — 🎱'],
+    ['👥', 'Group', '*👥 GROUP*  (group එකේ ඔයා ගහන්න)\n\n┃ *.groupinfo*  — group විස්තර\n┃ *.grouplink*  — invite link (admin)\n┃ *.tagall [message]*  — ඔක්කොටම mention (විනාඩි 10 කට 1)\n┃ *.kick @user*  — අයින් කරන්න (admin)\n┃ *.promote @user*  /  *.demote @user*\n┃ *.mute*  /  *.unmute*  — admins only / open\n┃ *.tagadmins*  •  *.resetlink*\n┃ *.jid*  — chat ID එක\n\n💡 @mention නැත්නම් message එකකට reply කරලා ගහන්න'],
     ['🤖', 'AI', '*🤖 AI*\n\n┃ *.ai <ප්‍රශ්නය>*  — Gemini / Groq (සිංහල OK)\n┃ message එකකට reply කරලා *.ai*  — ඒ message එක ගැන\n┃ *.ai reset*  — කතාව අලුතෙන්\n┃ *.setkey gemini <KEY>*  /  *.setkey groq <KEY>*\n┃ *.keys*  — keys බලන්න'],
     ['🔧', 'Network', '*🔧 NETWORK*\n\n┃ *.net <link>*  — download fail නම් හේතුව (DNS / IP block)\n┃ *.setproxy <url>*  — block sites වලට proxy (YouTube වලටත්)\n┃ *.setproxy off*'],
     ['⚙️', 'Settings', '*⚙️ SETTINGS*\n\n┃ *.setlogo*  — photo එකකට reply කරලා → menu logo\n┃ *.dellogo*  — default banner\n┃ *.react on|off*  — auto react\n┃ *.mode self|all*  — commands වැඩ කරන chats\n┃ *.update*  — GitHub එකෙන් update\n┃ *.restart*  — bot restart\n┃ *.version*'],
@@ -395,6 +403,7 @@ async function sendAlive(send, jid, quoted, kind) {
 }
 
 features.setMediaDownloader((m) => mediaDownloader(m));
+tools.setMediaDownloader((m) => mediaDownloader(m));
 let mediaDownloader = async (m) => { const b = await loadBaileys(); return b.downloadMediaMessage(m, 'buffer', {}, { logger: pino({ level: 'silent' }), reuploadRequest: SOCK?.updateMediaMessage }); };
 async function handleSetLogo(send, jid, msg) {
     const unwrap = (m) => m?.viewOnceMessage?.message || m?.viewOnceMessageV2?.message || m?.ephemeralMessage?.message || m;

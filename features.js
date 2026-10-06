@@ -99,7 +99,7 @@ async function wiki(send, jid, msg, raw) {
     let lang = 'en', q = raw;
     const m = raw.match(/^(si|en|ta|hi)\s+(.+)$/i);
     if (m) { lang = m[1].toLowerCase(); q = m[2]; } else if (/[\u0D80-\u0DFF]/.test(raw)) lang = 'si';
-    const UA = { 'User-Agent': 'ArenaAI-WhatsApp-bot/2.11 (private)' };
+    const UA = { 'User-Agent': 'ArenaAI-WhatsApp-bot/2.12 (private)' };
     const sum = async (t) => fetch(`https://${lang}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(t.replace(/ /g, '_'))}`, { headers: UA });
     let r = await sum(q), d = r.ok ? await r.json() : null;
     if (!d?.extract) {
@@ -191,6 +191,16 @@ async function group(sock, send, jid, msg, c, args, me) {
         const list = meta.participants.map((p) => `${p.admin ? '👑' : '▫️'} @${p.id.split('@')[0]}`).join('\n');
         return send(jid, { text: `📢 ${args.join(' ') ? '*' + args.join(' ') + '*\n\n' : ''}${list}`, mentions: ids });
     }
+    if (c === '.tagadmins') {
+        const ad = meta.participants.filter((p) => p.admin);
+        return send(jid, { text: `🛡️ *Admins*${args.join(' ') ? '\n' + args.join(' ') : ''}\n\n${ad.map((p) => '👑 @' + p.id.split('@')[0]).join('\n')}`, mentions: ad.map((p) => p.id) });
+    }
+    if (c === '.mute' || c === '.unmute' || c === '.resetlink') {
+        if (!iAmAdmin) return send(jid, { text: '⛔ මේක කරන්න ඔයා group එකේ admin වෙන්න ඕනේ' }, { quoted: msg });
+        if (c === '.resetlink') { const code = await sock.groupRevokeInvite(jid); return send(jid, { text: `🔄 පරණ link එක cancel කළා.\n🔗 අලුත් link: https://chat.whatsapp.com/${code}` }, { quoted: msg }); }
+        await sock.groupSettingUpdate(jid, c === '.mute' ? 'announcement' : 'not_announcement');
+        return send(jid, { text: c === '.mute' ? '🔇 Group එක mute කළා — admins ට විතරයි messages' : '🔊 Group එක open කළා — ඔක්කොටම messages' }, { quoted: msg });
+    }
     // kick / promote / demote
     if (!iAmAdmin) return send(jid, { text: '⛔ මේක කරන්න ඔයා group එකේ admin වෙන්න ඕනේ' }, { quoted: msg });
     const t = targets(msg, args).filter((x) => !mine.has(x));
@@ -202,7 +212,7 @@ async function group(sock, send, jid, msg, c, args, me) {
     return send(jid, { text: `${word}: ${ok}/${t.length}\n${t.map((x) => '@' + x.split('@')[0]).join(' ')}`, mentions: t }, { quoted: msg });
 }
 
-const GROUP_CMDS = ['.tagall', '.kick', '.promote', '.demote', '.grouplink', '.groupinfo', '.jid'];
+const GROUP_CMDS = ['.tagall', '.kick', '.promote', '.demote', '.grouplink', '.groupinfo', '.jid', '.mute', '.unmute', '.tagadmins', '.resetlink'];
 const CMDS = ['.yts', '.play', '.song', '.yta', '.video', '.ytv', '.yt', '.tiktok', '.tt', '.fb', '.ig', '.insta', '.x', '.twitter', '.wiki', '.gitclone', '.sticker', '.s', '.take', ...GROUP_CMDS];
 
 /** returns true if handled */

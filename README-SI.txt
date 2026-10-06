@@ -22,6 +22,18 @@ litterbox/catbox, x0.at, transfer.archivete.am, filebin. (gofile / LimeWire / fo
 
 🔒 Private: ඔයා යවන messages විතරයි. වෙන අය commands යැව්වත් ignore.
 
+v2.12 — 🛠️ TOOLS update (Knightbot-MD bot එකේ ideas, අපේම code එකෙන් ස්ථාවර free APIs වලින්)
+  🌐 .tr <භාෂාව> <text>  → translate (message එකකට reply කරලා .tr si) — si en ta hi ja ko ...
+  🗣️ .tts <text>  → voice note (සිංහල auto)      🌍 .weather <නගරය>  → කාලගුණය + දින 3
+  🎤 .lyrics <සින්දුව>      🎨 .imagine <විස්තරය>  → AI image (සිංහලෙනුත් ලියන්න පුළුවන්)
+  🖼️ .toimg (sticker reply) → photo      🔗 .tourl (media reply) → download link
+  📸 .ss <website>  •  🔳 .qr <text>  •  ✂️ .short <link>  •  🧮 .calc (25+15)*3 / 15% of 2000
+  🐙 .github <user>  •  🗑️ .del (reply → message එක මකනවා, ඕනෑම chat එකක)  •  .setpp (photo → profile)
+  🎉 .joke  •  .fact (+සිංහල)  •  .quote  •  .8ball <ප්‍රශ්නය>
+  👥 Group: .mute  .unmute  .tagadmins  .resetlink
+  Menu: categories 13 (6 = Tools, 7 = Fun)
+  Credit: command ideas — Knightbot-MD by mruniquehacker (MIT). Code එක අලුතෙන් ලිව්වේ.
+
 v2.11 — 🚀 SUPER update (abc repo එකේ SmokeBoy bot එකෙන් ගත්ත features)
   🎬 .yts <නම>  •  .song <නම/link> (audio)  •  .video <නම/link> (720p→360p)
   📱 .tiktok (watermark නෑ)  •  .fb  •  .ig  •  .x   <link>

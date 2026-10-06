@@ -13,6 +13,11 @@ Private WhatsApp bot (Baileys v7) — `.ai` (Gemini / Groq), `.download`, `.upda
 | `.keys` · `.menu` · `.ping` | |
 | `.version` | දැන් version එක + update තියෙනවද |
 | `.update` | මේ repo එකෙන් අලුත් version එක ගන්නවා (auth / keys වෙනස් වෙන්නේ නෑ) |
+| `.tr` `.tts` `.weather` `.lyrics` `.imagine` | Translate · voice · කාලගුණය · lyrics · AI image (v2.12) |
+| `.toimg` `.tourl` `.ss` `.qr` `.short` `.calc` `.github` `.del` `.setpp` | Tools (v2.12) |
+| `.joke` `.fact` `.quote` `.8ball` · `.mute` `.unmute` `.tagadmins` `.resetlink` | Fun · Group (v2.12) |
+
+> v2.12 command ideas: [Knightbot-MD](https://github.com/mruniquehacker/Knightbot-MD) by mruniquehacker (MIT) — code rewritten for Arena AI.
 
 ## Install
 - **Panel (Pterodactyl):** [`downloads/Arena-AI-panel.zip`](downloads/Arena-AI-panel.zip) upload → Unarchive → Main file `index.js` → Start → console එකේ number එක ගහලා pair කරන්න.
