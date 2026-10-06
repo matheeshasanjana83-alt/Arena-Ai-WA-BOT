@@ -3,3 +3,4 @@ auth/
 settings.json
 .version.json
 .backup/
+package-lock.json
