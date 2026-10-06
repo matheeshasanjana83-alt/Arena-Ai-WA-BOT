@@ -22,6 +22,17 @@ litterbox/catbox, x0.at, transfer.archivete.am, filebin. (gofile / LimeWire / fo
 
 🔒 Private: ඔයා යවන messages විතරයි. වෙන අය commands යැව්වත් ignore.
 
+v2.11 — 🚀 SUPER update (abc repo එකේ SmokeBoy bot එකෙන් ගත්ත features)
+  🎬 .yts <නම>  •  .song <නම/link> (audio)  •  .video <නම/link> (720p→360p)
+  📱 .tiktok (watermark නෑ)  •  .fb  •  .ig  •  .x   <link>
+  🔍 .wiki <මාතෘකාව>  (.wiki si ... = සිංහල)   🐙 .gitclone user/repo → zip
+  🖼️ .s = photo/video → sticker (video තත්පර 6)  •  .take Pack | Author
+  👥 Group (ඔයා group එකේ ගැහුවොත්): .groupinfo .grouplink .tagall .kick .promote .demote .jid
+  🔄 .restart
+  • Panel: පළමු .song/.video/.s එකේදී yt-dlp (40MB) + ffmpeg (80MB) auto download වෙනවා (විනාඩියක් විතර).
+  • Termux: pkg install yt-dlp ffmpeg   (termux-setup.sh එක දැන් ඒකත් කරනවා)
+  • YouTube සමහර server IPs වලට "bot check" දානවා — එහෙම වුණොත් bot එක පැහැදිලිව කියනවා.
+
 v2.10 — 📋 ලස්සන .menu + ✨ auto react
   • .menu — photo + BOT INFO box (version, uptime, RAM, host) + categories 6.
     Number එක reply කරන්න (උදා 1 = Download) → ඒ category එකේ commands.  .help = full list.

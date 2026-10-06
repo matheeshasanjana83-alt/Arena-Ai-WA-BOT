@@ -181,9 +181,10 @@ const mk = (text, fromMe = true, jid = ME) => ({ key: { id: 'IN' + (++n), remote
         const menuId = 'OUT' + n;   // fake send ids
         const q1 = mk('1'); q1.message = { extendedTextMessage: { text: '1', contextInfo: { stanzaId: menuId } } };
         r = await run(q1); t('menu එකට reply කරලා 1 → Download category', r.some(x => /DOWNLOAD/.test(x.text || '')));
-        r = await run(mk('2')); t('menu එකෙන් පස්සේ 2 විතරක් → AI category', r.some(x => /\*🤖 AI\*/.test(x.text || '')));
-        r = await run(mk('6')); t('6 → status card (photo)', r.some(x => x.image && /ARENA AI/.test(x.caption)));
-        r = await run(mk('9')); t('වැරදි number → error', r.some(x => /අතර number/.test(x.text || '')));
+        r = await run(mk('2')); t('menu එකෙන් පස්සේ 2 විතරක් → YouTube category', r.some(x => /\*🎬 YOUTUBE\*/.test(x.text || '')));
+        r = await run(mk('7')); t('7 → AI category', r.some(x => /\*🤖 AI\*/.test(x.text || '')));
+        r = await run(mk('11')); t('11 → status card (photo)', r.some(x => x.image && /ARENA AI/.test(x.caption)));
+        r = await run(mk('99')); t('වැරදි number → error', r.some(x => /අතර number/.test(x.text || '')));
         const other = mk('1'); other.message = { extendedTextMessage: { text: '1', contextInfo: { stanzaId: 'SOMETHING_ELSE' } } };
         r = await run(other); t('වෙන message එකකට reply කරපු "1" → ignore', r.length === 0);
         r = await run(mk('3', false, '94770000000@s.whatsapp.net')); t('🔒 යාලුවා "3" → ignore', r.length === 0);
@@ -196,6 +197,58 @@ const mk = (text, fromMe = true, jid = ME) => ({ key: { id: 'IN' + (++n), remote
         r = await run(mk('hello')); t('සාමාන්‍ය message එකට react නෑ', r.length === 0);
         process.env.ARENA_NO_REACT = '1';
         try { const sp = require('path').join(__dirname, 'settings.json'); const d = JSON.parse(fs.readFileSync(sp, 'utf8')); delete d.react; fs.writeFileSync(sp, JSON.stringify(d)); } catch { }
+    }
+
+    // ───────── v2.11: SmokeBoy features (YouTube, TikTok, wiki, gitclone, sticker, group) ─────────
+    {
+        const path = require('path'), features = require('./features'), bot = require('./bot');
+        if (fs.existsSync('/tmp/ytt/yt-dlp')) process.env.YTDLP_PATH = '/tmp/ytt/yt-dlp';
+        if (fs.existsSync('/tmp/ytt/ffmpeg')) process.env.FFMPEG_PATH = '/tmp/ytt/ffmpeg';
+        const txt = () => out.map(x => x.text || x.caption || '').join('\n');
+        r = await run(mk('.yts alan walker faded')); t('.yts → YouTube results', /youtube\.com\/watch|youtu/.test(txt()) && /\*1\.\*/.test(txt()));
+        r = await run(mk('.wiki Sri Lanka')); t('.wiki Sri Lanka → summary (+photo)', /Sri Lanka/.test(txt()) && /wikipedia\.org/.test(txt()));
+        r = await run(mk('.wiki si ශ්‍රී ලංකාව')); t('.wiki si → සිංහල', /[\u0D80-\u0DFF]/.test(txt()) && /si\.(m\.)?wikipedia/.test(txt()));
+        r = await run(mk('.gitclone matheeshasanjana83-alt/Arena-Ai-WA-BOT')); const gz = r.find(x => x.document);
+        t('.gitclone → repo zip document', !!gz && /Arena-Ai-WA-BOT-main\.zip/.test(gz.fileName) && gz.size > 10000);
+        r = await run(mk('.song https://www.youtube.com/watch?v=jNQXAC9IVRw')); const au = r.find(x => x.audio);
+        t('.song <link> → audio (yt-dlp)', !!au && /Me at the zoo/.test(txt()));
+        r = await run(mk('.video https://www.youtube.com/watch?v=jNQXAC9IVRw')); const vi = r.find(x => x.video);
+        t('.video <link> → mp4 video + caption', !!vi && /Me at the zoo/.test(vi.caption || '') && /\d+p/.test(vi.caption || ''));
+        t('yt temp files delete වෙනවා', await new Promise(res => setTimeout(() => res(![au, vi].some(x => x && fs.existsSync(x.audio?.url || x.video?.url))), 400)));
+        r = await run(mk('.tiktok https://www.tiktok.com/@scout2015/video/6718335390845095173')); t('.tiktok → video (no watermark)', r.some(x => x.video && /No watermark/.test(x.caption || '')));
+        r = await run(mk('.fb')); t('.fb link නැතුව → usage', /\.fb <link>/.test(txt()));
+        // stickers (mock WhatsApp media download)
+        const jpg = fs.readFileSync(path.join(__dirname, 'banner.jpg'));
+        bot._setMediaDownloader(async (m) => m.message.videoMessage ? fs.readFileSync('/tmp/ytt/v.mp4') : m.message.stickerMessage ? globalThis.__lastSticker : jpg);
+        const sm = mk('.s'); sm.message = { imageMessage: { caption: '.s', mimetype: 'image/jpeg' } };
+        r = await run(sm); const st = r.find(x => x.sticker);
+        t('.s photo → webp sticker (512, Exif)', !!st && st.sticker.slice(0, 4).toString() === 'RIFF' && st.sticker.includes(Buffer.from('Arena AI')));
+        if (fs.existsSync('/tmp/ytt/v.mp4')) {
+            const vm = mk('.s'); vm.message = { extendedTextMessage: { text: '.s', contextInfo: { stanzaId: 'V1', quotedMessage: { videoMessage: { seconds: 5, mimetype: 'video/mp4' } } } } };
+            r = await run(vm); const vs = r.find(x => x.sticker);
+            t('.s video → animated sticker ≤ 500 KB', !!vs && vs.sticker.length <= 500 * 1024 && vs.sticker.includes(Buffer.from('ANIM')));
+        }
+        globalThis.__lastSticker = st && st.sticker;
+        const tk = mk('.take Matheesha Pack | Me'); tk.message = { extendedTextMessage: { text: '.take Matheesha Pack | Me', contextInfo: { stanzaId: 'S1', quotedMessage: { stickerMessage: { mimetype: 'image/webp' } } } } };
+        r = await run(tk); const tks = r.find(x => x.sticker); t('.take → sticker pack නම වෙනස්', !!tks && tks.sticker.includes(Buffer.from('Matheesha Pack')) && tks.sticker.includes(Buffer.from('"Me"')));
+        r = await run(mk('.s')); t('.s photo නැතුව → උදව්', /reply/.test(txt()));
+        // group tools (mock socket)
+        const me3 = bot.ME; me3.pn = ME; me3.lid = '35189220741167@lid';
+        const G = '120363111@g.us', calls = [];
+        const fakeSock = { groupMetadata: async () => ({ subject: 'Test Group', participants: [{ id: '35189220741167@lid', admin: 'admin' }, { id: '94771111111@s.whatsapp.net' }, { id: '94772222222@s.whatsapp.net', admin: null }], desc: 'hello', creation: 1700000000 }),
+            groupInviteCode: async () => 'ABCDEF', groupParticipantsUpdate: async (j, ids, a) => { calls.push([a, ids]); return ids.map(() => ({ status: '200' })); } };
+        bot._setSock(fakeSock);
+        r = await run(mk('.groupinfo', true, G)); t('👥 mode self වුණත් group එකේ මගේ .groupinfo → වැඩ', /Test Group/.test(txt()) && /Members: 3/.test(txt()));
+        r = await run(mk('.ping', true, G)); t('mode self: group එකේ .ping → ignore (group tools විතරයි)', r.length === 0);
+        r = await run(mk('.grouplink', true, G)); t('.grouplink → invite link', /chat\.whatsapp\.com\/ABCDEF/.test(txt()));
+        const kk = mk('.kick', true, G); kk.message = { extendedTextMessage: { text: '.kick', contextInfo: { mentionedJid: ['94771111111@s.whatsapp.net'] } } };
+        r = await run(kk); t('.kick @user → remove', calls.some(c => c[0] === 'remove' && c[1][0] === '94771111111@s.whatsapp.net') && /1\/1/.test(txt()));
+        const pr = mk('.promote', true, G); pr.message = { extendedTextMessage: { text: '.promote', contextInfo: { participant: '94772222222@s.whatsapp.net', stanzaId: 'Q' } } };
+        r = await run(pr); t('.promote (reply) → admin', calls.some(c => c[0] === 'promote'));
+        r = await run(mk('.tagall hi all', true, G)); const ta = r.find(x => x.mentions); t('.tagall → mentions ඔක්කොම', !!ta && ta.mentions.length === 3);
+        r = await run(mk('.tagall again', true, G)); t('🛡️ .tagall විනාඩි 10 limit', /විනාඩි 10/.test(txt()));
+        r = await run(mk('.kick', false, G)); t('🔒 group එකේ වෙන කෙනෙක් .kick → ignore', r.length === 0);
+        bot._setSock(null); me3.pn = null; me3.lid = null;
     }
 
     console.log(bad ? `\n⚠️ ${ok} passed, ${bad} failed` : `\n🎉 ALL ${ok} TESTS PASSED`);

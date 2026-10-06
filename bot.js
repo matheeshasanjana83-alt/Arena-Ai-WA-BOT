@@ -29,6 +29,7 @@ const ai = require('./ai');
 const updater = require('./updater');
 const netx = require('./net');
 const guard = require('./guard');
+const features = require('./features');
 
 const AUTH = path.join(__dirname, 'auth');
 const LOGO = path.join(__dirname, 'logo.img');        // your own photo (.setlogo) — never touched by .update
@@ -89,7 +90,14 @@ function getText(m) {
     return (x?.conversation || x?.extendedTextMessage?.text || x?.imageMessage?.caption || x?.documentMessage?.caption || '').trim();
 }
 
-const HELP = `🤖 *Arena AI*
+const HELP = `🤖 *Arena AI* — ඔක්කොම commands
+
+🎬 *.yts* <නම>  •  *.song* <නම/link>  •  *.video* <නම/link>
+📱 *.tiktok*  •  *.fb*  •  *.ig*  •  *.x*  <link>
+🔍 *.wiki* <මාතෘකාව>  •  🐙 *.gitclone* user/repo
+🖼️ *.s* (photo/video reply)  •  *.take* Pack | Author
+👥 *.groupinfo*  •  *.grouplink*  •  *.tagall*  •  *.kick*  •  *.promote*  •  *.demote*  •  *.jid*
+🔄 *.restart*
 
 *.ai <ප්‍රශ්නය>*  — AI එකෙන් අහන්න (සිංහල OK)
   • message එකකට reply කරලා *.ai* ගැහුවොත් ඒ message එක ගැන අහනවා
@@ -231,7 +239,8 @@ async function onMessages({ messages, type }, send, del = async () => { }) {
                 }
                 if (!text.startsWith('.')) continue;
                 const jid = replyJid(msg.key);
-                if (guard.chatMode() === 'self' && ME.pn && jid !== ME.pn) continue;   // 🔒 default: "Message yourself" chat only (.mode all)
+                const groupOk = jid.endsWith('@g.us') && features.GROUP_CMDS.includes(text.split(/\s+/)[0].toLowerCase());   // your group tools work in groups
+                if (guard.chatMode() === 'self' && ME.pn && jid !== ME.pn && !groupOk) continue;   // 🔒 default: "Message yourself" chat only (.mode all)
                 const rl = guard.rateCheck();
                 if (!rl.ok) {                                                     // 🛡️ anti-ban rate limit
                     log(`⏳ rate limit — command ignore කළා (${rl.wait}s)`);
@@ -271,6 +280,8 @@ async function onMessages({ messages, type }, send, del = async () => { }) {
                 }
                 if (c === '.setproxy') { await handleProxy(send, del, jid, msg, rest.join(' ').trim()); continue; }
                 if (c === '.keys') { const k = ai.getKeys(); await send(jid, { text: `🔑 *API keys*\nGemini: ${k.gemini ? '✅ ' + mask(k.gemini) : '❌ නෑ'}\nGroq: ${k.groq ? '✅ ' + mask(k.groq) : '❌ නෑ'}` }, { quoted: msg }); continue; }
+                if (c === '.restart') { await send(jid, { text: '🔄 Restart වෙනවා... තත්පර 10 කින් *.ping*' }, { quoted: msg }); setTimeout(() => process.exit(process.env.ARENA_LAUNCHER ? 100 : 0), 1500); continue; }
+                if (await features.handle(c, { send, jid, msg, rest, sock: SOCK, me: ME, download })) continue;
                 if (!['.download', '.dl', '.dn'].includes(c)) continue;
 
                 const links = (text.match(/https?:\/\/\S+/g) || []).slice(0, 5);   // 🛡️ max 5 per command
@@ -307,11 +318,16 @@ async function handleReact(send, jid, msg, arg) {
 }
 
 const CATS = [
-    ['📥', 'Download', `*📥 DOWNLOAD*\n\n┃ *.download <link>*  (*.dl*)\n┃   file එක download කරලා එවනවා\n┃ *.dl link1 link2*  — links 5 දක්වා\n\n✅ Direct links, GitHub, Google Drive, MediaFire, MEGA, Dropbox, Pixeldrain, catbox/litterbox...\n📏 Max: ${human(MAX_BYTES)} / file`],
-    ['🤖', 'AI', '*🤖 AI*\n\n┃ *.ai <ප්‍රශ්නය>*  — Gemini / Groq (සිංහල OK)\n┃ message එකකට reply කරලා *.ai*  — ඒ message එක ගැන\n┃ *.ai reset*  — කතාව අලුතෙන්\n┃ *.setkey gemini <KEY>*\n┃ *.setkey groq <KEY>*\n┃ *.keys*  — keys බලන්න'],
-    ['🔧', 'Network', '*🔧 NETWORK*\n\n┃ *.net <link>*  — download fail නම් හේතුව (DNS / IP block)\n┃ *.setproxy <url>*  — block sites වලට proxy\n┃ *.setproxy off*  — proxy අයින් කරන්න'],
-    ['⚙️', 'Settings', '*⚙️ SETTINGS*\n\n┃ *.setlogo*  — photo එකකට reply කරලා → menu / card logo\n┃ *.dellogo*  — default banner\n┃ *.react on|off*  — auto react\n┃ *.mode self|all*  — commands වැඩ කරන chats\n┃ *.update*  — GitHub එකෙන් update\n┃ *.version*  — version එක'],
-    ['🛡️', 'Security', '*🛡️ SECURITY*\n\n┃ 🔒 Commands පාවිච්චි කරන්න පුළුවන් *ඔයාට විතරයි*\n┃ 🔒 Default: Message yourself chat එකේ විතරයි (*.mode*)\n┃ 🛡️ Anti-ban: rate limit, human delay, backoff\n┃ 🙈 Keys / passwords logs වල පේන්නේ නෑ'],
+    ['📥', 'Download', `*📥 DOWNLOAD*\n\n┃ *.download <link>*  (*.dl*)  — file එක එවනවා\n┃ *.dl link1 link2*  — links 5 දක්වා\n┃ *.gitclone user/repo*  — GitHub repo → zip\n\n✅ Direct, GitHub, Google Drive, MediaFire, MEGA, Dropbox, Pixeldrain, catbox...\n📏 Max: ${human(MAX_BYTES)} / file`],
+    ['🎬', 'YouTube', '*🎬 YOUTUBE*\n\n┃ *.yts <නම>*  — search\n┃ *.song <නම / link>*  — audio (*.play*, *.yta*)\n┃ *.video <නම / link>*  — video (*.ytv*)\n\n📺 720p → 480p → 360p (size එකට ගැලපෙන විදියට)'],
+    ['📱', 'Social', '*📱 SOCIAL MEDIA*\n\n┃ *.tiktok <link>*  — watermark නැතුව (*.tt*)\n┃ *.fb <link>*  — Facebook video\n┃ *.ig <link>*  — Instagram reel / video\n┃ *.x <link>*  — X / Twitter video\n\n🔓 Public videos විතරයි'],
+    ['🔍', 'Search', '*🔍 SEARCH*\n\n┃ *.wiki <මාතෘකාව>*  — Wikipedia\n┃ *.wiki si <මාතෘකාව>*  — සිංහල Wikipedia\n┃ *.yts <නම>*  — YouTube search'],
+    ['🖼️', 'Sticker', '*🖼️ STICKER*\n\n┃ *.s*  — photo / video එකකට reply කරලා (නැත්නම් caption එකට)\n┃ *.take Pack | Author*  — sticker එකක නම වෙනස් කරන්න\n\n🎞️ Video stickers තත්පර 6 දක්වා'],
+    ['👥', 'Group', '*👥 GROUP*  (group එකේ ඔයා ගහන්න)\n\n┃ *.groupinfo*  — group විස්තර\n┃ *.grouplink*  — invite link (admin)\n┃ *.tagall [message]*  — ඔක්කොටම mention (විනාඩි 10 කට 1)\n┃ *.kick @user*  — අයින් කරන්න (admin)\n┃ *.promote @user*  /  *.demote @user*\n┃ *.jid*  — chat ID එක\n\n💡 @mention නැත්නම් message එකකට reply කරලා ගහන්න'],
+    ['🤖', 'AI', '*🤖 AI*\n\n┃ *.ai <ප්‍රශ්නය>*  — Gemini / Groq (සිංහල OK)\n┃ message එකකට reply කරලා *.ai*  — ඒ message එක ගැන\n┃ *.ai reset*  — කතාව අලුතෙන්\n┃ *.setkey gemini <KEY>*  /  *.setkey groq <KEY>*\n┃ *.keys*  — keys බලන්න'],
+    ['🔧', 'Network', '*🔧 NETWORK*\n\n┃ *.net <link>*  — download fail නම් හේතුව (DNS / IP block)\n┃ *.setproxy <url>*  — block sites වලට proxy (YouTube වලටත්)\n┃ *.setproxy off*'],
+    ['⚙️', 'Settings', '*⚙️ SETTINGS*\n\n┃ *.setlogo*  — photo එකකට reply කරලා → menu logo\n┃ *.dellogo*  — default banner\n┃ *.react on|off*  — auto react\n┃ *.mode self|all*  — commands වැඩ කරන chats\n┃ *.update*  — GitHub එකෙන් update\n┃ *.restart*  — bot restart\n┃ *.version*'],
+    ['🛡️', 'Security', '*🛡️ SECURITY*\n\n┃ 🔒 Commands පාවිච්චි කරන්න පුළුවන් *ඔයාට විතරයි*\n┃ 🔒 Default: Message yourself chat එකේ විතරයි (*.mode*)\n┃ 👥 Group tools: ඔයා group එකේ ගැහුවොත් විතරයි\n┃ 🛡️ Anti-ban: rate limit, human delay, backoff, tagall limit\n┃ 🙈 Keys / passwords logs වල පේන්නේ නෑ'],
     ['📊', 'Status', null],
 ];
 function menuCaption(name) {
@@ -378,6 +394,7 @@ async function sendAlive(send, jid, quoted, kind) {
     return send(jid, { text: caption }, opts);
 }
 
+features.setMediaDownloader((m) => mediaDownloader(m));
 let mediaDownloader = async (m) => { const b = await loadBaileys(); return b.downloadMediaMessage(m, 'buffer', {}, { logger: pino({ level: 'silent' }), reuploadRequest: SOCK?.updateMediaMessage }); };
 async function handleSetLogo(send, jid, msg) {
     const unwrap = (m) => m?.viewOnceMessage?.message || m?.viewOnceMessageV2?.message || m?.ephemeralMessage?.message || m;
@@ -525,7 +542,7 @@ async function handleDownload(send, jid, msg, link) {
 
 process.on('unhandledRejection', (e) => log('unhandled: ' + (e?.message || e)));
 process.on('uncaughtException', (e) => log('uncaught: ' + e.message));
-module.exports = { handleDownload, getText, onMessages, replyJid, ME, aliveCaption, _setMediaDownloader: (f) => { mediaDownloader = f; } };
+module.exports = { handleDownload, getText, onMessages, replyJid, ME, aliveCaption, _setMediaDownloader: (f) => { mediaDownloader = f; }, _setSock: (x) => { SOCK = x; } };
 if (require.main === module) {
     console.log('🚀 Arena AI starting...');
     start().catch((e) => { log('Startup fail: ' + e.message); process.exit(1); });

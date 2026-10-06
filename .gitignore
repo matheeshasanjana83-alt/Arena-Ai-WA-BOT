@@ -6,3 +6,4 @@ settings.json
 package-lock.json
 logo.img
 .announce-next
+bin/

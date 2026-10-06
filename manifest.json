@@ -1,6 +1,6 @@
 {
-  "version": "2.10.0",
-  "notes": "New .menu: photo + bot info box (version, uptime, RAM) + categories (reply a number). Auto react on commands (.react on|off). Full list: .help",
+  "version": "2.11.0",
+  "notes": "SUPER update: YouTube (.yts .song .video), TikTok no watermark, Facebook/Instagram/X video, .wiki, .gitclone, stickers (.s .take), group tools (.tagall .kick .promote .demote .grouplink .groupinfo), .restart. New menu with 11 categories",
   "files": [
     "bot.js",
     "ai.js",
@@ -17,6 +17,8 @@
     "index.js",
     "net.js",
     "guard.js",
-    "banner.jpg"
+    "banner.jpg",
+    "media.js",
+    "features.js"
   ]
 }
