@@ -28,6 +28,7 @@ const { download, human, MAX_BYTES } = require('./downloader');
 const ai = require('./ai');
 const updater = require('./updater');
 const netx = require('./net');
+const guard = require('./guard');
 
 const AUTH = path.join(__dirname, 'auth');
 const sentIds = new Set();
@@ -90,7 +91,7 @@ const HELP = `🤖 *Arena AI*
   • message එකකට reply කරලා *.ai* ගැහුවොත් ඒ message එක ගැන අහනවා
   • *.ai reset* — කතාව අලුතෙන් පටන් ගන්න
 *.download <link>*  — file එක download කරලා එවනවා (*.dl*)
-  • links කිහිපයක් එකට: .download link1 link2
+  • links කිහිපයක් එකට (5 දක්වා): .download link1 link2
 *.setkey gemini <KEY>*  /  *.setkey groq <KEY>*  — free API key දාන්න
 *.keys*  — keys තියෙනවද බලන්න
 *.net <link>*  — download fail නම් හේතුව බලන්න (DNS / IP block)
@@ -98,6 +99,9 @@ const HELP = `🤖 *Arena AI*
 *.update*  — bot එක GitHub එකෙන් update කරන්න (pair කරන්න ඕනේ නෑ)
 *.version*  — දැන් තියෙන version එක
 *.ping*  — bot එක වැඩද බලන්න
+*.mode self|all*  — commands වැඩ කරන chats (default: Message yourself විතරයි)
+
+🔒 Commands පාවිච්චි කරන්න පුළුවන් *ඔයාට විතරයි*  •  🛡️ Anti-ban ON
 
 📥 Download support: direct links, GitHub, Google Drive, MediaFire, MEGA, Dropbox, Pixeldrain, litterbox/catbox, x0.at, filebin...
 📏 Max: ${human(MAX_BYTES)} per file`;
@@ -105,10 +109,12 @@ const HELP = `🤖 *Arena AI*
 let botStatus = 'starting';
 if (process.env.SERVER_PORT || process.env.ARENA_ON_PANEL) {
     try {
-        require('http').createServer((q, r) => { r.writeHead(200, { 'Content-Type': 'application/json' }); r.end(JSON.stringify({ bot: 'Arena AI', status: botStatus, number: ME.pn, uptime: Math.floor(process.uptime()) })); })
+        require('http').createServer((q, r) => { r.writeHead(200, { 'Content-Type': 'application/json' }); r.end(JSON.stringify({ bot: 'Arena AI', status: botStatus, uptime: Math.floor(process.uptime()) })); })
             .on('error', () => { }).listen(parseInt(process.env.SERVER_PORT || '3000', 10), '0.0.0.0');
     } catch { }
 }
+const pace = guard.pacer();
+let reconnects = 0, replaced = 0;
 async function start() {
     const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, Browsers, fetchLatestBaileysVersion, makeCacheableSignalKeyStore } = await loadBaileys();
     fs.mkdirSync(AUTH, { recursive: true });
@@ -130,7 +136,7 @@ async function start() {
     sock.ev.on('creds.update', saveCreds);
 
     const send = async (jid, content, opts) => {
-        const s = await sock.sendMessage(jid, content, opts);
+        const s = await pace(() => sock.sendMessage(jid, content, opts));   // 🛡️ one message at a time, human-like gap
         if (s?.key?.id) { sentIds.add(s.key.id); if (sentIds.size > 500) sentIds.delete(sentIds.values().next().value); remember(s); }
         return s;
     };
@@ -164,9 +170,10 @@ async function start() {
             ME.pn = bareJid(sock.user?.id); ME.lid = bareJid(sock.user?.lid);
             log(`👤 me: ${ME.pn}${ME.lid ? '  /  ' + ME.lid : ''}`);
             log('✅ WhatsApp Connected! "Message yourself" chat එකේ .ping ගහලා බලන්න');
+            reconnects = 0; replaced = 0;
             if (announced) return;
             announced = true;
-            try { await send(ME.pn, { text: '✅ *Arena AI online!*\n\n' + HELP }); } catch { }
+            if (guard.shouldAnnounce()) { try { await send(ME.pn, { text: '✅ *Arena AI online!*\n\n' + HELP }); } catch { } }   // 🛡️ max once / 6h
         }
         if (connection === 'close') {
             const code = lastDisconnect?.error?.output?.statusCode;
@@ -175,9 +182,20 @@ async function start() {
                 fs.rmSync(AUTH, { recursive: true, force: true });
                 process.exit(0);
             }
-            log(`⚠️ Connection වැහුණා (${code ?? '?'}) — තත්පර 3 කින් ආයෙත් connect වෙනවා...`);
+            if (code === 403) {   // 🛡️ banned / blocked — don't keep hammering WhatsApp
+                log('🚫 WhatsApp මේ number එක block/restrict කරලා (403). Bot එක නවත්තනවා — ආයෙත් connect වෙන්න try කරන්නේ නෑ (ban එක දිග් වෙන්න පුළුවන් නිසා). WhatsApp app එක check කරන්න.');
+                process.exit(0);
+            }
+            if (code === DisconnectReason.connectionReplaced) {   // 440 — another bot/session uses the SAME login
+                replaced++;
+                if (replaced >= 3) { log('🛑 වෙන තැනක (Termux / වෙන panel එකක්) මේ bot එකම run වෙනවා. Instances දෙකක් එකට run කළොත් ban වෙන්න පුළුවන් — මේක නවත්තනවා. එකක් විතරක් run කරන්න.'); process.exit(0); }
+                log(`⚠️ වෙන තැනක මේ session එකෙන්ම bot එකක් connect වුණා (440) — විනාඩි 2 කින් ආයෙත් බලනවා (${replaced}/3)`);
+                return setTimeout(() => start().catch(e => log('start error: ' + e.message)), 120000);
+            }
             pairingAsked = code === 515 ? pairingAsked : false;
-            setTimeout(() => start().catch(e => log('start error: ' + e.message)), 3000);
+            const wait = code === 515 ? 2000 : guard.backoff(reconnects++);   // 🛡️ backoff: 3s, 6s, 12s ... max 5min
+            log(`⚠️ Connection වැහුණා (${code ?? '?'}) — තත්පර ${Math.round(wait / 1000)} කින් ආයෙත් connect වෙනවා...`);
+            setTimeout(() => start().catch(e => log('start error: ' + e.message)), wait);
         }
     });
 
@@ -189,7 +207,9 @@ async function onMessages({ messages, type }, send, del = async () => { }) {
             try {
                 remember(msg);
                 if (msg.key?.fromMe && !msg.message && msg.messageStubType) log(`⚠️ message එකක් decrypt කරගන්න බැරි වුණා (stub ${msg.messageStubType}) — phone එකෙන් ආයෙත් එවයි`);
-                if (!msg.message || !msg.key?.fromMe) continue;        // 🔒 PRIVATE: only messages YOU send
+                if (!msg.message || msg.key?.fromMe !== true) continue;        // 🔒 PRIVATE: only messages YOU send
+                if (guard.ignoredChat(msg.key.remoteJid)) continue;              // status / channels / broadcast
+                if (!isFromOwner(msg.key)) continue;                              // 🔒 double check the sender
                 if (sentIds.has(msg.key.id) || seen.has(msg.key.id)) continue; // own replies / already handled
                 const ts = Number(msg.messageTimestamp || 0);
                 if (type !== 'notify' && ts && ts < STARTED - 60) continue;   // old history — don't re-run old commands
@@ -197,11 +217,20 @@ async function onMessages({ messages, type }, send, del = async () => { }) {
                 const text = getText(msg.message);
                 if (!text.startsWith('.')) continue;
                 const jid = replyJid(msg.key);
-                log(`📩 command: ${text.slice(0, 60)}  (${type})  ${msg.key.remoteJid}${jid !== msg.key.remoteJid ? ' → ' + jid : ''}`);
+                if (guard.chatMode() === 'self' && ME.pn && jid !== ME.pn) continue;   // 🔒 default: "Message yourself" chat only (.mode all)
+                const rl = guard.rateCheck();
+                if (!rl.ok) {                                                     // 🛡️ anti-ban rate limit
+                    log(`⏳ rate limit — command ignore කළා (${rl.wait}s)`);
+                    if (rl.warn) await send(jid, { text: `⏳ Commands ගොඩක් ඉක්මනට ආවා (ban වෙන එක වළක්වන්න). තත්පර ${rl.wait} කින් ආයෙත් ගහන්න.` });
+                    continue;
+                }
+                await guard.humanDelay();
+                log(`📩 command: ${guard.maskLog(text.slice(0, 60))}  (${type})  ${msg.key.remoteJid}${jid !== msg.key.remoteJid ? ' → ' + jid : ''}`);
                 msg.key = { ...msg.key, remoteJid: jid };   // quote/delete with the normalized chat jid too
                 const [cmd, ...rest] = text.split(/\s+/);
                 const c = cmd.toLowerCase();
 
+                if (c === '.mode') { await handleMode(send, jid, msg, (rest[0] || '').toLowerCase()); continue; }
                 if (c === '.ping') { await send(jid, { text: '🏓 Pong! Arena AI වැඩ ✅' }, { quoted: msg }); continue; }
                 if (c === '.help' || c === '.menu') { await send(jid, { text: HELP }, { quoted: msg }); continue; }
                 if (c === '.ai' || c === '.ask' || c === '.gpt') { await handleAI(send, jid, msg, rest.join(' ')); continue; }
@@ -224,11 +253,33 @@ async function onMessages({ messages, type }, send, del = async () => { }) {
                 if (c === '.keys') { const k = ai.getKeys(); await send(jid, { text: `🔑 *API keys*\nGemini: ${k.gemini ? '✅ ' + mask(k.gemini) : '❌ නෑ'}\nGroq: ${k.groq ? '✅ ' + mask(k.groq) : '❌ නෑ'}` }, { quoted: msg }); continue; }
                 if (!['.download', '.dl', '.dn'].includes(c)) continue;
 
-                const links = (text.match(/https?:\/\/\S+/g) || []).slice(0, 10);
+                const links = (text.match(/https?:\/\/\S+/g) || []).slice(0, 5);   // 🛡️ max 5 per command
                 if (!links.length) { await send(jid, { text: HELP }, { quoted: msg }); continue; }
-                for (const link of links) await handleDownload(send, jid, msg, link);
+                for (const link of links) await dlQueue(() => handleDownload(send, jid, msg, link));   // one download at a time
             } catch (e) { log('handler error: ' + e.message); }
         }
+}
+
+/** 🔒 sender must be US (pn or lid) — extra safety on top of fromMe */
+function isFromOwner(key) {
+    const p = key?.participant, pa = key?.participantAlt;
+    if (!p && !pa) return true;                          // 1:1 / self chat → fromMe is enough
+    if (!ME.pn && !ME.lid) return true;                  // not connected yet (tests)
+    const mine = (j) => !!j && (bareJid(j) === ME.pn || bareJid(j) === ME.lid);
+    return mine(p) || mine(pa);
+}
+
+let dlChain = Promise.resolve();
+function dlQueue(fn) { const p = dlChain.then(fn, fn); dlChain = p.catch(() => { }); return p; }
+
+async function handleMode(send, jid, msg, arg) {
+    if (arg === 'all' || arg === 'self') {
+        guard.setChatMode(arg);
+        return send(jid, { text: arg === 'all'
+            ? '🔓 *Mode: all* — ඔයා *ඕනෑම chat එකක* ගහන commands වැඩ (reply එක ඒ chat එකේ අනිත් අයටත් පේනවා).\nවෙන කාටවත් තාමත් commands පාවිච්චි කරන්න බෑ 🔒\nආපහු: *.mode self*'
+            : '🔒 *Mode: self* — commands වැඩ කරන්නේ *Message yourself* chat එකේ විතරයි.' }, { quoted: msg });
+    }
+    return send(jid, { text: `🔒 *Mode: ${guard.chatMode()}*\n\n*.mode self* — "Message yourself" chat එකේ විතරයි (default, ආරක්ෂිතම)\n*.mode all* — ඔයා ඕනෑම chat එකක ගහන commands වැඩ\n\n(කොහොම වුණත් commands පාවිච්චි කරන්න පුළුවන් *ඔයාට විතරයි*)` }, { quoted: msg });
 }
 
 async function handleProxy(send, del, jid, msg, arg) {
@@ -320,7 +371,7 @@ async function handleDownload(send, jid, msg, link) {
     const edit = async (t) => { try { await send(jid, { text: t, edit: status.key }); } catch { } };
     const onProgress = (loaded, total, speed) => {
         const now = Date.now();
-        if (now - last < 4000) return;
+        if (now - last < 8000) return;   // 🛡️ fewer edits
         last = now;
         const pct = total ? Math.floor(loaded * 100 / total) : null;
         const bar = pct === null ? '' : '▰'.repeat(Math.round(pct / 10)) + '▱'.repeat(10 - Math.round(pct / 10)) + ` ${pct}%\n`;

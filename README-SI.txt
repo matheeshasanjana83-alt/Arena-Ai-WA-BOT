@@ -22,6 +22,15 @@ litterbox/catbox, x0.at, transfer.archivete.am, filebin. (gofile / LimeWire / fo
 
 🔒 Private: ඔයා යවන messages විතරයි. වෙන අය commands යැව්වත් ignore.
 
+v2.8 — 🔒 සම්පූර්ණ Safe mode + 🛡️ Anti-ban
+  • Commands පාවිච්චි කරන්න පුළුවන් ඔයාට විතරයි (fromMe + sender double check). වෙන කෙනෙක් ගැහුවොත් reply එකක්වත් නෑ.
+  • Default: "Message yourself" chat එකේ විතරයි වැඩ.  .mode all = ඔයා ඕනෑම chat එකක ගහන commands වැඩ.
+  • Anti-ban: විනාඩියට commands 10 / පැයට 120 limit, reply කලින් පොඩි human delay, messages එකින් එක යවනවා,
+    reconnect backoff (3s→5min), ban (403) වුණොත් / වෙන තැනක එකම bot එක run වුණොත් (440) නවතිනවා,
+    "online" message පැය 6 කට එක පාරයි, download එකකට links 5 යි, එක පාරට download එකයි.
+  • API keys / proxy password console log එකේ පේන්නේ නෑ. Panel status page එකේ number එක පේන්නේ නෑ.
+  ⚠️ කිසිම bot එකක් 100% ban-proof නෑ — spam නොකර, එක instance එකක් විතරක් run කරන්න.
+
 v2.7 — IPv6 route: CDN එකක් server එකේ IPv4 block කළොත් මුළු download chain එකම IPv6 එකෙන් ආයෙත් try කරනවා
   (server එකට IPv6 තියෙනවා නම්). .net එකේ Server IPv6 + hop එකට IPv6 TCP test පෙන්නනවා.
 

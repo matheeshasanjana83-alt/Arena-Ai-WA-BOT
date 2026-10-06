@@ -1,4 +1,5 @@
 // npm test  → simulated WhatsApp messages (no real account needed)
+process.env.ARENA_NO_DELAY = '1'; process.env.ARENA_RATE_MIN = '1000'; process.env.ARENA_RATE_HOUR = '10000';
 const fs = require('fs');
 const { onMessages, getText } = require('./bot');
 let n = 0, ok = 0, bad = 0;
@@ -112,6 +113,43 @@ const mk = (text, fromMe = true, jid = ME) => ({ key: { id: 'IN' + (++n), remote
     t('long answer split', ai.splitLong('a'.repeat(8000)).length === 3);
     try { fs2.unlinkSync(SET); } catch { } if (backup) fs2.writeFileSync(SET, backup);
     global.fetch = realFetch;
+
+    // ───────── v2.8: owner-only + anti-ban ─────────
+    {
+        const guard = require('./guard');
+        const { ME: me2 } = require('./bot');
+        me2.pn = ME; me2.lid = '35189220741167@lid';
+        delete process.env.ARENA_CHATS;
+        const sp = require('path').join(__dirname, 'settings.json');
+        const had = fs.existsSync(sp) ? fs.readFileSync(sp) : null;
+        try { const d = had ? JSON.parse(had) : {}; delete d.chats; fs.writeFileSync(sp, JSON.stringify(d)); } catch { }
+        r = await run(mk('.ping')); t('🔒 mode self: Message yourself .ping → Pong', r.some(x => /Pong/.test(x.text || '')));
+        r = await run(mk('.ping', true, '94770000000@s.whatsapp.net')); t('🔒 mode self: මම යාලුවෙක්ගේ chat එකේ .ping → ignore (එතන reply නෑ)', r.length === 0);
+        r = await run(mk('.ping', true, '120363@g.us')); t('🔒 mode self: group එකේ මගේ .ping → ignore', r.length === 0);
+        r = await run(mk('.mode all')); t('.mode all → confirm', r.some(x => /Mode: all/.test(x.text || '')));
+        r = await run(mk('.ping', true, '94770000000@s.whatsapp.net')); t('🔓 mode all: මගේ command වෙන chat එකක → වැඩ', r.some(x => /Pong/.test(x.text || '')));
+        r = await run(mk('.ping', false, '94770000000@s.whatsapp.net')); t('🔒 mode all: යාලුවා .ping → තාමත් ignore', r.length === 0);
+        const spoof = mk('.ping', true, '120363@g.us'); spoof.key.participant = '94779999999@s.whatsapp.net';
+        r = await run(spoof); t('🔒 group: fromMe කියලා ආවත් participant වෙන කෙනෙක් → ignore', r.length === 0);
+        const mineG = mk('.ping', true, '120363@g.us'); mineG.key.participant = '35189220741167:3@lid';
+        r = await run(mineG); t('mode all: group එකේ මගේ LID participant → වැඩ', r.some(x => /Pong/.test(x.text || '')));
+        r = await run(mk('.ping', true, 'status@broadcast')); t('status@broadcast → ignore', r.length === 0);
+        r = await run(mk('.mode self')); t('.mode self → confirm', r.some(x => /Mode: self/.test(x.text || '')));
+        r = await run(mk('.ping', true, '94770000000@s.whatsapp.net')); t('.mode self ආපහු → වෙන chat ignore', r.length === 0);
+        // rate limit
+        process.env.ARENA_RATE_MIN = '3'; guard._hits.length = 0;
+        const res = []; for (let i = 0; i < 5; i++) { out.length = 0; await onMessages({ type: 'notify', messages: [mk('.ping')] }, send); res.push(out.map(x => x.text).join('|')); }
+        t('🛡️ rate limit: විනාඩියට 3 → 4 වෙනි එකට warning, 5 වෙනි එකට කිසිම reply එකක් නෑ', /Pong/.test(res[2]) && /ඉක්මනට/.test(res[3]) && res[4] === '');
+        process.env.ARENA_RATE_MIN = '1000'; guard._hits.length = 0;
+        t('🙈 maskLog: setkey', guard.maskLog('.setkey gemini AIzaSyABCDEFGHIJKLMNOP') === '.setkey gemini ••••');
+        t('🙈 maskLog: proxy password', guard.maskLog('.setproxy http://user:pw@1.2.3.4:80') === '.setproxy http://***@1.2.3.4:80');
+        t('🛡️ backoff grows + capped', guard.backoff(0) < 6000 && guard.backoff(3) >= 24000 && guard.backoff(20) <= 302000);
+        let ran = 0; const pc = guard.pacer(150); const t0 = Date.now(); await Promise.all([1, 2, 3].map(() => pc(async () => ran++)));
+        t('🛡️ pacer: messages එකින් එක gap එකක් එක්ක', ran === 3 && Date.now() - t0 >= 280);
+        const d0 = guard.shouldAnnounce(), d1 = guard.shouldAnnounce(); t('🛡️ online message පැය 6 කට එක පාරයි', d1 === false);
+        if (had) fs.writeFileSync(sp, had); else try { fs.unlinkSync(sp); } catch { }
+        me2.pn = null; me2.lid = null;
+    }
 
     console.log(bad ? `\n⚠️ ${ok} passed, ${bad} failed` : `\n🎉 ALL ${ok} TESTS PASSED`);
     process.exit(bad ? 1 : 0);

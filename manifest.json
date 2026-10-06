@@ -1,6 +1,6 @@
 {
-  "version": "2.7.0",
-  "notes": "IPv6 route: if a CDN blocks the server IPv4, the whole download chain is retried over IPv6. .net shows server IPv6 + IPv6 test per hop",
+  "version": "2.8.0",
+  "notes": "Safe mode: commands only for you (Message yourself chat by default, .mode all), anti-ban (rate limit, human delay, paced sending, reconnect backoff, stops on ban / 2nd instance), secrets hidden in logs",
   "files": [
     "bot.js",
     "ai.js",
@@ -15,6 +15,7 @@
     "manifest.json",
     ".gitignore",
     "index.js",
-    "net.js"
+    "net.js",
+    "guard.js"
   ]
 }
