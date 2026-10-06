@@ -22,6 +22,13 @@ litterbox/catbox, x0.at, transfer.archivete.am, filebin. (gofile / LimeWire / fo
 
 🔒 Private: ඔයා යවන messages විතරයි. වෙන අය commands යැව්වත් ignore.
 
+v2.12.1 — 📦 ලොකු files (2 GB දක්වා)
+  • Panel එකේ පරණ 350 MB limit එක අයින් කළා → දැන් 2000 MB (WhatsApp එකෙන් යවන්න පුළුවන් උපරිමය ≈ 2 GB)
+  • 100 MB ට ලොකු files disk එකේ save නොකර කෙලින්ම WhatsApp එකට stream වෙනවා → disk එක 2× නෙවෙයි 1× විතරයි
+  • .maxmb  → දැන් limit එක + disk free     .maxmb 1000 / .maxmb 2gb → වෙනස් කරන්න (max 2000)
+  • Disk එකේ ඉඩ මදි නම් download එක පටන් ගන්න කලින්ම පැහැදිලි error එකක්
+  ⚠️ 2 GB ට ලොකු (6 GB වගේ) files WhatsApp එකෙන් යවන්න බෑ — ඒක WhatsApp limit එකක්
+
 v2.12 — 🛠️ TOOLS update (Knightbot-MD bot එකේ ideas, අපේම code එකෙන් ස්ථාවර free APIs වලින්)
   🌐 .tr <භාෂාව> <text>  → translate (message එකකට reply කරලා .tr si) — si en ta hi ja ko ...
   🗣️ .tts <text>  → voice note (සිංහල auto)      🌍 .weather <නගරය>  → කාලගුණය + දින 3

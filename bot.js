@@ -9,8 +9,8 @@
         process.env.TMPDIR = t; process.env.TMP = t; process.env.DL_TMP = t;
     }
     let _maxMB = ''; try { _maxMB = String(JSON.parse(_fs.readFileSync(_path.join(__dirname, 'settings.json'), 'utf8')).maxMB || ''); } catch { }
-    if (!process.env.DL_MAX_MB && /^\d+$/.test(_maxMB)) process.env.DL_MAX_MB = _maxMB;   // settings.json {"maxMB": 2000}
-    if (onPanel && !process.env.DL_MAX_MB) process.env.DL_MAX_MB = '350';   // small free panels: file + encrypted copy
+    if (/^\d+$/.test(_maxMB)) process.env.DL_MAX_MB = _maxMB;   // settings.json {"maxMB": 2000}  (.maxmb wins over env)
+    // v2.12.1: big files are streamed (1× disk), so no more 350 MB panel default → 2000 MB (WhatsApp max)
     process.env.ARENA_ON_PANEL = onPanel ? '1' : '';
 }
 /**
@@ -24,7 +24,7 @@ const pino = require('pino');
 // Baileys v7 (ESM-only) — LID support. v6 could not decrypt LID-addressed messages (Bad MAC) and sent ACKs that WhatsApp bans.
 let B = null;
 const loadBaileys = async () => (B ||= await import('baileys'));
-const { download, human, MAX_BYTES } = require('./downloader');
+const { download, human, maxBytes, maxMB, freeDisk, WA_MAX_MB } = require('./downloader');
 const ai = require('./ai');
 const updater = require('./updater');
 const netx = require('./net');
@@ -124,7 +124,7 @@ const HELP = `🤖 *Arena AI* — ඔක්කොම commands
 🔒 Commands පාවිච්චි කරන්න පුළුවන් *ඔයාට විතරයි*  •  🛡️ Anti-ban ON
 
 📥 Download support: direct links, GitHub, Google Drive, MediaFire, MEGA, Dropbox, Pixeldrain, litterbox/catbox, x0.at, filebin...
-📏 Max: ${human(MAX_BYTES)} per file`;
+📏 Max: ${human(maxBytes())} per file  (*.maxmb* එකෙන් වෙනස් කරන්න)`;
 
 let botStatus = 'starting';
 if (process.env.SERVER_PORT || process.env.ARENA_ON_PANEL) {
@@ -266,6 +266,7 @@ async function onMessages({ messages, type }, send, del = async () => { }) {
                 if (c === '.ping') { await send(jid, { text: '🏓 Pong! Arena AI වැඩ ✅' }, { quoted: msg }); continue; }
                 if (c === '.menu') { await handleMenu(send, jid, msg, rest[0]); continue; }
                 if (c === '.help' || c === '.commands') { await send(jid, { text: HELP }, { quoted: msg }); continue; }
+                if (c === '.maxmb' || c === '.setmax' || c === '.limit') { await handleMaxMB(send, jid, msg, (rest[0] || '').toLowerCase()); continue; }
                 if (c === '.react') { await handleReact(send, jid, msg, (rest[0] || '').toLowerCase()); continue; }
                 if (c === '.ai' || c === '.ask' || c === '.gpt') { await handleAI(send, jid, msg, rest.join(' ')); continue; }
                 if (c === '.setkey' || c === '.delkey') { await handleKey(send, del, jid, msg, c, rest); continue; }
@@ -314,6 +315,19 @@ const menuState = new Map();   // jid → { id, at } of the last menu (for numbe
 const REACTS = ['⚡', '🔥', '✨', '💠', '🚀', '😎', '🤖', '💫', '🌟', '🎯', '💎', '🫡', '👌', '🌀', '🍃'];
 const readSettings = () => { try { return JSON.parse(fs.readFileSync(path.join(__dirname, 'settings.json'), 'utf8')); } catch { return {}; } };
 const reactOn = () => !process.env.ARENA_NO_REACT && readSettings().react !== false;
+async function handleMaxMB(send, jid, msg, arg) {
+    const free = freeDisk(process.env.DL_TMP || require('os').tmpdir());
+    const freeTxt = free == null ? '' : `\n💾 Disk free: ${human(free)}`;
+    if (!arg) return send(jid, { text: `📏 Download limit: *${maxMB()} MB* / file${freeTxt}\n\n*.maxmb 1000*  → 1 GB\n*.maxmb 2000*  → 2 GB (WhatsApp උපරිමය)\n\n💡 100 MB ට ලොකු files disk එකේ save නොකර කෙලින්ම WhatsApp එකට stream වෙනවා — disk එකේ file size එකට වඩා ටිකක් ඉඩ තිබුණාම ඇති.` }, { quoted: msg });
+    let n = /^\d+(\.\d+)?gb?$/.test(arg) ? Math.round(parseFloat(arg) * 1024) : parseInt(arg, 10);
+    if (!n || n < 1) return send(jid, { text: '❌ MB ගණනක් දෙන්න. උදා: *.maxmb 1000*  හෝ  *.maxmb 2gb*' }, { quoted: msg });
+    const capped = n > WA_MAX_MB;
+    n = Math.min(n, WA_MAX_MB);
+    const f = path.join(__dirname, 'settings.json'); const d = readSettings(); d.maxMB = n;
+    try { fs.writeFileSync(f, JSON.stringify(d, null, 2)); } catch { }
+    process.env.DL_MAX_MB = String(n);
+    return send(jid, { text: `✅ Download limit = *${n} MB*${capped ? `\n\n⚠️ WhatsApp එකෙන් යවන්න පුළුවන් උපරිමය ≈ 2 GB. ඒ නිසා ${WA_MAX_MB} MB ට සීමා කළා (6 GB වගේ files WhatsApp එකට යවන්න බෑ).` : ''}${freeTxt}` }, { quoted: msg });
+}
 async function handleReact(send, jid, msg, arg) {
     if (arg === 'on' || arg === 'off') {
         const f = path.join(__dirname, 'settings.json'); const d = readSettings(); d.react = arg === 'on';
@@ -324,7 +338,7 @@ async function handleReact(send, jid, msg, arg) {
 }
 
 const CATS = [
-    ['📥', 'Download', `*📥 DOWNLOAD*\n\n┃ *.download <link>*  (*.dl*)  — file එක එවනවා\n┃ *.dl link1 link2*  — links 5 දක්වා\n┃ *.gitclone user/repo*  — GitHub repo → zip\n\n✅ Direct, GitHub, Google Drive, MediaFire, MEGA, Dropbox, Pixeldrain, catbox...\n📏 Max: ${human(MAX_BYTES)} / file`],
+    ['📥', 'Download', `*📥 DOWNLOAD*\n\n┃ *.download <link>*  (*.dl*)  — file එක එවනවා\n┃ *.dl link1 link2*  — links 5 දක්වා\n┃ *.gitclone user/repo*  — GitHub repo → zip\n\n✅ Direct, GitHub, Google Drive, MediaFire, MEGA, Dropbox, Pixeldrain, catbox...\n📏 Max: {MAX} / file  •  *.maxmb <MB>* එකෙන් වෙනස් කරන්න (max 2000)`],
     ['🎬', 'YouTube', '*🎬 YOUTUBE*\n\n┃ *.yts <නම>*  — search\n┃ *.song <නම / link>*  — audio (*.play*, *.yta*)\n┃ *.video <නම / link>*  — video (*.ytv*)\n\n📺 720p → 480p → 360p (size එකට ගැලපෙන විදියට)'],
     ['📱', 'Social', '*📱 SOCIAL MEDIA*\n\n┃ *.tiktok <link>*  — watermark නැතුව (*.tt*)\n┃ *.fb <link>*  — Facebook video\n┃ *.ig <link>*  — Instagram reel / video\n┃ *.x <link>*  — X / Twitter video\n\n🔓 Public videos විතරයි'],
     ['🔍', 'Search', '*🔍 SEARCH*\n\n┃ *.wiki <මාතෘකාව>*  — Wikipedia\n┃ *.wiki si <මාතෘකාව>*  — සිංහල Wikipedia\n┃ *.yts <නම>*  — YouTube search'],
@@ -334,7 +348,7 @@ const CATS = [
     ['👥', 'Group', '*👥 GROUP*  (group එකේ ඔයා ගහන්න)\n\n┃ *.groupinfo*  — group විස්තර\n┃ *.grouplink*  — invite link (admin)\n┃ *.tagall [message]*  — ඔක්කොටම mention (විනාඩි 10 කට 1)\n┃ *.kick @user*  — අයින් කරන්න (admin)\n┃ *.promote @user*  /  *.demote @user*\n┃ *.mute*  /  *.unmute*  — admins only / open\n┃ *.tagadmins*  •  *.resetlink*\n┃ *.jid*  — chat ID එක\n\n💡 @mention නැත්නම් message එකකට reply කරලා ගහන්න'],
     ['🤖', 'AI', '*🤖 AI*\n\n┃ *.ai <ප්‍රශ්නය>*  — Gemini / Groq (සිංහල OK)\n┃ message එකකට reply කරලා *.ai*  — ඒ message එක ගැන\n┃ *.ai reset*  — කතාව අලුතෙන්\n┃ *.setkey gemini <KEY>*  /  *.setkey groq <KEY>*\n┃ *.keys*  — keys බලන්න'],
     ['🔧', 'Network', '*🔧 NETWORK*\n\n┃ *.net <link>*  — download fail නම් හේතුව (DNS / IP block)\n┃ *.setproxy <url>*  — block sites වලට proxy (YouTube වලටත්)\n┃ *.setproxy off*'],
-    ['⚙️', 'Settings', '*⚙️ SETTINGS*\n\n┃ *.setlogo*  — photo එකකට reply කරලා → menu logo\n┃ *.dellogo*  — default banner\n┃ *.react on|off*  — auto react\n┃ *.mode self|all*  — commands වැඩ කරන chats\n┃ *.update*  — GitHub එකෙන් update\n┃ *.restart*  — bot restart\n┃ *.version*'],
+    ['⚙️', 'Settings', '*⚙️ SETTINGS*\n\n┃ *.setlogo*  — photo එකකට reply කරලා → menu logo\n┃ *.dellogo*  — default banner\n┃ *.react on|off*  — auto react\n┃ *.maxmb <MB>*  — download limit (max 2000)\n┃ *.mode self|all*  — commands වැඩ කරන chats\n┃ *.update*  — GitHub එකෙන් update\n┃ *.restart*  — bot restart\n┃ *.version*'],
     ['🛡️', 'Security', '*🛡️ SECURITY*\n\n┃ 🔒 Commands පාවිච්චි කරන්න පුළුවන් *ඔයාට විතරයි*\n┃ 🔒 Default: Message yourself chat එකේ විතරයි (*.mode*)\n┃ 👥 Group tools: ඔයා group එකේ ගැහුවොත් විතරයි\n┃ 🛡️ Anti-ban: rate limit, human delay, backoff, tagall limit\n┃ 🙈 Keys / passwords logs වල පේන්නේ නෑ'],
     ['📊', 'Status', null],
 ];
@@ -366,7 +380,7 @@ async function handleMenu(send, jid, msg, arg) {
         const cat = CATS[n - 1];
         if (!cat) return send(jid, { text: `❌ 1 – ${CATS.length} අතර number එකක් ගහන්න` }, { quoted: msg });
         if (!cat[2]) return sendAlive(send, jid, msg, 'alive');
-        return send(jid, { text: cat[2] + '\n\n> ↩️ *.menu* — ආපහු menu එකට' }, { quoted: msg });
+        return send(jid, { text: cat[2].replace('{MAX}', human(maxBytes())) + '\n\n> ↩️ *.menu* — ආපහු menu එකට' }, { quoted: msg });
     }
     const caption = menuCaption(msg.pushName);
     const img = fs.existsSync(LOGO) ? LOGO : fs.existsSync(BANNER) ? BANNER : null;
@@ -534,10 +548,10 @@ async function handleDownload(send, jid, msg, link) {
     };
     let files = [];
     try {
-        files = await download(link, onProgress);
+        files = await download(link, onProgress, { stream: true });   // 🌊 big files → straight to WhatsApp (1× disk)
         for (const f of files) {
             await edit(`📤 WhatsApp එකට යවනවා... (${f.name}, ${human(f.size)})`);
-            await send(jid, { document: { url: f.path }, fileName: f.name, mimetype: f.mime, caption: `✅ ${f.name}\n📦 ${human(f.size)}` }, { quoted: msg });
+            await send(jid, { document: f.open ? { stream: f.open() } : { url: f.path }, fileName: f.name, mimetype: f.mime, caption: `✅ ${f.name}\n📦 ${human(f.size)}` }, { quoted: msg });
         }
         await edit(`✅ ඉවරයි — file ${files.length} ක් එව්වා`);
         log(`✅ ${link} → ${files.map(f => f.name + ' ' + human(f.size)).join(', ')}`);
@@ -545,7 +559,7 @@ async function handleDownload(send, jid, msg, link) {
         await edit(`❌ Download fail වුණා\n${link}\n\n${String(e.message).slice(0, 300)}`);
         log(`❌ ${link}: ${e.message}`);
     } finally {
-        for (const f of files) fs.rm(f.path, { force: true }, () => { });
+        for (const f of files) if (f.path) fs.rm(f.path, { force: true }, () => { });
     }
 }
 

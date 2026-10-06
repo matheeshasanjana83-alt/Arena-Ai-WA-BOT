@@ -1,6 +1,6 @@
 {
-  "version": "2.12.0",
-  "notes": "TOOLS update (ideas from Knightbot-MD, MIT): .tr translate, .tts voice (Sinhala OK), .weather, .lyrics, .imagine AI image, .toimg, .tourl, .ss screenshot, .qr, .short, .calc, .github, .del, .setpp, fun (.joke .fact .quote .8ball), group (.mute .unmute .tagadmins .resetlink). Menu now 13 categories",
+  "version": "2.12.1",
+  "notes": "BIG FILES: files over 100 MB stream straight to WhatsApp (no copy on disk), panel limit 350 MB -> 2000 MB (WhatsApp max), new .maxmb command, disk-space check, .fact/.imagine fallbacks",
   "files": [
     "bot.js",
     "ai.js",

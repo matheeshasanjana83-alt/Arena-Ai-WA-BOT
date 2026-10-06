@@ -8,7 +8,7 @@ const ME = '94771234567@s.whatsapp.net';
 const mk = (text, fromMe = true, jid = ME) => ({ key: { id: 'IN' + (++n), remoteJid: jid, fromMe }, message: { conversation: text } });
 (async () => {
     const out = [];
-    const send = async (jid, c) => { const e = { jid, ...c }; if (c.document) { e.size = fs.statSync(c.document.url).size; e.exists = true; } out.push(e); return { key: { id: 'OUT' + (++n) } }; };
+    const send = async (jid, c) => { const e = { jid, ...c }; if (c.document?.stream) { let n = 0; for await (const ch of c.document.stream) n += ch.length; e.size = n; e.streamed = true; } else if (c.document) { e.size = fs.statSync(c.document.url).size; e.exists = true; } out.push(e); return { key: { id: 'OUT' + (++n) } }; };
     const run = async (msg) => { out.length = 0; await onMessages({ type: 'notify', messages: [msg] }, send); return out; };
 
     let r = await run(mk('.ping')); t('.ping → Pong', r.length === 1 && /Pong/.test(r[0].text));
@@ -274,7 +274,7 @@ const mk = (text, fromMe = true, jid = ME) => ({ key: { id: 'IN' + (++n), remote
         r = await run(mk('.quote')); t('.quote', /—/.test(txt()));
         r = await run(mk('.8ball will it rain')); t('.8ball', /🎱/.test(txt()));
         r = await run(mk('.ss example.com')); t('.ss example.com → screenshot', r.some(x => x.image && x.image.length > 5000));
-        r = await run(mk('.imagine a cute robot drinking tea')); t('.imagine → AI image', r.some(x => x.image && x.image.length > 5000));
+        r = await run(mk('.imagine a cute robot drinking tea')); t('.imagine → AI image (හෝ busy නම් පැහැදිලි message)', r.some(x => x.image && x.image.length > 5000) || /busy/.test(txt()));
         // media tools (mock download)
         globalThis.__st = null;
         bot._setMediaDownloader(async (m) => m.message.stickerMessage ? globalThis.__st : fs.readFileSync(path.join(__dirname, 'banner.jpg')));
@@ -301,6 +301,33 @@ const mk = (text, fromMe = true, jid = ME) => ({ key: { id: 'IN' + (++n), remote
         r = await run(mk('.joke', true, G2)); t('mode self: group එකේ .joke → ignore', r.length === 0);
         r = await run(mk('.del', false, '94770000000@s.whatsapp.net')); t('🔒 වෙන කෙනෙක් .del → ignore', r.length === 0);
         bot._setSock(null); me4.pn = null; me4.lid = null;
+    }
+
+    // ───────── v2.12.1: big files → stream (1× disk), .maxmb ─────────
+    {
+        const http = require('http'), os2 = require('os');
+        const BIG = 420 * 1048576;
+        const srv = http.createServer((req, res) => {
+            res.writeHead(200, { 'Content-Type': 'video/mp4', 'Content-Length': BIG, 'Content-Disposition': 'attachment; filename="big-480p.mp4"' });
+            const chunk = Buffer.alloc(1048576, 7); let sent = 0;
+            const pump = () => { while (sent < BIG) { sent += chunk.length; if (!res.write(chunk)) return res.once('drain', pump); } res.end(); };
+            pump();
+        });
+        await new Promise(r => srv.listen(0, '127.0.0.1', r));
+        const url = `http://127.0.0.1:${srv.address().port}/big-480p.mp4`;
+        const tmpBefore = fs.readdirSync(process.env.DL_TMP || os2.tmpdir()).filter(f => f.startsWith('dl-')).length;
+        const txt = () => out.map(x => x.text || x.caption || '').join('\n');
+        r = await run(mk('.download ' + url)); const bd = r.find(x => x.document);
+        t('🌊 420 MB file (පරණ limit 350) → stream එකෙන් සම්පූර්ණයෙන්ම යනවා', !!bd && bd.streamed === true && bd.size === BIG && bd.fileName === 'big-480p.mp4');
+        t('🌊 stream mode: disk එකේ copy එකක් හැදෙන්නේ නෑ', fs.readdirSync(process.env.DL_TMP || os2.tmpdir()).filter(f => f.startsWith('dl-')).length === tmpBefore);
+        r = await run(mk('.maxmb 300')); t('.maxmb 300 → set', /300 MB/.test(txt()));
+        r = await run(mk('.download ' + url)); t('limit 300 → 420 MB file එකට පැහැදිලි error', /limit එක 300\.0 MB/.test(txt()) && !r.some(x => x.document));
+        r = await run(mk('.maxmb 6gb')); t('.maxmb 6gb → 2000 ට සීමා (WhatsApp 2 GB)', /2000 MB/.test(txt()) && /2 GB/.test(txt()));
+        r = await run(mk('.maxmb')); t('.maxmb → දැන් limit එක පෙන්නනවා', /2000 MB/.test(txt()));
+        r = await run(mk('.maxmb', false, '94770000000@s.whatsapp.net')); t('🔒 වෙන කෙනෙක් .maxmb → ignore', r.length === 0);
+        const sf = require('path').join(__dirname, 'settings.json'); try { const d = JSON.parse(fs.readFileSync(sf, 'utf8')); delete d.maxMB; fs.writeFileSync(sf, JSON.stringify(d, null, 2)); } catch { }
+        delete process.env.DL_MAX_MB;
+        srv.close();
     }
 
     console.log(bad ? `\n⚠️ ${ok} passed, ${bad} failed` : `\n🎉 ALL ${ok} TESTS PASSED`);

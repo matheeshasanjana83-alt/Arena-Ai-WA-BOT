@@ -1,12 +1,25 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { Readable } = require('stream');
+const { Readable, Transform } = require('stream');
 const { resolve, driveConfirmUrl, UA_BROWSER, UA_CURL } = require('./resolvers');
 const { smartFetch } = require('./net');
 
-const MAX_BYTES = parseInt(process.env.DL_MAX_MB || '2000', 10) * 1024 * 1024; // WhatsApp document limit ≈ 2 GB
+// WhatsApp document limit ≈ 2 GB → max 2000 MB.  Read every time (so .maxmb works without restart)
+const WA_MAX_MB = 2000;
+const maxMB = () => Math.max(1, Math.min(parseInt(process.env.DL_MAX_MB || String(WA_MAX_MB), 10) || WA_MAX_MB, WA_MAX_MB));
+const maxBytes = () => maxMB() * 1048576;
+// files ≥ this size are streamed straight to WhatsApp (no copy on disk → only Baileys' encrypted temp file = 1× disk)
+const streamMin = () => parseInt(process.env.DL_STREAM_MB ?? '100', 10) * 1048576;
+/** free disk bytes in the temp folder (best effort; null if unknown) */
+function freeDisk(dir) { try { const s = fs.statfsSync(dir); return s.bavail * s.bsize; } catch { return null; } }
 const TMP = process.env.DL_TMP || os.tmpdir();
+const diskErr = (need, free) => new Error(`disk එකේ ඉඩ මදි — ඕනේ ${human(need)}, free ${human(free)} විතරයි. Panel එකේ disk එක වැඩි කරන්න / පරණ files මකන්න`);
+function checkDisk(size, streamed) {
+    const free = freeDisk(TMP); if (free == null || !size) return;
+    const need = (streamed ? size : size * 2) + 30 * 1048576;   // file (+ encrypted copy) + margin
+    if (free < need) throw diskErr(need, free);
+}
 
 const human = (b) => !b ? '?' : b >= 1073741824 ? (b / 1073741824).toFixed(2) + ' GB' : b >= 1048576 ? (b / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB';
 
@@ -47,6 +60,21 @@ function nameFromHeaders(h, url) {
     return 'file';
 }
 
+/** count bytes + size cap + progress while Baileys reads the stream (stream mode) */
+function counting(src, total, onProgress) {
+    let loaded = 0; const started = Date.now();
+    const t = new Transform({
+        transform(c, _e, cb) {
+            loaded += c.length;
+            if (loaded > maxBytes()) return cb(new Error(`file එක ${human(maxBytes())} ට වඩා ලොකුයි`));
+            onProgress?.(loaded, total, loaded / Math.max((Date.now() - started) / 1000, 0.5));
+            cb(null, c);
+        },
+    });
+    src.on('error', (e) => t.destroy(e));
+    return src.pipe(t);
+}
+
 /** pipe a web/node stream to disk with size cap + progress */
 async function streamToFile(stream, dest, total, onProgress) {
     const out = fs.createWriteStream(dest);
@@ -55,7 +83,7 @@ async function streamToFile(stream, dest, total, onProgress) {
     await new Promise((res, rej) => {
         stream.on('data', (c) => {
             loaded += c.length;
-            if (loaded > MAX_BYTES) { stream.destroy(); out.destroy(); return rej(new Error(`file එක ${human(MAX_BYTES)} ට වඩා ලොකුයි`)); }
+            if (loaded > maxBytes()) { stream.destroy(); out.destroy(); return rej(new Error(`file එක ${human(maxBytes())} ට වඩා ලොකුයි`)); }
             onProgress?.(loaded, total, loaded / Math.max((Date.now() - started) / 1000, 0.5));
         });
         stream.on('error', rej);
@@ -72,7 +100,7 @@ async function httpGet(url, ua, referer) {
     return fetchExplained(url, { headers, redirect: 'follow' });
 }
 
-async function downloadHttp(r, dest, onProgress) {
+async function downloadHttp(r, dest, onProgress, allowStream) {
     let res, ct;
     // try browser UA, then curl UA (some hosts give a "warning page" to browsers, e.g. filebin)
     for (const ua of [UA_BROWSER, UA_CURL]) {
@@ -91,13 +119,19 @@ async function downloadHttp(r, dest, onProgress) {
     if (ct === 'text/html') { try { await res.body?.cancel(); } catch { } throw new Error('මේ link එකෙන් එන්නේ web page එකක්, file එකක් නෙවෙයි. Direct download link එකක් එවන්න.'); }
 
     const total = parseInt(res.headers.get('content-length') || '0', 10);
-    if (total > MAX_BYTES) { try { await res.body?.cancel(); } catch { } throw new Error(`file එක ${human(total)} — limit එක ${human(MAX_BYTES)}`); }
+    if (total > maxBytes()) { try { await res.body?.cancel(); } catch { } throw new Error(`file එක ${human(total)} — limit එක ${human(maxBytes())}  (*.maxmb* එකෙන් වෙනස් කරන්න, max 2000)`); }
     const name = nameFromHeaders(res.headers, res.url || r.url);
+    if (allowStream && total && total >= streamMin()) {   // 🌊 big file → straight to WhatsApp
+        try { checkDisk(total, true); } catch (e) { try { await res.body?.cancel(); } catch { } throw e; }
+        const body = res.body;
+        return { name, size: total, mime: ct || 'application/octet-stream', open: () => counting(Readable.fromWeb(body), total, onProgress) };
+    }
+    try { checkDisk(total, false); } catch (e) { try { await res.body?.cancel(); } catch { } throw e; }
     const size = await streamToFile(Readable.fromWeb(res.body), dest, total, onProgress);
     return { name, size, mime: ct || 'application/octet-stream' };
 }
 
-async function downloadMega(url, destDir, onProgress) {
+async function downloadMega(url, destDir, onProgress, allowStream) {
     const { File } = require('megajs');
     const f = File.fromURL(url);
     try { await f.loadAttributes(); }
@@ -106,7 +140,9 @@ async function downloadMega(url, destDir, onProgress) {
     if (!files.length) throw new Error('MEGA folder එක හිස්');
     const out = [];
     for (const file of files) {
-        if (file.size > MAX_BYTES) throw new Error(`${file.name} — ${human(file.size)}, limit ${human(MAX_BYTES)}`);
+        if (file.size > maxBytes()) throw new Error(`${file.name} — ${human(file.size)}, limit ${human(maxBytes())}  (*.maxmb* එකෙන් වෙනස් කරන්න, max 2000)`);
+        if (allowStream && file.size >= streamMin()) { checkDisk(file.size, true); out.push({ name: safeName(file.name), size: file.size, mime: 'application/octet-stream', open: () => counting(file.download(), file.size, onProgress) }); continue; }
+        checkDisk(file.size, false);
         const dest = path.join(destDir, `mega-${Date.now().toString(36)}-${out.length}`);
         const size = await streamToFile(file.download(), dest, file.size, onProgress);
         out.push({ path: dest, name: safeName(file.name), size, mime: 'application/octet-stream' });
@@ -115,14 +151,14 @@ async function downloadMega(url, destDir, onProgress) {
 }
 
 /** Download any supported link → [{path,name,size,mime}] (caller deletes files) */
-async function download(link, onProgress) {
+async function download(link, onProgress, { stream = false } = {}) {
     const r = await resolve(link);
-    if (r.kind === 'mega') return downloadMega(r.url, TMP, onProgress);
+    if (r.kind === 'mega') return downloadMega(r.url, TMP, onProgress, stream);
     const dest = path.join(TMP, `dl-${process.pid}-${Date.now().toString(36)}`);
     try {
-        const info = await downloadHttp(r, dest, onProgress);
-        return [{ path: dest, ...info }];
+        const info = await downloadHttp(r, dest, onProgress, stream);
+        return [info.open ? info : { path: dest, ...info }];
     } catch (e) { fs.rm(dest, { force: true }, () => { }); throw e; }
 }
 
-module.exports = { explainNetErr, download, human, MAX_BYTES };
+module.exports = { explainNetErr, download, human, maxBytes, maxMB, freeDisk, WA_MAX_MB, get MAX_BYTES() { return maxBytes(); } };

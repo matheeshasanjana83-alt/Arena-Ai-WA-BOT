@@ -207,11 +207,19 @@ async function cmdImagine(send, jid, msg, args) {
     if (!p) return send(jid, { text: '🎨 *.imagine <විස්තරය>*  — AI image එකක් හදනවා\nඋදා: .imagine a cute robot drinking tea, anime style' }, { quoted: msg });
     let prompt = p;
     if (SI.test(p)) { try { prompt = (await translate(p, 'en')).text; } catch { } }
-    const seed = Math.floor(Math.random() * 1e9);
-    const r = await fetch(`https://image.pollinations.ai/prompt/${encodeURIComponent(prompt.slice(0, 400))}?width=1024&height=1024&nologo=true&safe=true&seed=${seed}`, { headers: UA });
-    const ct = r.headers.get('content-type') || '';
-    if (!r.ok || !ct.startsWith('image/')) throw new Error('image හදන්න බැරි වුණා (' + r.status + ') — ටිකකින් ආයෙත් try කරන්න');
-    return send(jid, { image: Buffer.from(await r.arrayBuffer()), caption: `🎨 ${p.slice(0, 200)}` }, { quoted: msg });
+    let last = '';
+    for (let i = 0; i < 3; i++) {   // free tier = rate limited → wait + retry
+        if (i) await new Promise((r) => setTimeout(r, 8000 * i));
+        const seed = Math.floor(Math.random() * 1e9);
+        try {
+            const r = await fetch(`https://image.pollinations.ai/prompt/${encodeURIComponent(prompt.slice(0, 400))}?width=1024&height=1024&nologo=true&safe=true&seed=${seed}`, { headers: UA, signal: AbortSignal.timeout(90e3) });
+            const ct = r.headers.get('content-type') || '';
+            const buf = Buffer.from(await r.arrayBuffer());
+            if (r.ok && ct.startsWith('image/') && buf.length > 2000) return send(jid, { image: buf, caption: `🎨 ${p.slice(0, 200)}` }, { quoted: msg });
+            last = String(r.status);
+        } catch (e) { last = e.name === 'TimeoutError' ? 'timeout' : e.message; }
+    }
+    throw new Error(`AI image server එක busy (${last}) — විනාඩියකින් විතර ආයෙත් try කරන්න`);
 }
 
 // ───────── WhatsApp tools ─────────
@@ -235,8 +243,12 @@ async function cmdSetPp(send, jid, msg, sock, me) {
 // ───────── fun ─────────
 async function cmdJoke(send, jid, msg) { const j = await getJson('https://icanhazdadjoke.com/', { Accept: 'application/json' }); return send(jid, { text: '😂 ' + j.joke }, { quoted: msg }); }
 async function cmdFact(send, jid, msg, args) {
-    const j = await getJson('https://uselessfacts.jsph.pl/api/v2/facts/random?language=en');
-    let t = j.text; if ((args[0] || '') !== 'en') { try { t += '\n\n🇱🇰 ' + (await translate(j.text, 'si')).text; } catch { } }
+    let t = null;
+    for (const [u, pick] of [['https://uselessfacts.jsph.pl/api/v2/facts/random?language=en', (j) => j.text], ['https://api.popcat.xyz/fact', (j) => j.fact], ['https://catfact.ninja/fact', (j) => j.fact]]) {
+        try { t = pick(await getJson(u)); if (t) break; } catch { }
+    }
+    if (!t) throw new Error('Fact servers busy — ටිකකින් ආයෙත් try කරන්න');
+    const en = t; if ((args[0] || '') !== 'en') { try { t += '\n\n🇱🇰 ' + (await translate(en, 'si')).text; } catch { } }
     return send(jid, { text: '🧠 *Fact*\n\n' + t }, { quoted: msg });
 }
 async function cmdQuote(send, jid, msg) { const j = await getJson('https://zenquotes.io/api/random'); return send(jid, { text: `💬 _"${j[0].q}"_\n\n— *${j[0].a}*` }, { quoted: msg }); }
