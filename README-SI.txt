@@ -22,6 +22,9 @@ litterbox/catbox, x0.at, transfer.archivete.am, filebin. (gofile / LimeWire / fo
 
 🔒 Private: ඔයා යවන messages විතරයි. වෙන අය commands යැව්වත් ignore.
 
+v2.7 — IPv6 route: CDN එකක් server එකේ IPv4 block කළොත් මුළු download chain එකම IPv6 එකෙන් ආයෙත් try කරනවා
+  (server එකට IPv6 තියෙනවා නම්). .net එකේ Server IPv6 + hop එකට IPv6 TCP test පෙන්නනවා.
+
 v2.6 — Block වෙන sites fix:
   • Download එකක් network error එකකින් fail වුණොත් bot එක ඉබේම DNS-over-HTTPS (1.1.1.1/8.8.8.8) එකෙන් ආයෙත් try කරනවා
     (server එකේ ISP/රට DNS block කරනවා නම් ඒක පනිනවා). වැඩ කරපු route එක මතක තියාගන්නවා.

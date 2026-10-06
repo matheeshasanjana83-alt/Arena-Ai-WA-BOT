@@ -29,23 +29,24 @@ const withTimeout = (p, ms, what) => Promise.race([p, new Promise((_, rej) => se
 
 // ───────────── DNS-over-HTTPS (IP endpoints → no DNS needed to reach them) ─────────────
 const DOH = [
-    (h) => `https://1.1.1.1/dns-query?name=${encodeURIComponent(h)}&type=A`,
-    (h) => `https://8.8.8.8/resolve?name=${encodeURIComponent(h)}&type=A`,
-    (h) => `https://1.0.0.1/dns-query?name=${encodeURIComponent(h)}&type=A`,
+    (h, t) => `https://1.1.1.1/dns-query?name=${encodeURIComponent(h)}&type=${t}`,
+    (h, t) => `https://8.8.8.8/resolve?name=${encodeURIComponent(h)}&type=${t}`,
+    (h, t) => `https://1.0.0.1/dns-query?name=${encodeURIComponent(h)}&type=${t}`,
 ];
 const dohCache = new Map();   // host → { ips, exp }
-async function dohResolve(host) {
+async function dohResolve(host, type = 'A') {
     if (net.isIP(host)) return [host];
-    const c = dohCache.get(host);
+    const want = type === 'AAAA' ? 28 : 1, key = host + '/' + type;
+    const c = dohCache.get(key);
     if (c && c.exp > Date.now()) return c.ips;
     let lastErr;
     for (const mk of DOH) {
         try {
-            const r = await withTimeout(fetch(mk(host), { headers: { accept: 'application/dns-json' } }), 6000, 'DoH');
+            const r = await withTimeout(fetch(mk(host, type), { headers: { accept: 'application/dns-json' } }), 6000, 'DoH');
             const j = await r.json();
-            const ips = (j.Answer || []).filter(a => a.type === 1).map(a => a.data);
-            if (ips.length) { dohCache.set(host, { ips, exp: Date.now() + 10 * 60e3 }); return ips; }
-            lastErr = new Error('DoH: no A record for ' + host);
+            const ips = (j.Answer || []).filter(a => a.type === want).map(a => a.data);
+            if (ips.length) { dohCache.set(key, { ips, exp: Date.now() + 10 * 60e3 }); return ips; }
+            lastErr = Object.assign(new Error(`DoH: no ${type} record for ` + host), { code: 'ENODATA' });
         } catch (e) { lastErr = e; }
     }
     throw lastErr || new Error('DoH failed');
@@ -56,6 +57,26 @@ function dohLookup(hostname, options, cb) {
         if (options && options.all) cb(null, ips.map(a => ({ address: a, family: 4 })));
         else cb(null, ips[0], 4);
     }, (e) => cb(Object.assign(e, { code: e.code || 'ENOTFOUND' })));
+}
+
+// IPv6-only: some CDNs block a server's IPv4 range but not its IPv6 → whole chain over IPv6
+// (links that embed the requester IP then match, because every hop uses the same IPv6)
+function v6Lookup(hostname, options, cb) {
+    if (typeof options === 'function') { cb = options; options = {}; }
+    const give = (ips) => options && options.all ? cb(null, ips.map(a => ({ address: a, family: 6 }))) : cb(null, ips[0], 6);
+    dns.lookup(hostname, { family: 6, all: true }, (err, list) => {
+        if (!err && list && list.length) return give(list.map(x => x.address));
+        dohResolve(hostname, 'AAAA').then(give, (e) => cb(Object.assign(e, { code: e.code || 'ENODATA' })));
+    });
+}
+let _v6Agent = null;
+const v6Agent = () => _v6Agent || (_v6Agent = new undici.Agent({ connect: { lookup: v6Lookup, timeout: 12000 } }));
+let _v6ok = null;   // does this server have working IPv6 at all? (cached)
+async function serverHasV6() {
+    if (process.env.ARENA_FORCE_V6 === '1') return true;   // tests only
+    if (_v6ok !== null) return _v6ok;
+    const r = await tcpTest('2606:4700:4700::1111', 443, 5000);   // Cloudflare DNS over IPv6
+    return (_v6ok = r.ok);
 }
 
 let _dohAgent = null, _proxyAgent = null, _proxyUrl = '';
@@ -70,13 +91,17 @@ function proxyAgent() {
 
 // ───────────── smart fetch ─────────────
 const route = new Map();   // host → 'doh' | 'proxy'   (what worked last time)
-const ROUTE_NAME = { direct: 'සාමාන්‍ය', doh: 'DNS bypass (DoH)', proxy: 'proxy' };
+const ROUTE_NAME = { direct: 'සාමාන්‍ය', doh: 'DNS bypass (DoH)', ipv6: 'IPv6', proxy: 'proxy' };
 let lastRouteUsed = 'direct';
 
 async function viaRoute(kind, url, opts) {
     if (kind === 'direct') return fetch(url, opts);
     if (!undici) throw Object.assign(new Error('undici නෑ (npm install කරන්න)'), { code: 'NO_UNDICI' });
     if (kind === 'doh') return undici.fetch(url, { ...opts, dispatcher: dohAgent() });
+    if (kind === 'ipv6') {
+        if (!(await serverHasV6())) throw Object.assign(new Error('මේ server එකට IPv6 නෑ'), { code: 'NO_IPV6' });
+        return undici.fetch(url, { ...opts, dispatcher: v6Agent() });
+    }
     const pa = proxyAgent();
     if (!pa) throw Object.assign(new Error('proxy set කරලා නෑ'), { code: 'NO_PROXY' });
     return undici.fetch(url, { ...opts, dispatcher: pa });
@@ -84,7 +109,7 @@ async function viaRoute(kind, url, opts) {
 
 async function smartFetch(url, opts = {}) {
     const host = hostOf(url);
-    const order = ['direct', 'doh', 'proxy'];
+    const order = ['direct', 'doh', 'ipv6', 'proxy'];
     const pref = route.get(host);
     if (pref) order.sort((a, b) => (b === pref) - (a === pref));
     const errors = [];
@@ -117,6 +142,8 @@ function explain(url, errors) {
     }[c] || c || 'error');
     if (d) lines.push(`• සාමාන්‍ය: ${why(d.code)}${d.code ? ' [' + d.code + ']' : ''}`);
     if (h) lines.push(`• DNS bypass (DoH): ${why(h.code)}${h.code ? ' [' + h.code + ']' : ''}`);
+    const v6 = errors.find(x => x.kind === 'ipv6');
+    if (v6) lines.push(`• IPv6: ${v6.code === 'NO_IPV6' ? 'මේ server එකට IPv6 නෑ' : v6.code === 'ENODATA' ? 'site එකට IPv6 නෑ' : why(v6.code) + (v6.code ? ' [' + v6.code + ']' : '')}`);
     if (p) lines.push(`• Proxy: ${why(p.code)}${p.code ? ' [' + p.code + ']' : ''}`);
     let hint;
     if (h && !p) hint = `➡️ DNS bypass එකෙනුත් බැරි වුණා → මේ server එකේ network එක (ISP/රට) හෝ ${host} site එක මේ server IP එක *block* කරනවා.\n💡 *.net ${url.slice(0, 60)}* ගහලා හරියටම බලන්න. විසඳුම: *.setproxy http://user:pass@host:port* (proxy එකක්) හෝ ඒ link එක Termux එකෙන්.`;
@@ -163,6 +190,10 @@ async function walkHops(url, maxHops = 5) {
         catch { try { ip = (await dohResolve(host))[0]; hop.viaDoh = true; } catch (e) { hop.err = 'DNS: ' + (errCode(e) || e.message); hops.push(hop); break; } }
         hop.ip = ip;
         hop.tcp = await tcpTest(ip, https ? 443 : 80);
+        if (!hop.tcp.ok && (await serverHasV6())) {
+            try { hop.ip6 = (await dohResolve(host, 'AAAA'))[0]; hop.tcp6 = await tcpTest(hop.ip6, https ? 443 : 80); }
+            catch { hop.ip6 = null; }
+        }
         if (hop.tcp.ok && https) hop.tls = await tlsTest(ip, host);
         if (hop.tcp.ok && (!https || hop.tls?.ok)) {
             try {
@@ -189,6 +220,8 @@ async function diagnose(url) {
         const j = await withTimeout(fetch('https://ipwho.is/').then(r => r.json()), 8000, 'ip');
         out.push(`🖥️ Server IP: ${j.ip || '?'}  ${j.country ? '(' + j.country + (j.connection?.isp ? ', ' + j.connection.isp : '') + ')' : ''}`);
     } catch { out.push('🖥️ Server IP: ? (හොයාගන්න බැරි වුණා)'); }
+    const has6 = await serverHasV6();
+    out.push(`🌍 Server IPv6: ${has6 ? '✅ තියෙනවා' : '❌ නෑ'}`);
     out.push(`🌐 Site: ${host}`);
 
     // DNS
@@ -208,6 +241,8 @@ async function diagnose(url) {
     hops.forEach((h, i) => {
         const parts = [];
         if (h.tcp) parts.push('TCP ' + (h.tcp.ok ? '✅' : '❌ ' + h.tcp.why));
+        if (h.tcp6) parts.push('IPv6 TCP ' + (h.tcp6.ok ? '✅' : '❌ ' + h.tcp6.why));
+        else if (h.tcp && !h.tcp.ok && h.ip6 === null) parts.push('IPv6: site එකට නෑ');
         if (h.tls) parts.push('TLS ' + (h.tls.ok ? '✅' : '❌ ' + h.tls.why));
         if (h.status) parts.push('HTTP ' + h.status + (h.ctype ? ' ' + h.ctype : ''));
         if (h.err) parts.push('❌ ' + h.err);
@@ -221,6 +256,7 @@ async function diagnose(url) {
     if (!blocked && last.status >= 200 && last.status < 300) v = '✅ මේ server එකෙන් file එකට යන්න පුළුවන් — .download වැඩ කරන්න ඕනේ.';
     else if (!blocked && (last.status === 403 || last.status === 401)) v = `🚫 ${last.host} *403/401* — link එක ඔයාගේ phone එකේ IP/session එකට lock කරලා, හෝ ඒ site එක server IPs ලට file දෙන්නේ නෑ.`;
     else if (!blocked && (last.status === 404 || last.status === 410)) v = '🚫 Link එක expire වෙලා / නෑ (404) — අලුත් link එකක් ගන්න.';
+    else if (blocked && blocked.tcp && !blocked.tcp.ok && blocked.tcp6 && blocked.tcp6.ok) v = `🟢 *${blocked.host}* IPv4 block කරනවා, හැබැයි *IPv6 එකෙන් connect වෙනවා!* → *.download* එක ඉබේම IPv6 route එකෙන් try කරනවා (මුළු chain එකම IPv6).`;
     else if (blocked && blocked.tcp && !blocked.tcp.ok) v = `🧱 *${blocked.host}* මේ server එකේ IP එකෙන් එන connection *drop* කරනවා (TCP ${blocked.tcp.why}).${blocked !== hops[0] ? ' (මුල් site එක OK, block කරන්නේ redirect කරන CDN server එක.)' : ''}\n➡️ ඒ site එක datacenter/server IPs block කරනවා — DNS bypass වලින් බෑ. Residential proxy (*.setproxy*) හෝ Termux (phone IP) ඕනේ.`;
     else if (blocked && blocked.tls && !blocked.tls.ok) v = `🧱 *${blocked.host}* TCP connect වෙනවා, හැබැයි *TLS handshake එක block* (${blocked.tls.why}) — site එක/firewall එක මේ server IP එක block කරනවා.\n➡️ Residential proxy (*.setproxy*) හෝ Termux (phone IP) ඕනේ.`;
     else if (blocked) v = `❌ ${blocked.host}: ${blocked.err}`;

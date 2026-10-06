@@ -1,6 +1,6 @@
 {
-  "version": "2.6.1",
-  "notes": ".net now tests every redirect hop (TCP/TLS/HTTP) and names the server that blocks; errors show the CDN host",
+  "version": "2.7.0",
+  "notes": "IPv6 route: if a CDN blocks the server IPv4, the whole download chain is retried over IPv6. .net shows server IPv6 + IPv6 test per hop",
   "files": [
     "bot.js",
     "ai.js",
