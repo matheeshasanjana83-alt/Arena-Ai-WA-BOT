@@ -1,5 +1,5 @@
 // npm test  → simulated WhatsApp messages (no real account needed)
-process.env.ARENA_NO_DELAY = '1'; process.env.ARENA_RATE_MIN = '1000'; process.env.ARENA_RATE_HOUR = '10000';
+process.env.ARENA_NO_DELAY = '1'; process.env.ARENA_NO_REACT = '1'; process.env.ARENA_RATE_MIN = '1000'; process.env.ARENA_RATE_HOUR = '10000';
 const fs = require('fs');
 const { onMessages, getText } = require('./bot');
 let n = 0, ok = 0, bad = 0;
@@ -172,6 +172,30 @@ const mk = (text, fromMe = true, jid = ME) => ({ key: { id: 'IN' + (++n), remote
         r = await run(mk('.dellogo')); t('.dellogo → logo අයින්', !fs.existsSync(LOGO));
         t('updater: logo.img protected', /logo\\.img/.test(fs.readFileSync(path.join(__dirname, 'updater.js'), 'utf8')));
         if (hadLogo) fs.writeFileSync(LOGO, hadLogo);
+    }
+
+    // ───────── v2.10: photo menu + categories + auto react ─────────
+    {
+        r = await run(mk('.menu')); const mm = r.find(x => x.image);
+        t('.menu → photo + info box + categories', !!mm && /BOT INFO/.test(mm.caption) && /CATEGORIES/.test(mm.caption) && /RAM/.test(mm.caption) && /\*1\* ┃ 📥 Download/.test(mm.caption));
+        const menuId = 'OUT' + n;   // fake send ids
+        const q1 = mk('1'); q1.message = { extendedTextMessage: { text: '1', contextInfo: { stanzaId: menuId } } };
+        r = await run(q1); t('menu එකට reply කරලා 1 → Download category', r.some(x => /DOWNLOAD/.test(x.text || '')));
+        r = await run(mk('2')); t('menu එකෙන් පස්සේ 2 විතරක් → AI category', r.some(x => /\*🤖 AI\*/.test(x.text || '')));
+        r = await run(mk('6')); t('6 → status card (photo)', r.some(x => x.image && /ARENA AI/.test(x.caption)));
+        r = await run(mk('9')); t('වැරදි number → error', r.some(x => /අතර number/.test(x.text || '')));
+        const other = mk('1'); other.message = { extendedTextMessage: { text: '1', contextInfo: { stanzaId: 'SOMETHING_ELSE' } } };
+        r = await run(other); t('වෙන message එකකට reply කරපු "1" → ignore', r.length === 0);
+        r = await run(mk('3', false, '94770000000@s.whatsapp.net')); t('🔒 යාලුවා "3" → ignore', r.length === 0);
+        r = await run(mk('.help')); t('.help → full command list', r.some(x => /setkey/.test(x.text || '')));
+        delete process.env.ARENA_NO_REACT;
+        r = await run(mk('.ping')); const re = r.find(x => x.react);
+        t('✨ auto react → command message එකට emoji react', !!re && re.react.key.id && re.react.text.length > 0 && r.some(x => /Pong/.test(x.text || '')));
+        r = await run(mk('.react off')); r = await run(mk('.ping')); t('.react off → react නෑ', !r.some(x => x.react));
+        r = await run(mk('.react on')); r = await run(mk('.ping')); t('.react on → react ආපහු', r.some(x => x.react));
+        r = await run(mk('hello')); t('සාමාන්‍ය message එකට react නෑ', r.length === 0);
+        process.env.ARENA_NO_REACT = '1';
+        try { const sp = require('path').join(__dirname, 'settings.json'); const d = JSON.parse(fs.readFileSync(sp, 'utf8')); delete d.react; fs.writeFileSync(sp, JSON.stringify(d)); } catch { }
     }
 
     console.log(bad ? `\n⚠️ ${ok} passed, ${bad} failed` : `\n🎉 ALL ${ok} TESTS PASSED`);

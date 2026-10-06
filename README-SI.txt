@@ -22,6 +22,11 @@ litterbox/catbox, x0.at, transfer.archivete.am, filebin. (gofile / LimeWire / fo
 
 🔒 Private: ඔයා යවන messages විතරයි. වෙන අය commands යැව්වත් ignore.
 
+v2.10 — 📋 ලස්සන .menu + ✨ auto react
+  • .menu — photo + BOT INFO box (version, uptime, RAM, host) + categories 6.
+    Number එක reply කරන්න (උදා 1 = Download) → ඒ category එකේ commands.  .help = full list.
+  • Commands ගහද්දී random emoji react එකක් (⚡🔥✨🚀...).  .react off / .react on
+
 v2.9 — 🖼️ ලස්සන online card එක (photo + කෙටි status)
   • Bot start වුණාම / .update එකෙන් පස්සේ photo එකක් එක්ක පොඩි card එකක් එනවා.  .alive = ඕනෑම වෙලාවක බලන්න.
   • .setlogo — ඔයාගේ photo එක Message yourself chat එකට යවලා ඒකට reply කරලා .setlogo ගහන්න (update වලින් මැකෙන්නේ නෑ).

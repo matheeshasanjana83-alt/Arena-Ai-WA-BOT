@@ -104,6 +104,8 @@ const HELP = `🤖 *Arena AI*
 *.version*  — දැන් තියෙන version එක
 *.ping*  — bot එක වැඩද බලන්න
 *.alive*  — bot status card එක
+*.menu*  — photo menu (number reply කරලා category)
+*.react on|off*  — commands වලට auto react
 *.setlogo*  — photo එකකට reply කරලා ගහන්න → online card එකේ logo එක
 *.mode self|all*  — commands වැඩ කරන chats (default: Message yourself විතරයි)
 
@@ -222,7 +224,11 @@ async function onMessages({ messages, type }, send, del = async () => { }) {
                 const ts = Number(msg.messageTimestamp || 0);
                 if (type !== 'notify' && ts && ts < STARTED - 60) continue;   // old history — don't re-run old commands
                 seen.add(msg.key.id); if (seen.size > 1000) seen.delete(seen.values().next().value);
-                const text = getText(msg.message);
+                let text = getText(msg.message);
+                if (/^\d{1,2}$/.test(text)) {                                   // number reply to .menu → category
+                    const st = menuState.get(replyJid(msg.key)), qid = msg.message?.extendedTextMessage?.contextInfo?.stanzaId;
+                    if (st && (qid ? qid === st.id : Date.now() - st.at < 180e3)) text = '.menu ' + text;
+                }
                 if (!text.startsWith('.')) continue;
                 const jid = replyJid(msg.key);
                 if (guard.chatMode() === 'self' && ME.pn && jid !== ME.pn) continue;   // 🔒 default: "Message yourself" chat only (.mode all)
@@ -233,6 +239,7 @@ async function onMessages({ messages, type }, send, del = async () => { }) {
                     continue;
                 }
                 await guard.humanDelay();
+                if (reactOn()) { try { await send(jid, { react: { text: REACTS[Math.floor(Math.random() * REACTS.length)], key: msg.key } }); } catch { } }   // ✨ auto react
                 log(`📩 command: ${guard.maskLog(text.slice(0, 60))}  (${type})  ${msg.key.remoteJid}${jid !== msg.key.remoteJid ? ' → ' + jid : ''}`);
                 msg.key = { ...msg.key, remoteJid: jid };   // quote/delete with the normalized chat jid too
                 const [cmd, ...rest] = text.split(/\s+/);
@@ -243,7 +250,9 @@ async function onMessages({ messages, type }, send, del = async () => { }) {
                 if (c === '.dellogo') { fs.rmSync(LOGO, { force: true }); await send(jid, { text: '🗑️ Logo එක අයින් කළා — default Arena AI banner එක පාවිච්චි වෙනවා' }, { quoted: msg }); continue; }
                 if (c === '.mode') { await handleMode(send, jid, msg, (rest[0] || '').toLowerCase()); continue; }
                 if (c === '.ping') { await send(jid, { text: '🏓 Pong! Arena AI වැඩ ✅' }, { quoted: msg }); continue; }
-                if (c === '.help' || c === '.menu') { await send(jid, { text: HELP }, { quoted: msg }); continue; }
+                if (c === '.menu') { await handleMenu(send, jid, msg, rest[0]); continue; }
+                if (c === '.help' || c === '.commands') { await send(jid, { text: HELP }, { quoted: msg }); continue; }
+                if (c === '.react') { await handleReact(send, jid, msg, (rest[0] || '').toLowerCase()); continue; }
                 if (c === '.ai' || c === '.ask' || c === '.gpt') { await handleAI(send, jid, msg, rest.join(' ')); continue; }
                 if (c === '.setkey' || c === '.delkey') { await handleKey(send, del, jid, msg, c, rest); continue; }
                 if (c === '.update') { await handleUpdate(send, jid, msg, rest[0] === 'force'); continue; }
@@ -282,6 +291,64 @@ function isFromOwner(key) {
 
 let dlChain = Promise.resolve();
 function dlQueue(fn) { const p = dlChain.then(fn, fn); dlChain = p.catch(() => { }); return p; }
+
+// ───────── .menu (photo + info box + categories) ─────────
+const menuState = new Map();   // jid → { id, at } of the last menu (for number replies)
+const REACTS = ['⚡', '🔥', '✨', '💠', '🚀', '😎', '🤖', '💫', '🌟', '🎯', '💎', '🫡', '👌', '🌀', '🍃'];
+const readSettings = () => { try { return JSON.parse(fs.readFileSync(path.join(__dirname, 'settings.json'), 'utf8')); } catch { return {}; } };
+const reactOn = () => !process.env.ARENA_NO_REACT && readSettings().react !== false;
+async function handleReact(send, jid, msg, arg) {
+    if (arg === 'on' || arg === 'off') {
+        const f = path.join(__dirname, 'settings.json'); const d = readSettings(); d.react = arg === 'on';
+        try { fs.writeFileSync(f, JSON.stringify(d, null, 2)); } catch { }
+        return send(jid, { text: arg === 'on' ? '✨ Auto react *ON*' : '🚫 Auto react *OFF*' }, { quoted: msg });
+    }
+    return send(jid, { text: `✨ Auto react: *${reactOn() ? 'ON' : 'OFF'}*\n*.react on* / *.react off*` }, { quoted: msg });
+}
+
+const CATS = [
+    ['📥', 'Download', `*📥 DOWNLOAD*\n\n┃ *.download <link>*  (*.dl*)\n┃   file එක download කරලා එවනවා\n┃ *.dl link1 link2*  — links 5 දක්වා\n\n✅ Direct links, GitHub, Google Drive, MediaFire, MEGA, Dropbox, Pixeldrain, catbox/litterbox...\n📏 Max: ${human(MAX_BYTES)} / file`],
+    ['🤖', 'AI', '*🤖 AI*\n\n┃ *.ai <ප්‍රශ්නය>*  — Gemini / Groq (සිංහල OK)\n┃ message එකකට reply කරලා *.ai*  — ඒ message එක ගැන\n┃ *.ai reset*  — කතාව අලුතෙන්\n┃ *.setkey gemini <KEY>*\n┃ *.setkey groq <KEY>*\n┃ *.keys*  — keys බලන්න'],
+    ['🔧', 'Network', '*🔧 NETWORK*\n\n┃ *.net <link>*  — download fail නම් හේතුව (DNS / IP block)\n┃ *.setproxy <url>*  — block sites වලට proxy\n┃ *.setproxy off*  — proxy අයින් කරන්න'],
+    ['⚙️', 'Settings', '*⚙️ SETTINGS*\n\n┃ *.setlogo*  — photo එකකට reply කරලා → menu / card logo\n┃ *.dellogo*  — default banner\n┃ *.react on|off*  — auto react\n┃ *.mode self|all*  — commands වැඩ කරන chats\n┃ *.update*  — GitHub එකෙන් update\n┃ *.version*  — version එක'],
+    ['🛡️', 'Security', '*🛡️ SECURITY*\n\n┃ 🔒 Commands පාවිච්චි කරන්න පුළුවන් *ඔයාට විතරයි*\n┃ 🔒 Default: Message yourself chat එකේ විතරයි (*.mode*)\n┃ 🛡️ Anti-ban: rate limit, human delay, backoff\n┃ 🙈 Keys / passwords logs වල පේන්නේ නෑ'],
+    ['📊', 'Status', null],
+];
+function menuCaption(name) {
+    const v = (() => { try { return updater.localInfo().version; } catch { return require('./package.json').version; } })();
+    const ram = Math.round(process.memoryUsage().rss / 1048576);
+    return [
+        '*◈ ARENA AI · MENU ◈*',
+        `👋 ʜɪ *${String(name || 'Boss').slice(0, 25)}*`,
+        '',
+        '╭─〔 🤖 *BOT INFO* 〕',
+        `│ ⚡ Version › ${v}`,
+        `│ ⏱️ Uptime › ${fmtUptime(process.uptime())}`,
+        `│ 💾 RAM › ${ram} MB`,
+        `│ 🖥️ Host › ${process.env.ARENA_ON_PANEL ? 'Panel' : 'Termux'}`,
+        '│ 🔣 Prefix › .',
+        '╰────────────⊷',
+        '',
+        '╭─〔 📂 *CATEGORIES* 〕',
+        ...CATS.map(([e, n], i) => `│ *${i + 1}* ┃ ${e} ${n}`),
+        '╰────────────⊷',
+        '',
+        '> 🔢 *number එක reply කරන්න* (උදා: 1)',
+    ].join('\n');
+}
+async function handleMenu(send, jid, msg, arg) {
+    const n = parseInt(arg, 10);
+    if (n) {
+        const cat = CATS[n - 1];
+        if (!cat) return send(jid, { text: `❌ 1 – ${CATS.length} අතර number එකක් ගහන්න` }, { quoted: msg });
+        if (!cat[2]) return sendAlive(send, jid, msg, 'alive');
+        return send(jid, { text: cat[2] + '\n\n> ↩️ *.menu* — ආපහු menu එකට' }, { quoted: msg });
+    }
+    const caption = menuCaption(msg.pushName);
+    const img = fs.existsSync(LOGO) ? LOGO : fs.existsSync(BANNER) ? BANNER : null;
+    const sent = await send(jid, img ? { image: fs.readFileSync(img), caption } : { text: caption }, { quoted: msg });
+    if (sent?.key?.id) menuState.set(jid, { id: sent.key.id, at: Date.now() });
+}
 
 // ───────── online / alive card ─────────
 function fmtUptime(sec) { sec = Math.floor(sec); const d = Math.floor(sec / 86400), h = Math.floor(sec % 86400 / 3600), m = Math.floor(sec % 3600 / 60); return d ? `${d}d ${h}h` : h ? `${h}h ${m}m` : `${m}m ${sec % 60}s`; }
