@@ -37,7 +37,8 @@ const fetchJson = async (sha, f) => JSON.parse((await fetchRaw(sha, f)).toString
 async function check() {
     const cur = localInfo();
     const l = await latest();
-    const upToDate = cur.sha ? cur.sha === l.sha : cur.version === l.manifest.version;
+    // sha only comparable within the same repo (after moving repos compare by version)
+    const upToDate = (cur.sha && cur.repo === REPO) ? cur.sha === l.sha : cur.version === l.manifest.version;
     return { current: cur, latest: l, upToDate };
 }
 
@@ -90,7 +91,7 @@ async function apply({ force = false, onStatus = () => { } } = {}) {
     const depsChanged = JSON.stringify(oldPkg.dependencies || {}) !== JSON.stringify(newPkg.dependencies || {});
     if (depsChanged) { onStatus('📦 අලුත් packages install කරනවා (මිනිත්තුවක් විතර)...'); await runNpmInstall(); }
 
-    fs.writeFileSync(VERSION_FILE, JSON.stringify({ version: manifest.version, sha, date: c.latest.date }, null, 2));
+    fs.writeFileSync(VERSION_FILE, JSON.stringify({ version: manifest.version, sha, repo: REPO, date: c.latest.date }, null, 2));
     fs.writeFileSync(path.join(BACKUP, 'pending'), String(Date.now())); // launcher: rollback if the new version crash-loops
     return { updated: true, from: c.current.version, to: manifest.version, notes: manifest.notes || c.latest.message, depsChanged, files: files.length };
 }

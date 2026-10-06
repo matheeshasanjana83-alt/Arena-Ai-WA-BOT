@@ -1,6 +1,6 @@
 {
-  "version": "2.5.0",
-  "notes": "Updates now come from github.com/matheeshasanjana83-alt/Arena-Ai-WA-BOT",
+  "version": "2.5.1",
+  "notes": "Updates from Arena-Ai-WA-BOT repo; version check works across repos",
   "files": [
     "bot.js",
     "ai.js",
