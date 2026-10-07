@@ -22,6 +22,11 @@ litterbox/catbox, x0.at, transfer.archivete.am, filebin. (gofile / LimeWire / fo
 
 🔒 Private: ඔයා යවන messages විතරයි. වෙන අය commands යැව්වත් ignore.
 
+v2.12.2 — 🔒 ආරක්ෂාව + 📨 Agent messages
+  • WhatsApp library එක (libsignal) encryption keys panel console එකට print කළා → දැන් ඒවා පේන්නේ නෑ
+  • Arena agent ට panel එකේ agent-msg.txt file එකක් ලියලා ඔයාගේ "Message yourself" chat එකට message යවන්න පුළුවන්
+    (bot එක තත්පර 5 කට සැරයක් බලනවා, යැව්වට පස්සේ file එක මකනවා)
+
 v2.12.1 — 📦 ලොකු files (2 GB දක්වා)
   • Panel එකේ පරණ 350 MB limit එක අයින් කළා → දැන් 2000 MB (WhatsApp එකෙන් යවන්න පුළුවන් උපරිමය ≈ 2 GB)
   • 100 MB ට ලොකු files disk එකේ save නොකර කෙලින්ම WhatsApp එකට stream වෙනවා → disk එක 2× නෙවෙයි 1× විතරයි

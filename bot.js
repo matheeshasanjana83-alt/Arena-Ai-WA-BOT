@@ -23,6 +23,14 @@ const readline = require('readline');
 const pino = require('pino');
 // Baileys v7 (ESM-only) — LID support. v6 could not decrypt LID-addressed messages (Bad MAC) and sent ACKs that WhatsApp bans.
 let B = null;
+// 🔒 v2.12.2: libsignal prints whole sessions (incl. PRIVATE KEYS) to the console → never show them
+{
+    const SECRET = /^(Closing session|Opening session|Removing old closed session|Session already (closed|open)|Closing open session|Decrypted message with closed session|Migrating session|Failed to decrypt message with any known session|Session error)/;
+    for (const k of ['log', 'info', 'warn', 'error', 'debug']) {
+        const orig = console[k].bind(console);
+        console[k] = (...a) => { if (typeof a[0] === 'string' && SECRET.test(a[0])) return; orig(...a); };
+    }
+}
 const loadBaileys = async () => (B ||= await import('baileys'));
 const { download, human, maxBytes, maxMB, freeDisk, WA_MAX_MB } = require('./downloader');
 const ai = require('./ai');
@@ -37,6 +45,26 @@ const LOGO = path.join(__dirname, 'logo.img');        // your own photo (.setlog
 const BANNER = path.join(__dirname, 'banner.jpg');    // default Arena AI banner
 const ANNOUNCE_NEXT = path.join(__dirname, '.announce-next');
 let SOCK = null;
+// 📨 v2.12.2: Arena agent → your WhatsApp. The agent writes agent-msg.txt on the panel (panel API) → bot sends it to "Message yourself"
+const AGENT_MSG = path.join(__dirname, 'agent-msg.txt');
+let agentTimer = null;
+async function agentTick(send) {
+    try {
+        if (!ME.pn || !fs.existsSync(AGENT_MSG)) return false;
+        const tmp = AGENT_MSG + '.sending';
+        fs.renameSync(AGENT_MSG, tmp);
+        const t = fs.readFileSync(tmp, 'utf8').trim(); fs.rmSync(tmp, { force: true });
+        if (!t) return false;
+        for (const part of ai.splitLong(t.slice(0, 12000))) await send(ME.pn, { text: '🤖 *Arena Agent*\n\n' + part });
+        log('📨 Arena agent message → Message yourself');
+        return true;
+    } catch (e) { log('agent inbox: ' + e.message); return false; }
+}
+function startAgentInbox(send) {
+    if (agentTimer) clearInterval(agentTimer);
+    agentTimer = setInterval(() => agentTick(send), 5000);
+    agentTimer.unref?.();
+}
 const sentIds = new Set();
 const msgStore = new Map();          // recent messages → getMessage() for retry requests ("Waiting for this message" fix)
 const seen = new Set();              // processed message ids (dedupe notify/append)
@@ -192,6 +220,7 @@ async function start() {
             log(`👤 me: ${ME.pn}${ME.lid ? '  /  ' + ME.lid : ''}`);
             log('✅ WhatsApp Connected! "Message yourself" chat එකේ .ping ගහලා බලන්න');
             reconnects = 0; replaced = 0;
+            startAgentInbox(send);
             if (announced) return;
             announced = true;
             const afterUpdate = fs.existsSync(ANNOUNCE_NEXT); fs.rmSync(ANNOUNCE_NEXT, { force: true });
@@ -565,7 +594,7 @@ async function handleDownload(send, jid, msg, link) {
 
 process.on('unhandledRejection', (e) => log('unhandled: ' + (e?.message || e)));
 process.on('uncaughtException', (e) => log('uncaught: ' + e.message));
-module.exports = { handleDownload, getText, onMessages, replyJid, ME, aliveCaption, _setMediaDownloader: (f) => { mediaDownloader = f; }, _setSock: (x) => { SOCK = x; } };
+module.exports = { _agentTick: agentTick, AGENT_MSG, handleDownload, getText, onMessages, replyJid, ME, aliveCaption, _setMediaDownloader: (f) => { mediaDownloader = f; }, _setSock: (x) => { SOCK = x; } };
 if (require.main === module) {
     console.log('🚀 Arena AI starting...');
     start().catch((e) => { log('Startup fail: ' + e.message); process.exit(1); });

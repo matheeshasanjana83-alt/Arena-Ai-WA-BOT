@@ -7,3 +7,5 @@ package-lock.json
 logo.img
 .announce-next
 bin/
+agent-msg.txt
+agent-msg.txt.sending

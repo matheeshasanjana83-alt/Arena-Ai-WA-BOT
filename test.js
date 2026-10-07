@@ -330,6 +330,30 @@ const mk = (text, fromMe = true, jid = ME) => ({ key: { id: 'IN' + (++n), remote
         srv.close();
     }
 
+    // ───────── v2.12.2: hide libsignal session keys + agent → WhatsApp ─────────
+    {
+        const bot = require('./bot');
+        let printed = '';
+        const ow = process.stdout.write.bind(process.stdout), ew = process.stderr.write.bind(process.stderr);
+        process.stdout.write = (s, ...a) => { printed += s; return true; }; process.stderr.write = (s, ...a) => { printed += s; return true; };
+        console.info('Closing session:', { privKey: 'SECRET123' }); console.info('Opening session:', { privKey: 'SECRET123' });
+        console.info('Removing old closed session:', { privKey: 'SECRET123' }); console.warn('Closing open session in favor of incoming prekey bundle');
+        console.log('normal line OK');
+        process.stdout.write = ow; process.stderr.write = ew;
+        t('🔒 session keys console එකේ පේන්නේ නෑ', !printed.includes('SECRET123') && !/Closing open session/.test(printed));
+        t('සාමාන්‍ය logs තාම පේනවා', printed.includes('normal line OK'));
+        const sent = []; const fsend = async (j, c) => { sent.push([j, c]); return { key: { id: 'A' + sent.length } }; };
+        bot.ME.pn = ME;
+        fs.writeFileSync(bot.AGENT_MSG, 'Hello from the agent 👋\nදෙවෙනි line එක');
+        const ok = await bot._agentTick(fsend);
+        t('📨 agent-msg.txt → Message yourself එකට යනවා', ok && sent.length === 1 && sent[0][0] === ME && /Arena Agent/.test(sent[0][1].text) && /දෙවෙනි line/.test(sent[0][1].text));
+        t('📨 යැව්වට පස්සේ file එක මැකෙනවා (ආයෙත් යන්නේ නෑ)', !fs.existsSync(bot.AGENT_MSG) && (await bot._agentTick(fsend)) === false && sent.length === 1);
+        fs.writeFileSync(bot.AGENT_MSG, '   ');
+        t('📨 හිස් file → මුකුත් යවන්නේ නෑ', (await bot._agentTick(fsend)) === false && sent.length === 1);
+        bot.ME.pn = null;
+        fs.writeFileSync(bot.AGENT_MSG, 'x'); t('📨 connect වෙලා නැත්නම් යවන්නේ නෑ', (await bot._agentTick(fsend)) === false); fs.rmSync(bot.AGENT_MSG, { force: true });
+    }
+
     console.log(bad ? `\n⚠️ ${ok} passed, ${bad} failed` : `\n🎉 ALL ${ok} TESTS PASSED`);
     process.exit(bad ? 1 : 0);
 })();

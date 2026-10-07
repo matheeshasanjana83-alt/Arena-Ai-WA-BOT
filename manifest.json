@@ -1,6 +1,6 @@
 {
-  "version": "2.12.1",
-  "notes": "BIG FILES: files over 100 MB stream straight to WhatsApp (no copy on disk), panel limit 350 MB -> 2000 MB (WhatsApp max), new .maxmb command, disk-space check, .fact/.imagine fallbacks",
+  "version": "2.12.2",
+  "notes": "SECURITY: WhatsApp session keys are no longer printed to the panel console. NEW: Arena agent can send messages to your \"Message yourself\" chat (agent-msg.txt)",
   "files": [
     "bot.js",
     "ai.js",
