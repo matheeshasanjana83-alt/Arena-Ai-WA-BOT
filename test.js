@@ -354,6 +354,88 @@ const mk = (text, fromMe = true, jid = ME) => ({ key: { id: 'IN' + (++n), remote
         fs.writeFileSync(bot.AGENT_MSG, 'x'); t('📨 connect වෙලා නැත්නම් යවන්නේ නෑ', (await bot._agentTick(fsend)) === false); fs.rmSync(bot.AGENT_MSG, { force: true });
     }
 
+    // ───────── v2.13: 🧬 anti-bug ─────────
+    {
+        const ab = require('./antibug'), sp = require('path').join(__dirname, 'settings.json');
+        const had = fs.existsSync(sp) ? fs.readFileSync(sp) : null;
+        const { detect } = ab;
+        const longSi = 'මම අද උදේ ගෙදර ඉඳන් වැඩට ගියා. '.repeat(120);          // ~3.8k normal Sinhala
+        t('🧬 සාමාන්‍ය සිංහල දිග message → bug නෙවෙයි', !detect({ conversation: longSi }).bug);
+        t('🧬 emoji / ZWJ තියෙන message → bug නෙවෙයි', !detect({ conversation: '👨‍👩‍👧‍👦🔥😂 '.repeat(200) }).bug);
+        t('🧬 photo + thumbnail buffer → bug නෙවෙයි', !detect({ imageMessage: { caption: 'hi', jpegThumbnail: Buffer.alloc(200000), mediaKey: new Uint8Array(32) } }).bug);
+        t('🧬 group එකේ mentions 20 → bug නෙවෙයි', !detect({ extendedTextMessage: { text: '@all', contextInfo: { mentionedJid: Array(20).fill('1@s.whatsapp.net') } } }).bug);
+        t('🧬 quote කරපු සාමාන්‍ය reply → bug නෙවෙයි', !detect({ extendedTextMessage: { text: 'ok', contextInfo: { quotedMessage: { extendedTextMessage: { text: 'x', contextInfo: { quotedMessage: { conversation: 'y' } } } } } } }).bug);
+        const virtex = ('ꦿ' + '\u0E49\u0E49\u0E49\u0E49' + '\u200B\u200F\u202E').repeat(1500);
+        const v = detect({ conversation: virtex });
+        t('🧬 virtex (crash අකුරු) → bug + severe', v.bug && v.severe);
+        t('🧬 අකුරු 30k text → bug', detect({ extendedTextMessage: { text: 'a'.repeat(30000) } }).bug);
+        t('🧬 mentions 1000 → bug', detect({ extendedTextMessage: { text: 'x', contextInfo: { mentionedJid: Array(1000).fill('1@s.whatsapp.net') } } }).severe);
+        let deep = { conversation: 'x' }; for (let i = 0; i < 40; i++) deep = { viewOnceMessage: { message: deep } };
+        t('🧬 nesting 80 → bug', detect(deep).severe);
+        t('🧬 contacts 200 → bug', detect({ contactsArrayMessage: { contacts: Array(200).fill({ displayName: 'a', vcard: 'BEGIN:VCARD' }) } }).severe);
+        t('🧬 poll options 500 → bug', detect({ pollCreationMessageV3: { name: 'p', options: Array(500).fill({ optionName: 'o' }) } }).severe);
+        t('🧬 location name 60k → bug', detect({ locationMessage: { degreesLatitude: 1, name: 'x'.repeat(60000) } }).severe);
+        t('🧬 button params JSON 50k → bug', detect({ interactiveMessage: { nativeFlowMessage: { buttons: [{ name: 'x', buttonParamsJson: '{' + '"a":1,'.repeat(9000) + '}' }] } } }).severe);
+
+        const calls = []; let admin = false;
+        const sock = {
+            chatModify: async (m, j) => calls.push(['mod', j, m]),
+            sendMessage: async (j, c) => calls.push(['send', j, c]),
+            updateBlockStatus: async (j, a) => calls.push(['block', j, a]),
+            groupMetadata: async () => ({ participants: [{ id: '94760552994:5@s.whatsapp.net', admin: admin ? 'admin' : null }] }),
+        };
+        const reps = []; const rsend = async (j, c) => { reps.push([j, c]); };
+        const me = { pn: '94760552994@s.whatsapp.net', lid: '35189220741167@lid' };
+        const ctx = { sock, me, send: rsend, log: () => { } };
+        const inc = (message, jid = '94770001111@s.whatsapp.net', extra = {}) => ({ key: { id: 'B' + Math.random(), remoteJid: jid, fromMe: false, ...extra }, messageTimestamp: 1700000000, message });
+        ab.setCfg({ on: true, block: true });
+
+        calls.length = 0; reps.length = 0;
+        t('🧬 වෙන කෙනෙක්ගේ සාමාන්‍ය message → කිසි action එකක් නෑ', (await ab.guard(inc({ conversation: 'hello' }), ctx)) === false && calls.length === 0 && reps.length === 0);
+        calls.length = 0; reps.length = 0;
+        const r1 = await ab.guard(inc({ conversation: virtex }), ctx);
+        t('🧬 private bug → delete for me', r1 && calls.some(c => c[0] === 'mod' && c[2].deleteForMe && c[2].deleteForMe.key && c[1] === '94770001111@s.whatsapp.net'));
+        t('🧬 private bug → sender block', calls.some(c => c[0] === 'block' && c[1] === '94770001111@s.whatsapp.net' && c[2] === 'block'));
+        t('🧬 report Message yourself එකට (bug text එක නැතුව)', reps.length === 1 && reps[0][0] === me.pn && /ANTI-BUG/.test(reps[0][1].text) && !reps[0][1].text.includes('\u0E49') && reps[0][1].text.length < 400);
+        calls.length = 0; reps.length = 0;
+        await ab.guard(inc({ conversation: virtex }), ctx);
+        t('🧬 එකම කෙනා ආයෙත් → delete, ආයෙත් block/report නෑ (spam නෑ)', calls.some(c => c[0] === 'mod') && !calls.some(c => c[0] === 'block') && reps.length === 0);
+
+        calls.length = 0; reps.length = 0;
+        await ab.guard(inc({ conversation: virtex }, '120363111@g.us', { participant: '94770002222@s.whatsapp.net' }), ctx);
+        t('🧬 group bug (admin නෑ) → delete for me විතරයි, block නෑ', calls.some(c => c[0] === 'mod') && !calls.some(c => c[0] === 'send') && !calls.some(c => c[0] === 'block'));
+        admin = true; calls.length = 0;
+        await ab.guard(inc({ conversation: virtex }, '120363222@g.us', { participant: '94770003333@s.whatsapp.net' }), ctx);
+        t('🧬 group bug (bot admin) → හැමෝටම delete', calls.some(c => c[0] === 'send' && c[2].delete));
+
+        calls.length = 0;
+        t('🧬 මගේම message එක (fromMe) → අත ගහන්නේ නෑ', (await ab.guard({ key: { id: 'M1', remoteJid: me.pn, fromMe: true }, message: { conversation: virtex } }, ctx)) === false && calls.length === 0);
+        calls.length = 0;
+        t('🧬 status / channel → අත ගහන්නේ නෑ', (await ab.guard(inc({ conversation: virtex }, 'status@broadcast'), ctx)) === false && calls.length === 0);
+
+        ab.setCfg({ block: false }); calls.length = 0;
+        await ab.guard(inc({ conversation: virtex }, '94770004444@s.whatsapp.net'), ctx);
+        t('🧬 .antibug block off → delete වෙනවා, block නෑ', calls.some(c => c[0] === 'mod') && !calls.some(c => c[0] === 'block'));
+        ab.setCfg({ on: false, block: true }); calls.length = 0;
+        t('🧬 .antibug off → මුකුත් කරන්නේ නෑ', (await ab.guard(inc({ conversation: virtex }, '94770005555@s.whatsapp.net'), ctx)) === false && calls.length === 0);
+        ab.setCfg({ on: true });
+
+        calls.length = 0; let fl = 0;
+        for (let i = 0; i < 30; i++) if (await ab.guard(inc({ conversation: 'hi ' + i }, '94770006666@s.whatsapp.net'), ctx)) fl++;
+        t('🧬 flood (තත්පර 10ට 30) → එක පාරක් block, සාමාන්‍ය messages delete කරන්නේ නෑ', fl > 0 && calls.filter(c => c[0] === 'block').length === 1 && !calls.some(c => c[0] === 'mod'));
+
+        out.length = 0;
+        await onMessages({ type: 'notify', messages: [inc({ conversation: '.ping' })] }, send);
+        t('🔒 වෙන කෙනෙක්ගේ .ping → anti-bug හරහා ගිහින් තාමත් ignore', out.length === 0);
+        out.length = 0;
+        await onMessages({ type: 'notify', messages: [{ key: { id: 'AB1', remoteJid: ME, fromMe: true }, message: { conversation: '.antibug block off' } }] }, send);
+        t('.antibug block off → status card', out.length === 1 && /ANTI-BUG/.test(out[0].text) && /block: ❌/.test(out[0].text));
+        out.length = 0;
+        await onMessages({ type: 'notify', messages: [{ key: { id: 'AB2', remoteJid: ME, fromMe: true }, message: { conversation: '.antibug on' } }] }, send);
+        t('.antibug on → ON', /ON/.test(out[0]?.text || '') && ab.cfg().on && !ab.cfg().block);
+        if (had) fs.writeFileSync(sp, had); else fs.rmSync(sp, { force: true });
+    }
+
     console.log(bad ? `\n⚠️ ${ok} passed, ${bad} failed` : `\n🎉 ALL ${ok} TESTS PASSED`);
     process.exit(bad ? 1 : 0);
 })();

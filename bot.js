@@ -39,6 +39,7 @@ const netx = require('./net');
 const guard = require('./guard');
 const features = require('./features');
 const tools = require('./tools');
+const antibug = require('./antibug');
 
 const AUTH = path.join(__dirname, 'auth');
 const LOGO = path.join(__dirname, 'logo.img');        // your own photo (.setlogo) — never touched by .update
@@ -148,8 +149,9 @@ const HELP = `🤖 *Arena AI* — ඔක්කොම commands
 *.react on|off*  — commands වලට auto react
 *.setlogo*  — photo එකකට reply කරලා ගහන්න → online card එකේ logo එක
 *.mode self|all*  — commands වැඩ කරන chats (default: Message yourself විතරයි)
+*.antibug on|off*  — bug/crash messages auto delete + block (*.antibug block on|off*)
 
-🔒 Commands පාවිච්චි කරන්න පුළුවන් *ඔයාට විතරයි*  •  🛡️ Anti-ban ON
+🔒 Commands පාවිච්චි කරන්න පුළුවන් *ඔයාට විතරයි*  •  🛡️ Anti-ban ON  •  🧬 Anti-bug ON
 
 📥 Download support: direct links, GitHub, Google Drive, MediaFire, MEGA, Dropbox, Pixeldrain, litterbox/catbox, x0.at, filebin...
 📏 Max: ${human(maxBytes())} per file  (*.maxmb* එකෙන් වෙනස් කරන්න)`;
@@ -258,6 +260,7 @@ async function onMessages({ messages, type }, send, del = async () => { }) {
             try {
                 remember(msg);
                 if (msg.key?.fromMe && !msg.message && msg.messageStubType) log(`⚠️ message එකක් decrypt කරගන්න බැරි වුණා (stub ${msg.messageStubType}) — phone එකෙන් ආයෙත් එවයි`);
+                if (msg.message && msg.key?.fromMe !== true) { await antibug.guard(msg, { sock: SOCK, me: ME, send, log }); continue; }   // 🛡️ anti-bug (others' messages are never run as commands)
                 if (!msg.message || msg.key?.fromMe !== true) continue;        // 🔒 PRIVATE: only messages YOU send
                 if (guard.ignoredChat(msg.key.remoteJid)) continue;              // status / channels / broadcast
                 if (!isFromOwner(msg.key)) continue;                              // 🔒 double check the sender
@@ -296,6 +299,7 @@ async function onMessages({ messages, type }, send, del = async () => { }) {
                 if (c === '.menu') { await handleMenu(send, jid, msg, rest[0]); continue; }
                 if (c === '.help' || c === '.commands') { await send(jid, { text: HELP }, { quoted: msg }); continue; }
                 if (c === '.maxmb' || c === '.setmax' || c === '.limit') { await handleMaxMB(send, jid, msg, (rest[0] || '').toLowerCase()); continue; }
+                if (c === '.antibug') { await send(jid, { text: await antibug.command(rest[0], rest[1]) }, { quoted: msg }); continue; }
                 if (c === '.react') { await handleReact(send, jid, msg, (rest[0] || '').toLowerCase()); continue; }
                 if (c === '.ai' || c === '.ask' || c === '.gpt') { await handleAI(send, jid, msg, rest.join(' ')); continue; }
                 if (c === '.setkey' || c === '.delkey') { await handleKey(send, del, jid, msg, c, rest); continue; }
@@ -378,7 +382,7 @@ const CATS = [
     ['🤖', 'AI', '*🤖 AI*\n\n┃ *.ai <ප්‍රශ්නය>*  — Gemini / Groq (සිංහල OK)\n┃ message එකකට reply කරලා *.ai*  — ඒ message එක ගැන\n┃ *.ai reset*  — කතාව අලුතෙන්\n┃ *.setkey gemini <KEY>*  /  *.setkey groq <KEY>*\n┃ *.keys*  — keys බලන්න'],
     ['🔧', 'Network', '*🔧 NETWORK*\n\n┃ *.net <link>*  — download fail නම් හේතුව (DNS / IP block)\n┃ *.setproxy <url>*  — block sites වලට proxy (YouTube වලටත්)\n┃ *.setproxy off*'],
     ['⚙️', 'Settings', '*⚙️ SETTINGS*\n\n┃ *.setlogo*  — photo එකකට reply කරලා → menu logo\n┃ *.dellogo*  — default banner\n┃ *.react on|off*  — auto react\n┃ *.maxmb <MB>*  — download limit (max 2000)\n┃ *.mode self|all*  — commands වැඩ කරන chats\n┃ *.update*  — GitHub එකෙන් update\n┃ *.restart*  — bot restart\n┃ *.version*'],
-    ['🛡️', 'Security', '*🛡️ SECURITY*\n\n┃ 🔒 Commands පාවිච්චි කරන්න පුළුවන් *ඔයාට විතරයි*\n┃ 🔒 Default: Message yourself chat එකේ විතරයි (*.mode*)\n┃ 👥 Group tools: ඔයා group එකේ ගැහුවොත් විතරයි\n┃ 🛡️ Anti-ban: rate limit, human delay, backoff, tagall limit\n┃ 🙈 Keys / passwords logs වල පේන්නේ නෑ'],
+    ['🛡️', 'Security', '*🛡️ SECURITY*\n\n┃ 🔒 Commands පාවිච්චි කරන්න පුළුවන් *ඔයාට විතරයි*\n┃ 🔒 Default: Message yourself chat එකේ විතරයි (*.mode*)\n┃ 👥 Group tools: ඔයා group එකේ ගැහුවොත් විතරයි\n┃ 🛡️ Anti-ban: rate limit, human delay, backoff, tagall limit\n┃ 🙈 Keys / passwords logs වල පේන්නේ නෑ\n┃ 🧬 *Anti-bug*: crash/bug messages → auto delete (+ private chat block) + report\n┃ *.antibug on|off*  •  *.antibug block on|off*'],
     ['📊', 'Status', null],
 ];
 function menuCaption(name) {
@@ -432,7 +436,7 @@ function aliveCaption(kind = 'online') {
         `┊ ⚡ *v${v}*`,
         `┊ 🕒 ${nowLK()}`,
         `┊ 🖥️ ${process.env.ARENA_ON_PANEL ? 'Panel server' : 'Termux'}${kind === 'alive' ? '  •  ⏱️ ' + fmtUptime(process.uptime()) : ''}`,
-        `┊ 🔒 Private  •  🛡️ Anti-ban`,
+        `┊ 🔒 Private  •  🛡️ Anti-ban  •  🧬 Anti-bug ${antibug.cfg().on ? 'ON' : 'OFF'}`,
         '',
         '> 💬 *.menu* — commands',
     ].join('\n');

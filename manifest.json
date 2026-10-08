@@ -1,6 +1,6 @@
 {
-  "version": "2.12.2",
-  "notes": "SECURITY: WhatsApp session keys are no longer printed to the panel console. NEW: Arena agent can send messages to your \"Message yourself\" chat (agent-msg.txt)",
+  "version": "2.13.0",
+  "notes": "NEW: 🧬 Anti-bug — bug/crash messages from others are auto-deleted (synced to your phone), sender blocked in private chats, short report in Message yourself. .antibug on|off, .antibug block on|off",
   "files": [
     "bot.js",
     "ai.js",
@@ -20,6 +20,7 @@
     "banner.jpg",
     "media.js",
     "features.js",
-    "tools.js"
+    "tools.js",
+    "antibug.js"
   ]
 }

@@ -22,6 +22,18 @@ litterbox/catbox, x0.at, transfer.archivete.am, filebin. (gofile / LimeWire / fo
 
 🔒 Private: ඔයා යවන messages විතරයි. වෙන අය commands යැව්වත් ignore.
 
+v2.13.0 — 🧬 Anti-Bug (WhatsApp bug / crash messages වලින් ආරක්ෂාව)
+  කවුරු හරි WhatsApp එක hang/crash කරන "bug" message එකක් එව්වොත් bot එක:
+   1. ඒ message එක ඔයාට delete කරනවා → phone එකටත් sync වෙනවා, chat එක ආයෙත් open කරන්න පුළුවන්
+   2. group එකක නම් + bot (ඔයා) admin නම් → හැමෝටම delete
+   3. private chat එකක ලොකු bug එකක් නම් → එව්ව කෙනාව block   (.antibug block off = block එපා)
+   4. Message yourself chat එකට කෙටි report එකක් (bug text එක නැතුව)
+  අල්ලන දේවල්: crash අකුරු (virtex), අකුරු 12k+ texts, mentions 256+, contacts 40+, buttons/poll options 60+,
+               අති විශාල fields (location / buttons / lists), nesting 14+, තත්පර 10ට messages 25+ (flood)
+  Commands: .antibug  •  .antibug on / off  •  .antibug block on / off   (default: ON)
+  ⚠️ Bug message එක phone එකටත් එකම වෙලාවේ එන නිසා ඒ chat එක screen එකේ open නම් තත්පරයක් දෙකක් hang වෙන්න පුළුවන්.
+     අලුත්ම වර්ගයක bug එකක් අල්ලගන්න බැරි වෙන්නත් පුළුවන් — එහෙම වුණොත් screenshot එකක් එවන්න.
+
 v2.12.2 — 🔒 ආරක්ෂාව + 📨 Agent messages
   • WhatsApp library එක (libsignal) encryption keys panel console එකට print කළා → දැන් ඒවා පේන්නේ නෑ
   • Arena agent ට panel එකේ agent-msg.txt file එකක් ලියලා ඔයාගේ "Message yourself" chat එකට message යවන්න පුළුවන්
