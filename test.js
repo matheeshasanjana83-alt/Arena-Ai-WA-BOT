@@ -411,7 +411,8 @@ const mk = (text, fromMe = true, jid = ME) => ({ key: { id: 'IN' + (++n), remote
         calls.length = 0;
         t('🧬 මගේම message එක (fromMe) → අත ගහන්නේ නෑ', (await ab.guard({ key: { id: 'M1', remoteJid: me.pn, fromMe: true }, message: { conversation: virtex } }, ctx)) === false && calls.length === 0);
         calls.length = 0;
-        t('🧬 status / channel → අත ගහන්නේ නෑ', (await ab.guard(inc({ conversation: virtex }, 'status@broadcast'), ctx)) === false && calls.length === 0);
+        t('🧬 normal status → no action', (await ab.guard(inc({ conversation: 'normal status text' }, 'status@broadcast'), ctx)) === false && calls.length === 0);
+        t('🧬 old broadcast list → no action', (await ab.guard(inc({ conversation: virtex }, '123@broadcast'), ctx)) === false && calls.length === 0);
 
         ab.setCfg({ block: false }); calls.length = 0;
         await ab.guard(inc({ conversation: virtex }, '94770004444@s.whatsapp.net'), ctx);
@@ -433,6 +434,26 @@ const mk = (text, fromMe = true, jid = ME) => ({ key: { id: 'IN' + (++n), remote
         out.length = 0;
         await onMessages({ type: 'notify', messages: [{ key: { id: 'AB2', remoteJid: ME, fromMe: true }, message: { conversation: '.antibug on' } }] }, send);
         t('.antibug on → ON', /ON/.test(out[0]?.text || '') && ab.cfg().on && !ab.cfg().block);
+        // ── v2.13.1: status / newsletter / vCard bombs / invisible-only / long runs ──
+        calls.length = 0; reps.length = 0;
+        await ab.guard(inc({ conversation: 'amma status eka' }, 'status@broadcast', { participant: '94770007777@s.whatsapp.net' }), ctx);
+        t('🧬 normal status → no action', calls.length === 0 && reps.length === 0);
+        calls.length = 0; reps.length = 0;
+        const rs = await ab.guard(inc({ conversation: virtex }, 'status@broadcast', { participant: '94770008888@s.whatsapp.net' }), ctx);
+        t('🧬 status bug → status eken delete + report, block nothing', rs && calls.some(c => c[0] === 'mod' && c[1] === 'status@broadcast') && !calls.some(c => c[0] === 'block') && reps.length === 1);
+        calls.length = 0; reps.length = 0;
+        await ab.guard(inc({ interactiveMessage: { nativeFlowMessage: { buttons: [{ name: 'x', buttonParamsJson: '{' + '"a":1,'.repeat(9000) + '}' }] } } }, '12345@newsletter'), ctx);
+        t('🧬 newsletter bug → delete for me, block nothing', calls.some(c => c[0] === 'mod' && c[1] === '12345@newsletter') && !calls.some(c => c[0] === 'block'));
+        t('🧬 normal contact (vCard TEL 2) → not bug', !detect({ contactMessage: { displayName: 'Amal', vcard: 'BEGIN:VCARD\nFN:Amal\nTEL:0771234567\nTEL:0112223333\nEND:VCARD' } }).bug);
+        const telBomb = 'BEGIN:VCARD\nFN:x\n' + Array.from({ length: 100 }, (_, i) => 'TEL;TYPE=CELL:077' + i).join('\n') + '\nEND:VCARD';
+        t('🧬 vCard TEL bomb (one contact 100 numbers) → severe', detect({ contactMessage: { displayName: 'x', vcard: telBomb } }).severe);
+        t('🧬 pure invisible message (3000 zero-width) → severe', detect({ conversation: '\u200B'.repeat(3000) }).severe);
+        t('🧬 unbroken run 9000 → bug', detect({ conversation: 'a'.repeat(9000) }).bug);
+        t('🧬 normal words 3000 chars with spaces → not bug', !detect({ conversation: 'word '.repeat(600) }).bug);
+        t('🧬 variation-selector flood → severe', detect({ conversation: ('x' + '\uDB40\uDD01').repeat(1500) }).severe);
+        out.length = 0;
+        await onMessages({ type: 'notify', messages: [{ key: { id: 'AB3', remoteJid: ME, fromMe: true }, message: { conversation: '.antibug scan' } }] }, send);
+        t('.antibug scan → caught bugs list', out.length === 1 && /ANTI-BUG/.test(out[0].text) && /status/.test(out[0].text));
         if (had) fs.writeFileSync(sp, had); else fs.rmSync(sp, { force: true });
     }
 

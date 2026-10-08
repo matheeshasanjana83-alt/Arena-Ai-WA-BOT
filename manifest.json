@@ -1,6 +1,6 @@
 {
-  "version": "2.13.0",
-  "notes": "NEW: 🧬 Anti-bug — bug/crash messages from others are auto-deleted (synced to your phone), sender blocked in private chats, short report in Message yourself. .antibug on|off, .antibug block on|off",
+  "version": "2.13.1",
+  "notes": "Anti-bug upgrade: statuses (status@broadcast) & newsletters are now scanned — a bug status is deleted for you + reported (never auto-blocked). New detections: vCard contact bombs (TEL 20+ / lines 200+), pure invisible texts, long unbroken runs (8000+), variation-selector floods. New command: .antibug scan (recently caught bugs)",
   "files": [
     "bot.js",
     "ai.js",

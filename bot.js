@@ -149,7 +149,7 @@ const HELP = `🤖 *Arena AI* — ඔක්කොම commands
 *.react on|off*  — commands වලට auto react
 *.setlogo*  — photo එකකට reply කරලා ගහන්න → online card එකේ logo එක
 *.mode self|all*  — commands වැඩ කරන chats (default: Message yourself විතරයි)
-*.antibug on|off*  — bug/crash messages auto delete + block (*.antibug block on|off*)
+*.antibug on|off*  — bug/crash messages (status too) auto delete + block  •  *.antibug scan*
 
 🔒 Commands පාවිච්චි කරන්න පුළුවන් *ඔයාට විතරයි*  •  🛡️ Anti-ban ON  •  🧬 Anti-bug ON
 
@@ -382,7 +382,7 @@ const CATS = [
     ['🤖', 'AI', '*🤖 AI*\n\n┃ *.ai <ප්‍රශ්නය>*  — Gemini / Groq (සිංහල OK)\n┃ message එකකට reply කරලා *.ai*  — ඒ message එක ගැන\n┃ *.ai reset*  — කතාව අලුතෙන්\n┃ *.setkey gemini <KEY>*  /  *.setkey groq <KEY>*\n┃ *.keys*  — keys බලන්න'],
     ['🔧', 'Network', '*🔧 NETWORK*\n\n┃ *.net <link>*  — download fail නම් හේතුව (DNS / IP block)\n┃ *.setproxy <url>*  — block sites වලට proxy (YouTube වලටත්)\n┃ *.setproxy off*'],
     ['⚙️', 'Settings', '*⚙️ SETTINGS*\n\n┃ *.setlogo*  — photo එකකට reply කරලා → menu logo\n┃ *.dellogo*  — default banner\n┃ *.react on|off*  — auto react\n┃ *.maxmb <MB>*  — download limit (max 2000)\n┃ *.mode self|all*  — commands වැඩ කරන chats\n┃ *.update*  — GitHub එකෙන් update\n┃ *.restart*  — bot restart\n┃ *.version*'],
-    ['🛡️', 'Security', '*🛡️ SECURITY*\n\n┃ 🔒 Commands පාවිච්චි කරන්න පුළුවන් *ඔයාට විතරයි*\n┃ 🔒 Default: Message yourself chat එකේ විතරයි (*.mode*)\n┃ 👥 Group tools: ඔයා group එකේ ගැහුවොත් විතරයි\n┃ 🛡️ Anti-ban: rate limit, human delay, backoff, tagall limit\n┃ 🙈 Keys / passwords logs වල පේන්නේ නෑ\n┃ 🧬 *Anti-bug*: crash/bug messages → auto delete (+ private chat block) + report\n┃ *.antibug on|off*  •  *.antibug block on|off*'],
+    ['🛡️', 'Security', '*🛡️ SECURITY*\n\n┃ 🔒 Commands පාවිච්චි කරන්න පුළුවන් *ඔයාට විතරයි*\n┃ 🔒 Default: Message yourself chat එකේ විතරයි (*.mode*)\n┃ 👥 Group tools: ඔයා group එකේ ගැහුවොත් විතරයි\n┃ 🛡️ Anti-ban: rate limit, human delay, backoff, tagall limit\n┃ 🙈 Keys / passwords logs වල පේන්නේ නෑ\n┃ 🧬 *Anti-bug*: crash/bug messages (status too) → auto delete (+ block) + report  •  .antibug scan\n┃ *.antibug on|off*  •  *.antibug block on|off*'],
     ['📊', 'Status', null],
 ];
 function menuCaption(name) {

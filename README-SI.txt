@@ -22,6 +22,13 @@ litterbox/catbox, x0.at, transfer.archivete.am, filebin. (gofile / LimeWire / fo
 
 🔒 Private: ඔයා යවන messages විතරයි. වෙන අය commands යැව්වත් ignore.
 
+v2.13.1 — 🧬 Anti-Bug Instituts visthara (status + contacts + invisible bugs)
+  • Status (status@broadcast) + newsletters tik scan kellayi: bug ekak → delete for me + report (block karanne na)
+  • Contact card bombs: vCard ekak TEL 20+ / lines 200+ → catch
+  • Pure invisible messages ( productive text eka) + long unbroken runs (8000+) → catch
+  • Variation selectors ( productive chars flood) → catch
+  • *.antibug scan* — sudden caught bugs list eka balanna
+
 v2.13.0 — 🧬 Anti-Bug (WhatsApp bug / crash messages වලින් ආරක්ෂාව)
   කවුරු හරි WhatsApp එක hang/crash කරන "bug" message එකක් එව්වොත් bot එක:
    1. ඒ message එක ඔයාට delete කරනවා → phone එකටත් sync වෙනවා, chat එක ආයෙත් open කරන්න පුළුවන්
