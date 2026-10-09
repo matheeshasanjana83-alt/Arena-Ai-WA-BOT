@@ -40,8 +40,15 @@ async function sendFile(send, jid, msg, kind, p, extra) {
 }
 
 // ───────── YouTube / any yt-dlp site ─────────
+// ".video <link> 1080" / ".yt <link> 720p" → quality pick
+const Q_RE = /\s(2160|1440|1080|720|480|360|240|144)p?\s*$/i;
+
 async function ytCommand(send, jid, msg, query, mode, label = 'YouTube') {
-    if (!query) return send(jid, { text: `${mode === 'audio' ? '🎧' : '🎬'} *${mode === 'audio' ? '.song' : '.video'} <link හෝ නම>*\nඋදා: ${mode === 'audio' ? '.song faded alan walker' : '.video https://youtu.be/xxxx'}` }, { quoted: msg });
+    let height = null;
+    const qm = query.match(Q_RE);
+    if (qm) { height = +qm[1]; query = query.slice(0, qm.index).trim(); }
+    if (!query) return send(jid, { text: `${mode === 'audio' ? '🎧' : '🎬'} *${mode === 'audio' ? '.song' : '.video'} <link හෝ නම>*${mode === 'audio' ? '' : ' [quality: 2160/1440/1080/720/480/360]'}
+උදා: ${mode === 'audio' ? '.song faded alan walker' : '.video https://youtu.be/xxxx 1080'}` }, { quoted: msg });
     const edit = await status(send, jid, msg, '🔎 හොයනවා...');
     let url = (query.match(URL_RE) || [])[0], title = '', meta = '';
     try {
@@ -50,8 +57,12 @@ async function ytCommand(send, jid, msg, query, mode, label = 'YouTube') {
             if (!v) return edit(`😢 "${query}" — හරියන result එකක් නෑ`);
             url = v.url; title = v.title; meta = `👤 ${v.author?.name || '—'}  •  ⏱️ ${v.timestamp || '—'}  •  👁️ ${fmtNum(v.views)}`;
         }
-        await edit(`⬇️ ${mode === 'audio' ? 'Audio' : 'Video'} download වෙනවා...${title ? '\n🎵 ' + title : ''}`);
-        const r = await media.ytdl(url, { mode, maxMB: mode === 'audio' ? Math.min(60, MAXMB()) : Math.min(150, MAXMB()) });
+        // fb.watch / fb.gg share links → resolve manually (yt-dlp generic extractor hits a redirect loop)
+        if (/^https?:\/\/(www\.)?(fb\.watch|fb\.gg)\//i.test(url)) {
+            try { url = await media.resolveRedirects(url); } catch { }
+        }
+        await edit(`⬇️ ${mode === 'audio' ? 'Audio' : 'Video'} download වෙනවා...${title ? '\n🎵 ' + title : ''}${height ? `\n📺 ${height}p` : ''}`);
+        const r = await media.ytdl(url, { mode, height, maxMB: mode === 'audio' ? Math.min(60, MAXMB()) : Math.min(150, MAXMB()) });
         if (!title) { try { const i = await media.info(url); title = i.title || ''; meta = `👤 ${i.uploader || i.channel || '—'}  •  ⏱️ ${fmtDur(i.duration)}`; } catch { } }
         await edit(`📤 යවනවා... (${human(r.size)})`);
         const cap = `${mode === 'audio' ? '🎧' : '🎬'} *${(title || label).slice(0, 150)}*\n${meta}${r.height && mode === 'video' ? '  •  📺 ' + r.height + 'p' : ''}\n📦 ${human(r.size)}`;
@@ -75,16 +86,28 @@ async function tiktok(send, jid, msg, q) {
     if (!url || !/tiktok\.com/i.test(url)) return send(jid, { text: '🎵 *.tiktok <link>*  — watermark නැතුව download' }, { quoted: msg });
     const edit = await status(send, jid, msg, '⏳ TikTok video එක ගන්නවා...');
     try {
-        const r = await fetch('https://tikwm.com/api/?hd=1&url=' + encodeURIComponent(url), { headers: { 'User-Agent': 'Mozilla/5.0' } });
-        const j = await r.json();
-        if (j.code !== 0 || !j.data) throw new Error(j.msg || 'TikTok API error');
+        let j = null;
+        for (let tries = 0; tries < 2; tries++) {                       // tikwm free API rate-limits → 1 retry
+            const r = await fetch('https://tikwm.com/api/?hd=1&url=' + encodeURIComponent(url), { headers: { 'User-Agent': 'Mozilla/5.0' } });
+            j = await r.json().catch(() => null);
+            if (j?.code === 0 && j.data) break;
+            if (tries === 0) await new Promise((res) => setTimeout(res, 1500));
+        }
+        if (!j || j.code !== 0 || !j.data) throw new Error((j && j.msg) || 'TikTok API error');
         const d = j.data, abs = (u) => !u ? null : u.startsWith('/') ? 'https://tikwm.com' + u : u;
         const cap = `🎵 *${(d.title || 'TikTok').slice(0, 150)}*\n👤 @${d.author?.unique_id || '?'}  •  ⏱️ ${d.duration || '?'}s\n❤️ ${fmtNum(d.digg_count)}  •  💬 ${fmtNum(d.comment_count)}  •  👁️ ${fmtNum(d.play_count)}\n✅ No watermark`;
         if (d.images?.length) {                            // photo slideshow
             for (const im of d.images.slice(0, 10)) await send(jid, { image: { url: im } }, { quoted: msg });
             await send(jid, { text: cap });
         } else {
-            await send(jid, { video: { url: abs(d.hdplay || d.play) }, mimetype: 'video/mp4', caption: cap }, { quoted: msg });
+            const vurl = abs(d.hdplay || d.play);
+            let vp = null;
+            try { vp = await media.fetchToFile(vurl, 'tiktok', { referer: 'https://www.tiktok.com/' }); }   // server-side: proxy-aware, UA/Referer set
+            catch { }
+            try {
+                if (vp) await send(jid, { video: { url: vp }, mimetype: 'video/mp4', caption: cap }, { quoted: msg });
+                else await send(jid, { video: { url: vurl }, mimetype: 'video/mp4', caption: cap }, { quoted: msg });   // old way fallback
+            } finally { if (vp) fs.rm(vp, { force: true }, () => { }); }
         }
         await edit('✅ ඉවරයි');
     } catch (e) {

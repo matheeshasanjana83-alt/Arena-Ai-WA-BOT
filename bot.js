@@ -122,7 +122,7 @@ function getText(m) {
 
 const HELP = `🤖 *Arena AI* — ඔක්කොම commands
 
-🎬 *.yts* <නම>  •  *.song* <නම/link>  •  *.video* <නම/link>
+🎬 *.yts* <නම>  •  *.song* <නම/link>  •  *.video* <නම/link> [1080/720/480]
 📱 *.tiktok*  •  *.fb*  •  *.ig*  •  *.x*  <link>
 🔍 *.wiki* <මාතෘකාව>  •  🐙 *.gitclone* user/repo
 🖼️ *.s* (photo/video reply)  •  *.take* Pack | Author
@@ -141,6 +141,7 @@ const HELP = `🤖 *Arena AI* — ඔක්කොම commands
 *.keys*  — keys තියෙනවද බලන්න
 *.net <link>*  — download fail නම් හේතුව බලන්න (DNS / IP block)
 *.setproxy <url|off>*  — block වෙන sites වලට proxy
+*.setcookies*  — YouTube bot-check fix (cookies.txt file එකක් යවලා)
 *.update*  — bot එක GitHub එකෙන් update කරන්න (pair කරන්න ඕනේ නෑ)
 *.version*  — දැන් තියෙන version එක
 *.ping*  — bot එක වැඩද බලන්න
@@ -318,6 +319,7 @@ async function onMessages({ messages, type }, send, del = async () => { }) {
                     await send(jid, { text: '🔧 *Network check*\n\n' + rep, edit: st.key }); continue;
                 }
                 if (c === '.setproxy') { await handleProxy(send, del, jid, msg, rest.join(' ').trim()); continue; }
+                if (c === '.setcookies') { await handleCookies(send, del, jid, msg, rest.join(' ').trim()); continue; }
                 if (c === '.keys') { const k = ai.getKeys(); await send(jid, { text: `🔑 *API keys*\nGemini: ${k.gemini ? '✅ ' + mask(k.gemini) : '❌ නෑ'}\nGroq: ${k.groq ? '✅ ' + mask(k.groq) : '❌ නෑ'}` }, { quoted: msg }); continue; }
                 if (c === '.restart') { await send(jid, { text: '🔄 Restart වෙනවා... තත්පර 10 කින් *.ping*' }, { quoted: msg }); setTimeout(() => process.exit(process.env.ARENA_LAUNCHER ? 100 : 0), 1500); continue; }
                 if (await tools.handle(c, { send, jid, msg, rest, sock: SOCK, me: ME })) continue;
@@ -380,7 +382,7 @@ const CATS = [
     ['🎉', 'Fun', '*🎉 FUN*\n\n┃ *.joke*  — විහිළුවක්\n┃ *.fact*  — රසවත් කරුණක් (+සිංහල)\n┃ *.quote*  — quote එකක්\n┃ *.8ball <ප්‍රශ්නය>*  — 🎱'],
     ['👥', 'Group', '*👥 GROUP*  (group එකේ ඔයා ගහන්න)\n\n┃ *.groupinfo*  — group විස්තර\n┃ *.grouplink*  — invite link (admin)\n┃ *.tagall [message]*  — ඔක්කොටම mention (විනාඩි 10 කට 1)\n┃ *.kick @user*  — අයින් කරන්න (admin)\n┃ *.promote @user*  /  *.demote @user*\n┃ *.mute*  /  *.unmute*  — admins only / open\n┃ *.tagadmins*  •  *.resetlink*\n┃ *.jid*  — chat ID එක\n\n💡 @mention නැත්නම් message එකකට reply කරලා ගහන්න'],
     ['🤖', 'AI', '*🤖 AI*\n\n┃ *.ai <ප්‍රශ්නය>*  — Gemini / Groq (සිංහල OK)\n┃ message එකකට reply කරලා *.ai*  — ඒ message එක ගැන\n┃ *.ai reset*  — කතාව අලුතෙන්\n┃ *.setkey gemini <KEY>*  /  *.setkey groq <KEY>*\n┃ *.keys*  — keys බලන්න'],
-    ['🔧', 'Network', '*🔧 NETWORK*\n\n┃ *.net <link>*  — download fail නම් හේතුව (DNS / IP block)\n┃ *.setproxy <url>*  — block sites වලට proxy (YouTube වලටත්)\n┃ *.setproxy off*'],
+    ['🔧', 'Network', '*🔧 NETWORK*\n\n┃ *.net <link>*  — download fail නම් හේතුව (DNS / IP block)\n┃ *.setproxy <url>*  — block sites වලට proxy (YouTube වලටත්)\n┃ *.setproxy off*\n┃ *.setcookies*  — YouTube bot-check fix (cookies.txt file එකක් යවලා)\n┃ *.setcookies off*'],
     ['⚙️', 'Settings', '*⚙️ SETTINGS*\n\n┃ *.setlogo*  — photo එකකට reply කරලා → menu logo\n┃ *.dellogo*  — default banner\n┃ *.react on|off*  — auto react\n┃ *.maxmb <MB>*  — download limit (max 2000)\n┃ *.mode self|all*  — commands වැඩ කරන chats\n┃ *.update*  — GitHub එකෙන් update\n┃ *.restart*  — bot restart\n┃ *.version*'],
     ['🛡️', 'Security', '*🛡️ SECURITY*\n\n┃ 🔒 Commands පාවිච්චි කරන්න පුළුවන් *ඔයාට විතරයි*\n┃ 🔒 Default: Message yourself chat එකේ විතරයි (*.mode*)\n┃ 👥 Group tools: ඔයා group එකේ ගැහුවොත් විතරයි\n┃ 🛡️ Anti-ban: rate limit, human delay, backoff, tagall limit\n┃ 🙈 Keys / passwords logs වල පේන්නේ නෑ\n┃ 🧬 *Anti-bug*: crash/bug messages (status too) → auto delete (+ block) + report  •  .antibug scan\n┃ *.antibug on|off*  •  *.antibug block on|off*'],
     ['📊', 'Status', null],
@@ -493,6 +495,38 @@ async function handleProxy(send, del, jid, msg, arg) {
     d.proxy = arg.replace(/\/$/, ''); require('fs').writeFileSync(f, JSON.stringify(d, null, 2));
     if (/@/.test(arg)) await del(msg.key);   // hide the password
     await send(jid, { text: `🧩 Proxy save කළා ✅ ${hide(d.proxy)}\nBlock වෙන sites වලට ඉබේම පාවිච්චි වෙනවා. Test: *.net <link>*` });
+}
+
+// ───────── .setcookies — YouTube bot-check fix (cookies.txt) ─────────
+const COOKIES_FILE = () => require('path').join(__dirname, 'cookies.txt');
+const looksLikeCookies = (t) => /# (Netscape )?HTTP Cookie File|# Netscape/i.test(t) || (/\.youtube\.com\s+\w+\t/.test(t) && t.includes('\t'));
+
+async function handleCookies(send, del, jid, msg, arg) {
+    const fsx = require('fs');
+    if (/^(off|delete|remove)$/i.test(arg)) { fsx.rmSync(COOKIES_FILE(), { force: true }); return send(jid, { text: '🍪 Cookies අයින් කළා ✅' }, { quoted: msg }); }
+    // cookies.txt file එකක් attach කරලා (caption එකේ .setcookies)
+    const doc = msg.message?.documentMessage;
+    if (doc) {
+        try {
+            const buf = await mediaDownloader({ key: msg.key, message: msg.message });
+            const txt = Buffer.from(buf).toString('utf8');
+            if (!looksLikeCookies(txt)) return send(jid, { text: '❌ මේක cookies.txt file එකක් වගේ නෑ. Browser extension එකෙන් export කරපු file එක එවන්න (විස්තර: *.setcookies* හිස්ව ගහන්න).' }, { quoted: msg });
+            fsx.writeFileSync(COOKIES_FILE(), txt);
+            try { await del(msg.key); } catch { }   // cookies තියෙන message එක මකනවා (privacy)
+            return send(jid, { text: `🍪 YouTube cookies save කළා ✅ (${(txt.length / 1024).toFixed(0)} KB)\n🔒 ඔයා එවපු message එක මකලා දැම්මා.\nදැන් *.yt / .video* ආයෙත් try කරන්න — bot check එක pass වෙන්න ඕනේ.` });
+        } catch (e) { return send(jid, { text: '❌ File එක ගන්න බැරි වුණා: ' + String(e.message).slice(0, 150) }, { quoted: msg }); }
+    }
+    // cookies.txt content එක paste කරලා:  .setcookies <paste>  (format check එක තමයි real gate එක)
+    if (arg && arg.length > 50) {
+        if (!looksLikeCookies(arg)) return send(jid, { text: '❌ මේක cookies.txt content එකක් වගේ නෑ. File එක ඇතුළේ text එක සම්පූර්ණයෙන් paste කරන්න.' }, { quoted: msg });
+        fsx.writeFileSync(COOKIES_FILE(), arg.endsWith('\n') ? arg : arg + '\n');
+        try { await del(msg.key); } catch { }
+        return send(jid, { text: `🍪 Cookies save කළා ✅ (${(arg.length / 1024).toFixed(0)} KB)\n🔒 message එක මකලා දැම්මා.\nදැන් *.yt / .video* ආයෙත් try කරන්න.` });
+    }
+    const has = fsx.existsSync(COOKIES_FILE());
+    if (has) return send(jid, { text: '🍪 YouTube cookies දැනටමත් දාලා තියෙනවා ✅\nඅයින් කරන්න: *.setcookies off*\nආයෙත් අලුත් ඒවා දාන්න: cookies.txt file එකක් යවලා caption එකට *.setcookies* ලියන්න' }, { quoted: msg });
+    return send(jid, { text: `🍪 *YouTube bot-check fix — cookies දාන හැටි:*
+\nYouTube මේ server එකේ IP එක block කරද්දී ("Sign in to confirm you're not a bot") මේකෙන් fix වෙනවා:\n\n1️⃣ PC browser එකෙන් *youtube.com* එකට login වෙන්න (ඔයාගේ Google account එකෙන්)\n2️⃣ "Get cookies.txt LOCALLY" extension එක install කරන්න (Chrome / Edge / Firefox)\n3️⃣ YouTube page එකේ extension icon එක ඔබලා *Export* → cookies.txt file එක ගන්න\n4️⃣ ඒ file එක *මේ chat එකට* යවන්න — caption එකට *.setcookies* ලියන්න\n\n✅ Save වුණාම *.yt / .video* වලට YouTube එකේ block එක pass වෙනවා\n🔒 Cookies message එක auto මකලා දානවා (privacy)\n🗑️ අයින් කරන්න: *.setcookies off*\n\n💡 cookies දාලා 1-2 සැරයක් වැඩ කරලා නැවතුණොත් අලුතෙන් export කරලා දාන්න (YouTube cookies ටිකකින් expire වෙනවා)` }, { quoted: msg });
 }
 
 const mask = (k) => k.slice(0, 4) + '••••' + k.slice(-3);
