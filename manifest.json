@@ -1,6 +1,6 @@
 {
-  "version": "2.17.0",
-  "notes": "Downloader v2: eporner.com .download support (dload/mp4 direct + video pages via yt-dlp); free proxy pool auto-refreshes from public lists (monosans/TheSpeedX/proxyscrape) when alive < 8 — pool never runs dry; smartFetch waits up to 20s for pool on hard-blocked CDNs; .proxies shows auto-fetched count",
+  "version": "2.18.0",
+  "notes": "NEW .moviepro: in-chat movie search (IMDb/Cinemeta, no key) -> numbered list -> poster info card + Sinhala subtitle link (sinhalasub.lk) + download page (cinesubz.net) + trailer video (.moviepro <n> trailer via yt pipeline); bare-number replies pick from the list like .menu",
   "files": [
     "bot.js",
     "ai.js",
@@ -26,6 +26,8 @@
     "test_v216.js",
     "proxypool.js",
     "proxies.txt",
-    "test_v217.js"
+    "test_v217.js",
+    "movies.js",
+    "test_v218.js"
   ]
 }

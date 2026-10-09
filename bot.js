@@ -39,6 +39,7 @@ const updater = require('./updater');
 const netx = require('./net');
 const guard = require('./guard');
 const features = require('./features');
+const movies = require('./movies');
 const tools = require('./tools');
 const antibug = require('./antibug');
 
@@ -124,6 +125,7 @@ function getText(m) {
 const HELP = `🤖 *KAVIZ MD V1* — ඔක්කොම commands
 
 🎬 *.yts* <නම>  •  *.song* <නම/link>  •  *.video* <නම/link> [2160/1080/720/480...]
+🎥 *.moviepro* <නම> — movie search + info + trailer (v2.18)
 📱 *.tiktok*  •  *.fb* (*.facebook*)  •  *.ig*  •  *.x*  <link>
 🔍 *.wiki* <මාතෘකාව>  •  🐙 *.gitclone* user/repo
 🖼️ *.s* (photo/video reply)  •  *.take* Pack | Author
@@ -272,9 +274,10 @@ async function onMessages({ messages, type }, send, del = async () => { }) {
                 if (type !== 'notify' && ts && ts < STARTED - 60) continue;   // old history — don't re-run old commands
                 seen.add(msg.key.id); if (seen.size > 1000) seen.delete(seen.values().next().value);
                 let text = getText(msg.message);
-                if (/^\d{1,2}$/.test(text)) {                                   // number reply to .menu → category
+                if (/^\d{1,2}$/.test(text)) {                                   // number reply to .menu → category (or .moviepro pick)
                     const st = menuState.get(replyJid(msg.key)), qid = msg.message?.extendedTextMessage?.contextInfo?.stanzaId;
                     if (st && (qid ? qid === st.id : Date.now() - st.at < 180e3)) text = '.menu ' + text;
+                    else if (movies.hasSession(replyJid(msg.key))) text = '.moviepro ' + text;
                 }
                 if (!text.startsWith('.')) continue;
                 const jid = replyJid(msg.key);
@@ -327,6 +330,7 @@ async function onMessages({ messages, type }, send, del = async () => { }) {
                 if (c === '.restart') { await send(jid, { text: '🔄 Restart වෙනවා... තත්පර 10 කින් *.ping*' }, { quoted: msg }); setTimeout(() => process.exit(process.env.ARENA_LAUNCHER ? 100 : 0), 1500); continue; }
                 if (await tools.handle(c, { send, jid, msg, rest, sock: SOCK, me: ME })) continue;
                 if (await features.handle(c, { send, jid, msg, rest, sock: SOCK, me: ME, download })) continue;
+                if (await movies.handle(c, { send, jid, msg, rest, sock: SOCK, me: ME })) continue;
                 if (!['.download', '.dl', '.dn'].includes(c)) continue;
 
                 const links = (text.match(/https?:\/\/\S+/g) || []).slice(0, 5);   // 🛡️ max 5 per command
@@ -378,6 +382,7 @@ async function handleReact(send, jid, msg, arg) {
 const CATS = [
     ['📥', 'Download', `*📥 DOWNLOAD*\n\n┃ *.download <link>*  (*.dl*)  — file එක එවනවා\n┃ *.dl link1 link2*  — links 5 දක්වා\n┃ *.gitclone user/repo*  — GitHub repo → zip\n\n✅ Direct, GitHub, Google Drive, MediaFire, MEGA, Dropbox, Pixeldrain, catbox...\n📏 Max: {MAX} / file  •  *.maxmb <MB>* එකෙන් වෙනස් කරන්න (max 2000)`],
     ['🎬', 'YouTube', '*🎬 YOUTUBE*\n\n┃ *.yts <නම>*  — search\n┃ *.song <නම / link>*  — audio (*.play*, *.yta*)\n┃ *.video <නම / link>*  — video (*.ytv*, *.yt*)\n┃ *.video <link> 1080*  — quality තෝරන්න\n\n📺 2160p → 144p ඔක්කොම (quality නැතුව = best)'],
+    ['🎥', 'MoviePro', '*🎥 MOVIEPRO*\n\n┃ *.moviepro <movie නම>*  — search (උදා: .moviepro avatar)\n┃ *.moviepro <අංකය>*  — poster + info card + 🇱🇰 සිංහල උපසිරැසි link + download page\n┃ *.moviepro <අංකය> trailer*  — trailer video එක යවනවා\n┃ list එකට *අංකය විතරක්* reply කළත් වැඩ\n\n🔎 IMDb (Cinemeta) search — key ඕනේ නෑ'],
     ['📱', 'Social', '*📱 SOCIAL MEDIA*\n\n┃ *.tiktok <link>*  — watermark නැතුව (*.tt*)\n┃ *.fb <link>*  — Facebook video (*.facebook*, *.faceboock*)\n┃ *.ig <link>*  — Instagram reel / video\n┃ *.x <link>*  — X / Twitter video\n\n🔓 Public videos විතරයි'],
     ['🔍', 'Search', '*🔍 SEARCH*\n\n┃ *.wiki <මාතෘකාව>*  — Wikipedia\n┃ *.wiki si <මාතෘකාව>*  — සිංහල Wikipedia\n┃ *.yts <නම>*  — YouTube search'],
     ['🖼️', 'Sticker', '*🖼️ STICKER*\n\n┃ *.s*  — photo / video එකකට reply කරලා (නැත්නම් caption එකට)\n┃ *.take Pack | Author*  — sticker එකක නම වෙනස් කරන්න\n\n🎞️ Video stickers තත්පර 6 දක්වා'],

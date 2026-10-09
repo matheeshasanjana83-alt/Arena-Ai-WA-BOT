@@ -22,6 +22,14 @@ litterbox/catbox, x0.at, transfer.archivete.am, filebin, eporner (v2.17). (gofil
 
 🔒 Private: ඔයා යවන messages විතරයි. වෙන අය commands යැව්වත් ignore.
 
+v2.18.0 — 🎥 .moviepro (movies — in-chat interactive flow)
+  • .moviepro <movie නම> — IMDb (Cinemeta — free, key ඕනේ නෑ) search → results 8 දක්වා
+  • .moviepro <අංකය> — poster + ⭐rating + genres + description + IMDb link +
+    🇱🇰 සිංහල උපසිරැසි link (sinhalasub.lk) + download page (cinesubz.net)
+  • .moviepro <අංකය> trailer — trailer එක video විදිහට යවනවා (yt-dlp → clipto → pool)
+  • List එකට අංකය විතරක් reply කළත් වැඩ (.menu වගේම)
+  • අනිත් bots වල .moviepro වගේ නෙවෙයි (banner/webhook) — සම්පූර්ණ in-chat flow එකක්
+
 v2.17.0 — 🎬 eporner downloads + pool auto-refresh
   • .download — eporner.com දැන් support: direct /dload/...mp4 links + video page links
     (page links yt-dlp හරහා, formats + quality auto). CDN block වුණොත් pool route එකෙන් යනවා.

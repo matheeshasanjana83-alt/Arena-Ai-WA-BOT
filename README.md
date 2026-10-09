@@ -11,6 +11,7 @@ Private WhatsApp bot (Baileys v7) — `.ai` (Gemini / Groq), `.download`, `.yt/.
 | `.net <link>` | Download fail නම් හේතුව (DNS block / IP block) |
 | `.setproxy <url\|off>` | Block වෙන sites වලට proxy |
 | `.proxies` | Free proxy pool status (`check` / `on` / `off`) — block වුණාම auto fallback; alive අඩු නම් free lists වලින් auto-refresh (v2.17) |
+| `.moviepro <නම>` | Movie search → info card (poster/IMDb) + 🇱🇰 සිංහල උපසිරැසි link + trailer video (v2.18) |
 | `.keys` · `.menu` · `.ping` | |
 | `.version` | දැන් version එක + update තියෙනවද |
 | `.update` | මේ repo එකෙන් අලුත් version එක ගන්නවා (auth / keys වෙනස් වෙන්නේ නෑ) |

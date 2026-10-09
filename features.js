@@ -395,4 +395,4 @@ async function handle(c, { send, jid, msg, rest, sock, me, download }) {
     return true;
 }
 
-module.exports = { handle, CMDS, GROUP_CMDS, setMediaDownloader: (f) => { mediaDownloader = f; }, _ytsearch: (f) => { yts = f; } };
+module.exports = { handle, CMDS, GROUP_CMDS, ytCommand, setMediaDownloader: (f) => { mediaDownloader = f; }, _ytsearch: (f) => { yts = f; } };
