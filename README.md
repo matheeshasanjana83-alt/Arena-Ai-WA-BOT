@@ -11,7 +11,7 @@ Private WhatsApp bot (Baileys v7) — `.ai` (Gemini / Groq), `.download`, `.yt/.
 | `.net <link>` | Download fail නම් හේතුව (DNS block / IP block) |
 | `.setproxy <url\|off>` | Block වෙන sites වලට proxy |
 | `.proxies` | Free proxy pool status (`check` / `on` / `off`) — block වුණාම auto fallback; alive අඩු නම් free lists වලින් auto-refresh (v2.17) |
-| `.moviepro <නම>` | Movie search → info card + **CineSubz quality list (480p/720p/1080p)** → `.moviepro <n> <q#>` ගහාම **movie file එකම chat එකට** 🍿 (v2.19) · `.moviepro <n> <q#> link` = 🔗 direct link (v2.21) · `.moviepro <n> trailer` = trailer |
+| `.moviepro <නම>` | **Movies + 📺 TV series** (v2.23) — search → info card → movies: quality list → **movie file එකම chat එකට** 🍿 · series: **Episodes List** (season packs + episodes) → `.moviepro <n> <row#>` = episode quality list / season options → `.moviepro <n> <row#> <q#>` = **episode file** / **season link pack (episodes ඔක්කොමේ direct links)** · `link` = 🔗 share link · `next` = page 2 |
 | `.block <නම්බර්\|reply>` | Spammer block (server-side — ඒ number එකෙන් ආයෙ messages එන්නෙම නෑ) · `.unblock` · `.blocklist` · `.spamlog` (v2.20) |
 | `.antispam on\|off\|<N>` | DM flood guard — මිනිත්තුවකට N (default 10) ට වැඩි messages → auto block + notice (v2.20) |
 | `.mirror <link>` | URL → download → **direct share link** (qu.ax දින 30 → transfer දින 7) — අනිත් bots වල `/dl` link UX එක · `.link` alias · `.tourl` fixed (v2.21) |

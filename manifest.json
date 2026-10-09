@@ -1,6 +1,6 @@
 {
-  "version": "2.22.0",
-  "notes": "UX FLOW OVERHAUL: pro-bot feedback flow — heavy commands react ⏳ while working → ✅/❌ when done; progress bubbles self-delete on finish (no \"done\" residue); captions are one title + small brand footer (style.js, single source of truth); compact ✦ menu + categories; .ping shows ms; AI replies no longer stamp the model name. No report-flood.",
+  "version": "2.23.0",
+  "notes": "MOVIEPRO SERIES FLOW: .moviepro now finds TV series too (Cinemeta movies+series search) — pick a series → IMDb card (release/rating/genres/country) + Episodes List (Season packs + every episode, paginated); season row → Video Quality options → all-episode direct link pack; episode row → quality list → episode FILE to chat (or mirror link with 'link'). Real CineSubz episode pipeline: episode page → zeta player ajax → direct mp4 (?play=true). Movies flow unchanged. No report-flood.",
   "files": [
     "bot.js",
     "ai.js",
@@ -35,6 +35,7 @@
     "mirror.js",
     "test_v221.js",
     "style.js",
-    "test_v222.js"
+    "test_v222.js",
+    "test_v223.js"
   ]
 }

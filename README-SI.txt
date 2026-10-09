@@ -22,6 +22,23 @@ litterbox/catbox, x0.at, transfer.archivete.am, filebin, eporner (v2.17). (gofil
 
 🔒 Private: ඔයා යවන messages විතරයි. වෙන අය commands යැව්වත් ignore.
 
+v2.23.0 — 📺 MoviePro SERIES flow (TV series + season packs)
+  • .moviepro <නම> — දැන් movies + TV series දෙකම හොයනවා (series = 📺 mark එකත් එක්ක)
+  • .moviepro <අංකය> (series එකකට) — IMDb details card (📅 release · ⏱ runtime · ⭐ rating ·
+    🎭 genres · 🌍 country · 📝 description) + Episodes List:
+      *1* | 📦 Download Season 1 (All Episodes)
+      *2* | Season 1 Episode 1  ·  date
+      ... (episodes 60 බැගින් pages — .moviepro <n> next = ඊළඟ page)
+  • .moviepro <අංකය> <row#> (season row එකකට) — Video Quality options (480p/720p/...) +
+    සිංහල උපසිරැසි link
+  • .moviepro <අංකය> <row#> <quality#> — ඒ season එකේ episodes ඔක්කොමේ DIRECT download links
+    (25 බැගින් — .moviepro <n> <row#> <q#> next = ඊළඟ 25)
+  • .moviepro <අංකය> <episode row#> — ඒ episode එකේ quality list
+  • .moviepro <අංකය> <episode row#> <quality#> — episode FILE එකම chat එකට (maxmb guard එකත් එක්ක)
+  • Source: CineSubz episode pipeline (episode page → zeta player ajax → direct mp4) —
+    series එක CineSubz එකේ නැත්නම් සිංහල උපසිරැසි link එක එනවා
+  • Movies flow එක වෙනස් වෙලා නෑ (movie file / link / trailer ඔක්කොම දැනට වගේ)
+
 v2.22.0 — ✨ Flow overhaul: bot එක දැන් hand-made bot එකක් වගේ කතා කරනවා
   • ⏳ → ✅/❌ react flow — heavy command එකක් (download/movie/AI/...) ගැහුවම bot එක
     ඔයාගේ message එකට ⏳ react කරනවා, ඉවර වුණාම ✅ (fail නම් ❌). Light commands වලට ✨ random react.

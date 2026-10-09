@@ -128,7 +128,7 @@ const HELP = `*◈ KAVIZ MD V1 ◈* — commands
 
 📥 *.download <link>* (*.dl*) · *.mirror <link>* · *.gitclone user/repo*
 🎬 *.yts* <නම> · *.song* <නම/link> · *.video* <නම/link> [2160..144]
-🎥 *.moviepro* <නම> — movie file එකම chat එකට
+🎥 *.moviepro* <නම> — movie/series files (📺 episodes + season packs)
 📱 *.tiktok* · *.fb* · *.ig* · *.x* <link>
 🖼️ *.s* (reply) · *.take* Pack | Author
 🔍 *.wiki* <මාතෘකාව>
@@ -380,7 +380,7 @@ async function handleReact(send, jid, msg, arg) {
 const CATS = [
     ['📥', 'Download', `*📥 DOWNLOAD*\n\n✦ *.download <link>* — file එක එවනවා\n✦ *.dl link1 link2* — links 5 දක්වා\n✦ *.mirror <link>* — 🔗 direct share link\n✦ *.gitclone user/repo* — repo → zip\n\n> 📏 max {MAX} / file · *.maxmb* වෙනස් කරන්න`],
     ['🎬', 'YouTube', `*🎬 YOUTUBE*\n\n✦ *.yts <නම>* — search\n✦ *.song <නම / link>* — audio (*.play*)\n✦ *.video <නම / link>* — video (*.yt*)\n✦ *.video <link> 1080* — quality pick\n\n> 2160p → 144p · quality නැත්නම් best`],
-    ['🎥', 'MoviePro', `*🎥 MOVIEPRO*\n\n✦ *.moviepro <නම>* — search\n✦ *.moviepro <n>* — info + quality list\n✦ *.moviepro <n> <q#>* — 🍿 movie file එකම එනවා\n✦ *.moviepro <n> <q#> link* — 🔗 share link\n✦ *.moviepro <n> trailer* — trailer\n\n> list එකට අංකය විතරක් reply කරන්නත් වැඩ`],
+    ['🎥', 'MoviePro', `*🎥 MOVIEPRO*\n\n✦ *.moviepro <නම>* — search (movies + 📺 series)\n✦ *.moviepro <n>* — info card\n✦ *.moviepro <n> <row#>* — 🍿 quality list / 📺 episodes\n✦ *.moviepro <n> <row#> <q#>* — 🍿 movie file · 📦 season links · 📺 episode file\n✦ *.moviepro <n> <row#> <q#> link* — 🔗 share link\n✦ *.moviepro <n> next* — 📺 episodes page 2\n\n> list එකට අංකය විතරක් reply කරන්නත් වැඩ`],
     ['📱', 'Social', `*📱 SOCIAL*\n\n✦ *.tiktok <link>* — watermark නෑ (*.tt*)\n✦ *.fb <link>* — Facebook (*.facebook*)\n✦ *.ig <link>* — Instagram\n✦ *.x <link>* — X / Twitter`],
     ['🔍', 'Search', `*🔍 SEARCH*\n\n✦ *.wiki <මාතෘකාව>* — Wikipedia\n✦ *.wiki si <මාතෘකාව>* — සිංහල wiki\n✦ *.yts <නම>* — YouTube search`],
     ['🖼️', 'Sticker', `*🖼️ STICKER*\n\n✦ *.s* — photo/video reply → sticker\n✦ *.take Pack | Author* — නම වෙනස් කරන්න\n\n> video sticker — තත්පර 6 දක්වා`],
