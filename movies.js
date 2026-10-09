@@ -20,6 +20,7 @@
  */
 const { smartFetch } = require('./net');
 const { human, maxMB } = require('./downloader');
+const { foot, cut, bar } = require('./style');
 
 const API = 'https://v3-cinemeta.strem.io/catalog/movie/top/search=';
 const SESSION_TTL = 15 * 60e3;
@@ -196,9 +197,9 @@ async function enrichMeta(m) {
 /* ───────────────────────── message builders ───────────────────────── */
 
 function listText(q, list) {
-    return `🎬 *MoviePro — "${q}"*\n\n` + list.map((m, i) =>
-        `*${i + 1}.* ${m.name}${m.releaseInfo ? ' (' + m.releaseInfo + ')' : ''}${m.imdbRating ? '  ⭐' + m.imdbRating : ''}`).join('\n')
-        + `\n\n➡️ අභිමතය තෝරන්න: *.moviepro <අංකය>*  (උදා: *.moviepro 1*)\n(අංකය විතරක් reply කළත් වැඩ)`;
+    return `🎬 *MoviePro — "${cut(q, 40)}"*\n\n` + list.map((m, i) =>
+        `*${i + 1}.* ${cut(m.name, 60)}${m.releaseInfo ? ' (' + m.releaseInfo + ')' : ''}${m.imdbRating ? '  ⭐' + m.imdbRating : ''}`).join('\n')
+        + `\n${foot('*.moviepro <අංකය>* — අංකය විතරක් reply කරන්නත් වැඩ')}`;
 }
 
 function cardText(m, n, quals) {
@@ -209,14 +210,13 @@ function cardText(m, n, quals) {
         m.genres?.length ? `🎭 ${m.genres.slice(0, 4).join(', ')}` : '',
         cast ? `👥 ${cast}` : '', '', `📝 ${desc}`, ''];
     if (quals && quals.items.length) {
-        rows.push(`⬇️ *Download — CineSubz*`);
+        rows.push('');
         quals.items.forEach((l, i) => rows.push(`*${i + 1}.* ${l.label}`));
-        rows.push('', `🎬 *Movie file එකම chat එකට:* *.moviepro ${n} <quality#>*`, `   උදා: *.moviepro ${n} 1*`);
+        rows.push('', `*.moviepro ${n} <quality#>* — 🍿 movie file එකම එනවා`);
     } else {
-        rows.push(`⬇️ Download page: ${dlUrl(m)}`, `🇱🇰 සිංහල උපසිරැසි: ${subsUrl(m)}`);
+        rows.push('', `⬇️ ${dlUrl(m)}`, `🇱🇰 සිංහල උපසිරැසි: ${subsUrl(m)}`);
     }
-    rows.push('', ytLink(m) ? `🎥 Trailer video එකට: *.moviepro ${n} trailer*` : '',
-        m.imdb_id ? `🌐 IMDb: https://www.imdb.com/title/${m.imdb_id}/` : '');
+    rows.push('', ytLink(m) ? `*.moviepro ${n} trailer* — 🎥 trailer` : '');
     return rows.filter(x => x !== undefined).filter(Boolean).join('\n');
 }
 
@@ -234,27 +234,28 @@ async function sendCard(send, jid, msg, m, n, quals) {
 /** trailer video via features.ytCommand (yt-dlp → clipto fallback → cookies/pool) */
 async function trailerCmd(send, jid, msg, m) {
     const yt = ytLink(m);
-    if (!yt) return send(jid, { text: '😢 මේ movie එකට trailer link එකක් හම්බුණේ නෑ' }, { quoted: msg });
+    if (!yt) return send(jid, { text: '❌ මේ movie එකට trailer link එකක් නෑ' }, { quoted: msg });
     await require('./features').ytCommand(send, jid, msg, yt + ' 720', 'video', `Trailer — ${m.name}`);
 }
 
 /* ───────────────────────── movie file download ───────────────────────── */
 
-async function movieFileCmd(send, jid, msg, m, qi, quals, linkMode = false) {
+async function movieFileCmd(send, jid, msg, m, qi, quals, linkMode = false, react) {
     const item = quals.items[qi - 1];
-    if (!item) return send(jid, { text: `❌ ${qi} කියලා quality එකක් නෑ (1-${quals.items.length})` }, { quoted: msg });
+    if (!item) return send(jid, { text: `❌ ${qi} — quality නෑ (1-${quals.items.length})` }, { quoted: msg });
     const label = item.label || 'movie';
     const mb = sizeMB(label);
-    const status = await send(jid, { text: `🎯 *${label}*\n🔗 Link එක resolve කරනවා (CineSubz)...` }, { quoted: msg });
+    const status = await send(jid, { text: `🎯 ${label} · resolve…` }, { quoted: msg });
     const edit = async (t) => { try { await send(jid, { text: t, edit: status.key }); } catch { } };
     try {
         const r = await resolveGate(item.gate);
         if (!r.live) {
-            await edit(`❌ මේ quality එකේ file එක server එකෙන් අයින් වෙලා 😕\nඅනිත් quality එකක් try කරන්න — *.moviepro <අංකය> <quality#>*`);
+            react?.('❌');
+            await edit(`❌ ${label} — file එක server එකෙන් අයින් වෙලා\n> අනිත් quality එකක් try කරන්න`);
             return;
         }
         if (mb && mb > maxMB()) {
-            await edit(`📦 File එක ${human(mb * 1024 * 1024)} — bot limit එක ${human(maxMB() * 1024 * 1024)} නිසා chat එකට යවන්න බැරි (.maxmb වෙනස් කරන්න පුළුවන්)\n\n🔗 Direct link:\n${r.real}`);
+            await edit(`📦 ${human(mb * 1024 * 1024)} — limit එක ${human(maxMB() * 1024 * 1024)}\n> *.maxmb* වෙනස් කරන්න\n🔗 ${r.real}`);
             return;
         }
         let last = 0;
@@ -263,38 +264,40 @@ async function movieFileCmd(send, jid, msg, m, qi, quals, linkMode = false) {
             if (now - last < 8000) return;
             last = now;
             const pct = total ? Math.floor(loaded * 100 / total) : null;
-            const bar = pct === null ? '' : '▰'.repeat(Math.round(pct / 10)) + '▱'.repeat(10 - Math.round(pct / 10)) + ` ${pct}%\n`;
-            edit(`⬇️ Movie download වෙනවා...\n${bar}${human(loaded)} / ${human(total) || '?'}  •  ${label}`);
+            const b = pct === null ? '' : bar(pct) + ` ${pct}%\n`;
+            edit(`⬇️ ${label}\n${b}${human(loaded)} / ${human(total) || '?'}`);
         };
-        await edit(`⏳ Movie එක download වෙනවා...\n${label}`);
+        await edit(`⬇️ ${label} · download…`);
         const { download } = require('./downloader');
         const files = await download(r.real, onProgress, { stream: !linkMode });   // 🌊 file mode → straight to WA; link mode → temp file → mirror
         for (const f of files) {
             if (linkMode) {
-                await edit(`📤 Mirror upload වෙනවා... (${human(f.size)})`);
+                await edit(`🪞 upload… (${human(f.size)})`);
                 const rel = await require('./mirror').uploadFile(f.path, f.name);
-                await edit(`✅ *${m.name}* — direct link! 🔗\n\n🔗 ${rel.url}\n\n📦 ${human(f.size)}  •  ${label}\n⭐ ${m.imdbRating || '—'} IMDb  •  ⏳ දින ${rel.days} (${rel.host})\n⚠️ Public link එකක් — sensitive files එපා`);
+                react?.('✅');
+                await edit(`🔗 *${cut(m.name, 80)}*\n${rel.url}\n${foot(`${human(f.size)} · ${label} · ${rel.days}d (${rel.host}) · public`)}`);
             } else {
-                await edit(`📤 WhatsApp එකට යවනවා... (${human(f.size)})`);
+                await edit(`📤 WhatsApp… (${human(f.size)})`);
                 await send(jid, {
                     document: f.open ? { stream: f.open() } : { url: f.path }, fileName: f.name, mimetype: f.mime,
-                    caption: `🎬 *${m.name}*${m.releaseInfo ? ` (${m.releaseInfo})` : ''}\n📦 ${human(f.size)}  •  ${label}\n⭐ ${m.imdbRating || '—'} IMDb`,
+                    caption: `🎬 *${cut(m.name, 100)}*${m.releaseInfo ? ` (${m.releaseInfo})` : ''}\n${foot(`${human(f.size)} · ${label} · ⭐ ${m.imdbRating || '—'}`)}`,
                 }, { quoted: msg });
             }
             if (f.path) require('fs').rm(f.path, { force: true }, () => { });
         }
-        if (!linkMode) await edit(`✅ Movie එක ආවා! 🍿`);
+        if (!linkMode) { try { await send(jid, { delete: status.key }); } catch { } react?.('✅'); }   // bubble අයින් — movie එකම ප්‍රමාණවත්
     } catch (e) {
         const msgTxt = String(e.message || '');
+        react?.('❌');
         // CDN served its protected player instead of the file → clean link fallback
         try {
             const r = await resolveGate(item.gate);
-            let t = `⚠️ File එක chat එකට ගන්න බැරි වුණා (${msgTxt.slice(0, 120)})\n\n🔗 *Direct link* (${label}):\n${r.real}`;
-            if (r.tg) t += `\n\n✈️ Telegram download: ${r.tg}`;
-            t += `\n🌐 CineSubz page: ${quals.page?.url || item.gate}\n\n💡 Browser එකෙන් open කරලා download කරන්න — IDM වගේ downloader එකකටත් link එක දෙන්න පුළුවන්`;
+            let t = `⚠️ ${cut(msgTxt, 100)}\n\n🔗 *${label}* — ${r.real}`;
+            if (r.tg) t += `\n✈️ ${r.tg}`;
+            t += `\n> 🌐 ${quals.page?.url || item.gate}`;
             await edit(t);
         } catch {
-            await edit(`❌ Fail වුණා: ${msgTxt.slice(0, 200)}`);
+            await edit(`❌ ${msgTxt.slice(0, 200)}`);
         }
     }
 }
@@ -305,15 +308,15 @@ const hasSession = (jid) => { const s = sessions.get(jid); return !!(s && Date.n
 
 async function handle(c, ctx) {
     if (c !== '.moviepro' && c !== '.mvpro' && c !== '.movie') return false;
-    const { send, jid, msg, rest } = ctx;
+    const { send, jid, msg, rest, react } = ctx;
     const arg = rest.join(' ').trim();
     const pick = arg.match(/^(\d{1,2})(?:\s+(trailer|t))?(?:\s+(\d{1,2}))?(?:\s+(link|l))?$/i);
 
     if (pick) {
         const s = sessions.get(jid);
-        if (!hasSession(jid)) return send(jid, { text: '⏳ Search session එක expire වෙලා — මුලින්ම *.moviepro <movie නම>* ගහන්න' }, { quoted: msg });
+        if (!hasSession(jid)) return send(jid, { text: `⏳ session expire වෙලා — *.moviepro <නම>* ආයෙත් ගහන්න` }, { quoted: msg });
         const n = +pick[1], m = s.list[n - 1];
-        if (!m) return send(jid, { text: `❌ ${n} කියලා result එකක් නෑ (1-${s.list.length})` }, { quoted: msg });
+        if (!m) return send(jid, { text: `❌ ${n} — result එකක් නෑ (1-${s.list.length})` }, { quoted: msg });
         if (pick[2]) { await trailerCmd(send, jid, msg, m); return true; }
 
         const full = await enrichMeta(m);
@@ -322,42 +325,41 @@ async function handle(c, ctx) {
         // quality pick (.moviepro 2 1) → send the MOVIE FILE itself
         if (pick[3]) {
             if (!s.movie || !s.movie.items?.length) {
-                return send(jid, { text: '⏳ Quality list එක load වෙලා නෑ — මුලින්ම *.moviepro ' + n + '* ගහලා list එක එනකම් ඉන්න' }, { quoted: msg });
+                return send(jid, { text: `⏳ quality list load වෙලා නෑ — මුලින්ම *.moviepro ${n}* ගහන්න` }, { quoted: msg });
             }
             s.movie.picked = full;
-            await movieFileCmd(send, jid, msg, full, +pick[3], s.movie, !!(pick[4] && /^l/i.test(pick[4])));
+            await movieFileCmd(send, jid, msg, full, +pick[3], s.movie, !!(pick[4] && /^l/i.test(pick[4])), react);
             return true;
         }
-        if (pick[4]) return send(jid, { text: '🔗 Link mode එකට quality අංකය එකත් ඕනෙ — උදා: *.moviepro ' + n + ' 1 link*' }, { quoted: msg });
+        if (pick[4]) return send(jid, { text: `🔗 quality අංකය එකත් ඕනෙ — *.moviepro ${n} 1 link*` }, { quoted: msg });
 
         // info card + CineSubz quality list
-        const st = await send(jid, { text: `🔎 *${full.name}* — download links හොයනවා...` }, { quoted: msg });
+        const st = await send(jid, { text: `🔎 ${cut(full.name, 50)}…` }, { quoted: msg });
         const edit = async (t) => { try { await send(jid, { text: t, edit: st.key }); } catch { } };
         const quals = await qualitiesFor(full);
         if (quals) { s.movie = { page: quals.page, items: quals.items, at: Date.now() }; }
         else s.movie = null;
-        await edit('📋 Info card එක යවනවා...');
         await sendCard(send, jid, msg, full, n, quals);
-        try { await send(jid, { text: ' ', edit: st.key }); } catch { }   // clear status
+        try { await send(jid, { delete: st.key }); } catch { }   // status bubble අයින් — card එකම ප්‍රමාණවත්
         return true;
     }
 
     if (!arg) {
         return send(jid, {
-            text: `🎬 *MoviePro* — search කරලා *movie එකම* chat එකට ගන්න\n\n*.moviepro <movie නම>* — search\n   උදා: *.moviepro avatar way of water*\n*.moviepro <අංකය>* — details + quality list (480p/720p/1080p)\n*.moviepro <අංකය> <quality#>* — 🎬 movie file එකම එනවා\n*.moviepro <අංකය> <quality#> link* — 🔗 direct download link එකක් (status/grp share වලට)\n*.moviepro <අංකය> trailer* — trailer එක video විදිහට`,
+            text: `🎬 *MoviePro*\n\n*.moviepro <නම>* — search\n*.moviepro <n>* — info + quality list\n*.moviepro <n> <q#>* — 🍿 movie file\n*.moviepro <n> <q#> link* — 🔗 share link\n*.moviepro <n> trailer* — trailer\n${foot('උදා: .moviepro avatar way of water')}`,
         }, { quoted: msg });
     }
 
-    const st = await send(jid, { text: `🔎 "${arg}" හොයනවා...` }, { quoted: msg });
+    const st = await send(jid, { text: `🔎 ${cut(arg, 50)}…` }, { quoted: msg });
     const edit = async (t) => { try { await send(jid, { text: t, edit: st.key }); } catch { } };
     try {
         const list = await search(arg);
-        if (!list.length) return edit(`😢 "${arg}" — results නෑ. Movie නම ටිකක් වෙනස් කරලා try කරන්න.`);
+        if (!list.length) return edit(`❌ "${cut(arg, 40)}" — results නෑ · නම ටිකක් වෙනස් කරලා try`);
         sessions.set(jid, { list, at: Date.now() });
         if (sessions.size > 200) sessions.delete(sessions.keys().next().value);
         edit(listText(arg, list));
     } catch (e) {
-        edit('❌ Search fail: ' + String(e.message).slice(0, 180) + '\n(ටිකකින් ආයෙත් try කරන්න)');
+        edit(`❌ ${String(e.message).slice(0, 180)}\n> ටිකකින් ආයෙත් try`);
     }
     return true;
 }

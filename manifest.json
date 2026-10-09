@@ -1,6 +1,6 @@
 {
-  "version": "2.21.0",
-  "notes": "MIRROR relay: file/URL → direct share link (qu.ax 30d → transfer 7d fallback). .mirror <link> / .link — download any URL and re-host as a browser link (other bots' /dl style). .tourl FIXED (catbox was dead → working hosts). .moviepro <n> <q#> link — movie as direct link for status/grp share. No report-flood.",
+  "version": "2.22.0",
+  "notes": "UX FLOW OVERHAUL: pro-bot feedback flow — heavy commands react ⏳ while working → ✅/❌ when done; progress bubbles self-delete on finish (no \"done\" residue); captions are one title + small brand footer (style.js, single source of truth); compact ✦ menu + categories; .ping shows ms; AI replies no longer stamp the model name. No report-flood.",
   "files": [
     "bot.js",
     "ai.js",
@@ -33,6 +33,8 @@
     "test_v219.js",
     "test_v220.js",
     "mirror.js",
-    "test_v221.js"
+    "test_v221.js",
+    "style.js",
+    "test_v222.js"
   ]
 }

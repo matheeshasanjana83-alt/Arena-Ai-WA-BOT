@@ -22,6 +22,18 @@ litterbox/catbox, x0.at, transfer.archivete.am, filebin, eporner (v2.17). (gofil
 
 🔒 Private: ඔයා යවන messages විතරයි. වෙන අය commands යැව්වත් ignore.
 
+v2.22.0 — ✨ Flow overhaul: bot එක දැන් hand-made bot එකක් වගේ කතා කරනවා
+  • ⏳ → ✅/❌ react flow — heavy command එකක් (download/movie/AI/...) ගැහුවම bot එක
+    ඔයාගේ message එකට ⏳ react කරනවා, ඉවර වුණාම ✅ (fail නම් ❌). Light commands වලට ✨ random react.
+  • Progress bubble auto-delete — "✅ ඉවරයි" වගේ status bubbles chat එකේ ඉතුරු වෙන්නේ නෑ:
+    file එක / link එක ආවම progress bubble එක මකලා දානවා. Chat එක පිරිසිදු.
+  • Captions minimal — 🎬 *title* + කොළ පාට blockquote එකේ `> ⚡ ᴋᴀᴠɪᴢ ᴍᴅ ᴠ1 · size · quality`
+    විතරයි. 👤/❤️/💬/👁️ emoji-stat walls අයින්. style.js — හැම message එකක්ම එකම voice.
+  • AI replies "— gemini" model නම පෙන්නන්නේ නෑ → `> ⚡ ᴋᴀᴠɪᴢ ᴀɪ`.
+  • .ping දැන් ms latency එකත් පෙන්නනවා (🏓 *Pong!* 42 ms).
+  • .menu + categories compact ✦ style — ලොකු පැහැදිලි කිරීම් පාරාග්‍රීන් අයින්, one-line commands.
+  • Errors කෙටියි — හේතුව එක පේළියක් + ඕනේ නම් විතරක් hint එකක් (details console log වල).
+
 v2.20.0 — 🚫 Anti-spam + block toolkit
   • .block <නම්බර්|reply> — spammer කෙනෙක් block (server-side — ඒ number එකෙන්
     ආයෙ messages/calls ඔයාට එන්නෙම නෑ). 076... / +94-76-... / 9476... format ඔක්කොම OK.

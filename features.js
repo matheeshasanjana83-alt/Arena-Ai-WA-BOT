@@ -16,6 +16,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const media = require('./media');
+const { foot, cut } = require('./style');
 
 const human = (b) => !b ? '?' : b >= 1073741824 ? (b / 1073741824).toFixed(2) + ' GB' : b >= 1048576 ? (b / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB';
 const fmtDur = (s) => { s = Math.round(s || 0); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60; return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(x).padStart(2, '0'); };
@@ -35,10 +36,14 @@ const ctxInfo = (msg) => { const m = unwrap(msg.message); return m.extendedTextM
 let yts = null;
 const ytsearch = async (q) => { yts ||= require('yt-search'); const r = await yts(q); return r.videos || []; };
 
-// ───────── status helper (one message, edited) ─────────
+// ───────── status helper (one message, edited; del() removes it when done) ─────────
 async function status(send, jid, msg, text) {
     const st = await send(jid, { text }, { quoted: msg });
-    return async (t) => { try { await send(jid, { text: t, edit: st.key }); } catch { } };
+    return {
+        key: st.key,
+        edit: async (t) => { try { await send(jid, { text: t, edit: st.key }); } catch { } },
+        del: async () => { try { await send(jid, { delete: st.key }); } catch { } },
+    };
 }
 
 async function sendFile(send, jid, msg, kind, p, extra) {
@@ -118,53 +123,50 @@ async function cliptoFetch(url, mode, height) {
     return { path: out, size: fs.statSync(out).size, height: target, title };
 }
 
-async function ytCommand(send, jid, msg, query, mode, label = 'YouTube') {
+async function ytCommand(send, jid, msg, query, mode, label = 'YouTube', react) {
     let height = null;
     const qm = query.match(Q_RE);
     if (qm) { height = +qm[1]; query = query.slice(0, qm.index).trim(); }
-    if (!query) return send(jid, { text: `${mode === 'audio' ? '🎧' : '🎬'} *${mode === 'audio' ? '.song' : '.video'} <link හෝ නම>*${mode === 'audio' ? '' : ' [quality: 2160/1440/1080/720/480/360/240/144]'}
-උදා: ${mode === 'audio' ? '.song faded alan walker' : '.video https://youtu.be/xxxx 1080'}
-quality දුන්නේ නැත්නම් best quality එක (2160p දක්වා) ගන්නවා` }, { quoted: msg });
-    const edit = await status(send, jid, msg, '🔎 හොයනවා...');
+    if (!query) return send(jid, { text: `${mode === 'audio' ? '🎧 *.song*' : '🎬 *.video*'} <link / නම>${mode === 'audio' ? '' : ' [2160..144]'}\n${foot('උදා: ' + (mode === 'audio' ? '.song faded alan walker' : '.video https://youtu.be/xxxx 1080'))}` }, { quoted: msg });
+    const s = await status(send, jid, msg, mode === 'audio' ? '🎧 audio…' : '🎬 video…');
     let url = (query.match(URL_RE) || [])[0], title = '', meta = '', e1msg = '';
     try {
         if (!url) {
             const v = (await ytsearch(query)).find((x) => (x.seconds || 0) > 0 && (x.seconds || 0) <= (mode === 'audio' ? 900 : 1800));
-            if (!v) return edit(`😢 "${query}" — හරියන result එකක් නෑ`);
-            url = v.url; title = v.title; meta = `👤 ${v.author?.name || '—'}  •  ⏱️ ${v.timestamp || '—'}  •  👁️ ${fmtNum(v.views)}`;
+            if (!v) { react?.('❌'); return s.edit(`❌ "${cut(query, 40)}" — හරියන result එකක් නෑ`); }
+            url = v.url; title = v.title; meta = v.timestamp || '';
         }
-        await edit(`⬇️ ${mode === 'audio' ? 'Audio' : 'Video'} download වෙනවා...${title ? '\n🎵 ' + title : ''}${height ? `\n📺 ${height}p` : ''}`);
+        await s.edit(`${title ? `*${cut(title, 60)}*\n` : ''}⬇️ ${mode === 'audio' ? 'audio' : 'video'} ${height ? height + 'p · ' : ''}download…`);
         let r = null;
         try {
             r = await ytDlpFetch(url, mode, height);   // primary: yt-dlp (all sites, best quality)
         } catch (e1) {
             e1msg = String(e1.message);
             if (!/youtube\.com|youtu\.be/i.test(url)) throw e1;   // clipto fallback = YouTube only
-            await edit(`⚠️ yt-dlp fail (${e1msg.slice(0, 60).trim()})\n🔄 API fallback එකෙන් try කරනවා...`);
+            await s.edit('↻ fallback…');
             r = await cliptoFetch(url, mode, height);
             if (!title) title = r.title || '';
         }
-        if (!title) { try { const i = await media.info(url); title = i.title || ''; meta = `👤 ${i.uploader || i.channel || '—'}  •  ⏱️ ${fmtDur(i.duration)}`; } catch { } }
-        await edit(`📤 යවනවා... (${human(r.size)})`);
-        const cap = `${mode === 'audio' ? '🎧' : '🎬'} *${(title || label).slice(0, 150)}*\n${meta}${r.height && mode === 'video' ? '  •  📺 ' + r.height + 'p' : ''}\n📦 ${human(r.size)}`;
+        if (!title) { try { const i = await media.info(url); title = i.title || ''; meta = fmtDur(i.duration); } catch { } }
+        const cap = `${mode === 'audio' ? '🎧' : '🎬'} *${cut(title || label, 120)}*\n${foot([r.height && mode === 'video' ? r.height + 'p' : '', human(r.size), meta].filter(Boolean).join(' · '))}`;
         await sendFile(send, jid, msg, mode, r.path, { caption: cap });
-        if (mode === 'audio') await send(jid, { text: cap });
-        await edit('✅ ඉවරයි');
+        await s.del();   // progress bubble අයින් — file එකම ප්‍රමාණවත්
+        react?.('✅');
     } catch (e) {
         const em = String(e.message);
         const botCheck = /sign in to confirm|not a bot/i.test(e1msg + em);
-        const detail = e1msg ? `${em.slice(0, 180)}\n• yt-dlp: ${e1msg.slice(0, 140)}` : em.slice(0, 350);
-        const hint = botCheck ? '\n\n💡 *.setcookies* එකෙන් මේ block එක pass වෙනවා — *.setcookies* ගහලා instructions බලන්න' : '';
-        await edit('❌ ' + detail + hint);
+        react?.('❌');
+        await s.edit(`❌ ${cut(em, 180)}${e1msg ? ' · ' + cut(e1msg, 80) : ''}${botCheck ? '\n> *.setcookies* — YouTube block fix' : ''}`);
+        console.log(`❌ ${label}: ${em}${e1msg ? ' / ' + e1msg : ''}`);
     }
 }
 
 async function ytSearchCmd(send, jid, msg, q) {
-    if (!q) return send(jid, { text: '🔎 *.yts <නම>*  — YouTube search\nඋදා: .yts alan walker faded' }, { quoted: msg });
+    if (!q) return send(jid, { text: `🔎 *.yts <නම>*\n${foot('උදා: .yts alan walker faded')}` }, { quoted: msg });
     const v = (await ytsearch(q)).slice(0, 6);
-    if (!v.length) return send(jid, { text: `😢 "${q}" — results නෑ` }, { quoted: msg });
+    if (!v.length) return send(jid, { text: `❌ "${cut(q, 40)}" — results නෑ` }, { quoted: msg });
     const list = v.map((x, i) => `*${i + 1}.* ${x.title.slice(0, 70)}\n   ⏱️ ${x.timestamp || '—'}  •  👁️ ${fmtNum(x.views)}\n   🔗 ${x.url}`).join('\n\n');
-    return send(jid, { text: `🔎 *YouTube — ${q}*\n\n${list}\n\n> 🎧 *.song <link>*  •  🎬 *.video <link>*` }, { quoted: msg });
+    return send(jid, { text: `🔎 *YouTube — ${cut(q, 50)}*\n\n${list}\n${foot('🎧 *.song* · 🎬 *.video* — link එක දාන්න')}` }, { quoted: msg });
 }
 
 // ───────── Facebook (.fb / .facebook / .faceboock) ─────────
@@ -185,38 +187,39 @@ async function fbScrape(url) {
     throw new Error('video URL එක page එකේ හම්බුණේ නෑ (private video / reel-only post)');
 }
 
-async function fbCommand(send, jid, msg, q) {
+async function fbCommand(send, jid, msg, q, react) {
     let url = (q.match(URL_RE) || [])[0];
-    if (!url || !isFbLink(url)) return send(jid, { text: '🎬 *.fb <link>*  — Facebook video download\nඋදා: .fb https://www.facebook.com/watch?v=xxxx\n\n*.facebook* / *.faceboock* / *.fbvid* කියලත් ගහන්න පුළුවන්' }, { quoted: msg });
-    const edit = await status(send, jid, msg, '⏳ Facebook video එක ගන්නවා...');
+    if (!url || !isFbLink(url)) return send(jid, { text: `🎬 *.fb <facebook link>*\n${foot('aliases: .facebook · .faceboock · .fbvid')}` }, { quoted: msg });
+    const s = await status(send, jid, msg, '🎬 facebook…');
     if (/^https?:\/\/(www\.)?(fb\.watch|fb\.gg)\//i.test(url)) { try { url = await media.resolveRedirects(url); } catch { } }   // share links → real URL
-    let title = '', meta = '';
-    try { const i = await media.info(url); title = i.title || ''; meta = `👤 ${i.uploader || '—'}${i.duration ? '  •  ⏱️ ' + fmtDur(i.duration) : ''}`; } catch { }
+    let title = '';
+    try { const i = await media.info(url); title = i.title || ''; } catch { }
     // 1) yt-dlp (primary — panel/datacenter IPs)
     try {
         const r = await ytDlpFetch(url, 'video', null);
-        await edit(`📤 යවනවා... (${human(r.size)})`);
-        await sendFile(send, jid, msg, 'video', r.path, { caption: `🎬 *${(title || 'Facebook video').slice(0, 150)}*\n${meta}\n📦 ${human(r.size)}` });
-        return edit('✅ ඉවරයි');
+        await sendFile(send, jid, msg, 'video', r.path, { caption: `🎬 *${cut(title || 'Facebook video', 120)}*\n${foot(human(r.size))}` });
+        await s.del(); react?.('✅');
     } catch (e1) {
         // 2) page-scrape fallback (residential IPs / stale yt-dlp)
-        await edit(`⚠️ yt-dlp fail (${String(e1.message).slice(0, 60).trim()})\n🔄 Direct method එකෙන් try කරනවා...`);
+        await s.edit('↻ direct method…');
         try {
             const vurl = await fbScrape(url);
             const vp = await media.fetchToFile(vurl, 'fb-vid', { referer: 'https://www.facebook.com/', maxBytes: MAXV() * 1048576 });
-            await sendFile(send, jid, msg, 'video', vp, { caption: `🎬 *${(title || 'Facebook video').slice(0, 150)}*\n${meta}\n📦 ${human(fs.statSync(vp).size)}` });
-            return edit('✅ ඉවරයි');
+            await sendFile(send, jid, msg, 'video', vp, { caption: `🎬 *${cut(title || 'Facebook video', 120)}*\n${foot(human(fs.statSync(vp).size))}` });
+            await s.del(); react?.('✅');
         } catch (e2) {
-            return edit(`❌ Facebook download fail\n• yt-dlp: ${String(e1.message).slice(0, 130)}\n• direct: ${String(e2.message).slice(0, 130)}`);
+            react?.('❌');
+            await s.edit(`❌ ${cut(String(e2.message), 150)}`);
+            console.log(`❌ fb: yt-dlp ${e1.message} / direct ${e2.message}`);
         }
     }
 }
 
 // ───────── TikTok (tikwm, no watermark) ─────────
-async function tiktok(send, jid, msg, q) {
+async function tiktok(send, jid, msg, q, react) {
     let url = (q.match(URL_RE) || [])[0];
-    if (!url || !/tiktok\.com/i.test(url)) return send(jid, { text: '🎵 *.tiktok <link>*  — watermark නැතුව download\nඋදා: .tiktok https://www.tiktok.com/@user/video/xxxx  (*.tt*)' }, { quoted: msg });
-    const edit = await status(send, jid, msg, '⏳ TikTok video එක ගන්නවා...');
+    if (!url || !/tiktok\.com/i.test(url)) return send(jid, { text: `🎵 *.tiktok <link>* — watermark නැතුව\n${foot('උදා: .tiktok https://vt.tiktok.com/xxxx')}` }, { quoted: msg });
+    const s = await status(send, jid, msg, '🎵 tiktok…');
     if (/^https?:\/\/(www\.)?(vm|vt)\.tiktok\.com\//i.test(url)) { try { url = await media.resolveRedirects(url); } catch { } }   // short links → real URL
     try {
         let j = null;
@@ -228,7 +231,7 @@ async function tiktok(send, jid, msg, q) {
         }
         if (!j || j.code !== 0 || !j.data) throw new Error((j && j.msg) || 'TikTok API error');
         const d = j.data, abs = (u) => !u ? null : u.startsWith('/') ? 'https://tikwm.com' + u : u;
-        const cap = `🎵 *${(d.title || 'TikTok').slice(0, 150)}*\n👤 @${d.author?.unique_id || '?'}  •  ⏱️ ${d.duration || '?'}s\n❤️ ${fmtNum(d.digg_count)}  •  💬 ${fmtNum(d.comment_count)}  •  👁️ ${fmtNum(d.play_count)}\n✅ No watermark`;
+        const cap = `*${cut(d.title || 'TikTok', 120)}*\n${foot(`@${d.author?.unique_id || '?'} · ❤️ ${fmtNum(d.digg_count)}`)}`;
         if (d.images?.length) {                            // photo slideshow
             for (const im of d.images.slice(0, 10)) await send(jid, { image: { url: im } }, { quoted: msg });
             await send(jid, { text: cap });
@@ -242,10 +245,11 @@ async function tiktok(send, jid, msg, q) {
                 else await send(jid, { video: { url: vurl }, mimetype: 'video/mp4', caption: cap }, { quoted: msg });   // old way fallback
             } finally { if (vp) fs.rm(vp, { force: true }, () => { }); }
         }
-        await edit('✅ ඉවරයි');
+        await s.del();
+        react?.('✅');
     } catch (e) {
-        await edit('⚠️ TikTok API fail (' + String(e.message).slice(0, 80) + ') — yt-dlp එකෙන් try කරනවා...');
-        return ytCommand(send, jid, msg, url, 'video', 'TikTok');
+        await s.edit('↻ yt-dlp…');
+        return ytCommand(send, jid, msg, url, 'video', 'TikTok', react);
     }
 }
 
@@ -272,22 +276,22 @@ async function wiki(send, jid, msg, raw) {
 }
 
 // ───────── GitHub repo → zip ─────────
-async function gitclone(send, jid, msg, q, download) {
+async function gitclone(send, jid, msg, q, download, react) {
     const mm = q.match(/github\.com\/([\w.-]+)\/([\w.-]+)/i) || q.trim().match(/^([\w.-]+)\/([\w.-]+)$/);
-    if (!mm) return send(jid, { text: '🐙 *.gitclone user/repo*  හෝ  *.gitclone https://github.com/user/repo*\n→ repo එක .zip එකක් විදියට' }, { quoted: msg });
+    if (!mm) return send(jid, { text: `🐙 *.gitclone user/repo* — repo → zip\n${foot('උදා: .gitclone whdclvr/NodeJS')}` }, { quoted: msg });
     const owner = mm[1], repo = mm[2].replace(/\.git$/, '');
     const r = await fetch(`https://api.github.com/repos/${owner}/${repo}`, { headers: { 'User-Agent': 'kaviz-md-bot', Accept: 'application/vnd.github+json' } });
     if (r.status === 404) return send(jid, { text: `❌ ${owner}/${repo} — repo එක නෑ / private` }, { quoted: msg });
     if (!r.ok) return send(jid, { text: `❌ GitHub ${r.status}` }, { quoted: msg });
     const d = await r.json();
-    const edit = await status(send, jid, msg, `⏳ ${owner}/${repo} zip එක ගන්නවා...`);
+    const s = await status(send, jid, msg, `📦 ${owner}/${repo}…`);
     let files = [];
     try {
         files = await download(`https://codeload.github.com/${owner}/${repo}/zip/refs/heads/${d.default_branch}`);
         const f = files[0];
-        await send(jid, { document: { url: f.path }, fileName: `${repo}-${d.default_branch}.zip`, mimetype: 'application/zip', caption: `🐙 *${owner}/${repo}*\n🌿 ${d.default_branch}  •  ⭐ ${fmtNum(d.stargazers_count)}  •  💻 ${d.language || '—'}\n📝 ${(d.description || '—').slice(0, 150)}\n📦 ${human(f.size)}` }, { quoted: msg });
-        await edit('✅ ඉවරයි');
-    } catch (e) { await edit('❌ ' + String(e.message).slice(0, 250)); }
+        await send(jid, { document: { url: f.path }, fileName: `${repo}-${d.default_branch}.zip`, mimetype: 'application/zip', caption: `*${owner}/${repo}*\n${foot(`🌿 ${d.default_branch} · ⭐ ${fmtNum(d.stargazers_count)} · ${human(f.size)}`)}` }, { quoted: msg });
+        await s.del(); react?.('✅');
+    } catch (e) { react?.('❌'); await s.edit('❌ ' + String(e.message).slice(0, 250)); }
     finally { for (const f of files) fs.rm(f.path, { force: true }, () => { }); }
 }
 
@@ -372,20 +376,20 @@ const GROUP_CMDS = ['.tagall', '.kick', '.promote', '.demote', '.grouplink', '.g
 const CMDS = ['.yts', '.play', '.song', '.yta', '.video', '.ytv', '.yt', '.tiktok', '.tt', '.fb', '.facebook', '.faceboock', '.fbvid', '.ig', '.insta', '.x', '.twitter', '.wiki', '.gitclone', '.sticker', '.s', '.take', ...GROUP_CMDS];
 
 /** returns true if handled */
-async function handle(c, { send, jid, msg, rest, sock, me, download }) {
+async function handle(c, { send, jid, msg, rest, sock, me, download, react }) {
     if (!CMDS.includes(c)) return false;
     const q = rest.join(' ').trim();
     switch (c) {
         case '.yts': await ytSearchCmd(send, jid, msg, q); break;
-        case '.play': case '.song': case '.yta': await ytCommand(send, jid, msg, q, 'audio'); break;
-        case '.video': case '.ytv': case '.yt': await ytCommand(send, jid, msg, q, 'video'); break;
-        case '.fb': case '.facebook': case '.faceboock': case '.fbvid': await fbCommand(send, jid, msg, q); break;
+        case '.play': case '.song': case '.yta': await ytCommand(send, jid, msg, q, 'audio', 'YouTube', react); break;
+        case '.video': case '.ytv': case '.yt': await ytCommand(send, jid, msg, q, 'video', 'YouTube', react); break;
+        case '.fb': case '.facebook': case '.faceboock': case '.fbvid': await fbCommand(send, jid, msg, q, react); break;
         case '.ig': case '.insta': case '.x': case '.twitter':
-            if (!URL_RE.test(q)) { await send(jid, { text: `🎬 *${c} <link>*  — public video එකක link එක දාන්න` }, { quoted: msg }); break; }
-            await ytCommand(send, jid, msg, q, 'video', { '.ig': 'Instagram', '.insta': 'Instagram' }[c] || 'X / Twitter'); break;
-        case '.tiktok': case '.tt': await tiktok(send, jid, msg, q); break;
+            if (!URL_RE.test(q)) { await send(jid, { text: `🎬 *${c} <link>* — public video link එකක් දෙන්න` }, { quoted: msg }); break; }
+            await ytCommand(send, jid, msg, q, 'video', { '.ig': 'Instagram', '.insta': 'Instagram' }[c] || 'X / Twitter', react); break;
+        case '.tiktok': case '.tt': await tiktok(send, jid, msg, q, react); break;
         case '.wiki': await wiki(send, jid, msg, q); break;
-        case '.gitclone': await gitclone(send, jid, msg, q, download); break;
+        case '.gitclone': await gitclone(send, jid, msg, q, download, react); break;
         case '.sticker': case '.s': await sticker(send, jid, msg, rest, false); break;
         case '.take': await sticker(send, jid, msg, rest, true); break;
         default:

@@ -8,6 +8,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const media = require('./media');
+const { foot, cut, bar } = require('./style');
 
 const UA = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36' };
 const TMP = () => process.env.DL_TMP || os.tmpdir();
@@ -141,26 +142,27 @@ async function upload(buf, name) {
     const r = await mirror.uploadBuffer(buf, name);
     return { url: r.url, perm: false, days: r.days, host: r.host };
 }
-async function cmdToUrl(send, jid, msg) {
+async function cmdToUrl(send, jid, msg, args, react) {
     const m = mediaOf(msg);
-    if (!m) return send(jid, { text: '🔗 Photo / video / audio / file එකකට reply කරලා *.tourl* ගහන්න → download link එකක්' }, { quoted: msg });
+    if (!m) return send(jid, { text: `🔗 media එකකට reply කරලා *.tourl*\n${foot('photo · video · audio · file → 🔗 link')}` }, { quoted: msg });
     const buf = await mediaDownloader(m.src);
-    if (buf.length > 190 * 1048576) return send(jid, { text: '⚠️ 190 MB ට වඩා ලොකුයි' }, { quoted: msg });
+    if (buf.length > 190 * 1048576) return send(jid, { text: '❌ 190 MB ට වඩා ලොකුයි' }, { quoted: msg });
     const mm = m.src.message[m.kind + 'Message'] || {};
     const ext = (mm.fileName && path.extname(mm.fileName)) || ({ image: '.jpg', video: '.mp4', sticker: '.webp', audio: '.mp3' }[m.kind] || '.bin');
     const r = await upload(buf, 'kaviz-' + Date.now().toString(36) + ext);
-    return send(jid, { text: `🔗 *Link එක:*\n${r.url}\n\n📦 ${(buf.length / 1048576).toFixed(2)} MB  •  ⏳ දින ${r.days} වලංගු (${r.host})\n⚠️ Public link එකක් — sensitive files එපා` }, { quoted: msg });
+    react?.('✅');
+    return send(jid, { text: `🔗 ${r.url}\n${foot(`${(buf.length / 1048576).toFixed(1)} MB · ${r.days}d · ${r.host} · public`)}` }, { quoted: msg });
 }
 
 // ───────── URL → mirror link (අනිත් bots වල /dl link UX එක) ─────────
-async function cmdMirror(send, jid, msg, args) {
+async function cmdMirror(send, jid, msg, args, react) {
     const u = (args.join(' ').match(URL_RE) || [])[0];
     if (!u) {
-        if (mediaOf(msg)) return cmdToUrl(send, jid, msg);   // media reply → .tourl වගේම
-        return send(jid, { text: '🪞 *.mirror <link>*  — link එකක file එක download කරලා direct download link එකක් විදිහට යවනවා\nඋදා: .mirror https://site.com/video.mp4\n\n media එකකට reply කරලා ගහුවොත් .tourl වගේම වැඩ' }, { quoted: msg });
+        if (mediaOf(msg)) return cmdToUrl(send, jid, msg, args, react);   // media reply → .tourl වගේම
+        return send(jid, { text: `🪞 *.mirror <link>* — file එක → 🔗 direct share link\n${foot('media reply එකකට ගහුවොත් .tourl වගේම')}` }, { quoted: msg });
     }
     const { download } = require('./downloader');
-    const st = await send(jid, { text: `🪞 Download වෙනවා...\n${u.slice(0, 120)}` }, { quoted: msg });
+    const st = await send(jid, { text: `🪞 ${cut(u, 100)}…` }, { quoted: msg });
     const edit = async (t) => { try { await send(jid, { text: t, edit: st.key }); } catch { } };
     let last = 0;
     const onProgress = (loaded, total) => {
@@ -168,17 +170,18 @@ async function cmdMirror(send, jid, msg, args) {
         if (now - last < 8000) return;
         last = now;
         const pct = total ? Math.floor(loaded * 100 / total) : null;
-        edit(`🪞 Download වෙනවා...\n${pct === null ? '' : '▰'.repeat(Math.round(pct / 10)) + '▱'.repeat(10 - Math.round(pct / 10)) + ` ${pct}%\n`}${(loaded / 1048576).toFixed(1)} MB`);
+        edit(`🪞 ${pct === null ? '' : bar(pct) + ` ${pct}%\n`}${(loaded / 1048576).toFixed(1)} MB`);
     };
     const files = await download(u, onProgress, { stream: false });
     let out = '';
     for (const f of files) {
-        await edit(`📤 Upload වෙනවා... (${(f.size / 1048576).toFixed(1)} MB)`);
+        await edit(`🪞 upload… (${(f.size / 1048576).toFixed(1)} MB)`);
         const r = await mirror.uploadFile(f.path, f.name);
-        out += `\n🔗 *${f.name}*\n${r.url}\n📦 ${(f.size / 1048576).toFixed(2)} MB  •  ⏳ දින ${r.days} (${r.host})\n`;
+        out += `${out ? '\n' : ''}🔗 *${f.name}*\n${r.url}\n${foot(`${(f.size / 1048576).toFixed(1)} MB · ${r.days}d · ${r.host}`)}\n`;
         if (f.path) fs.rm(f.path, { force: true }, () => { });
     }
-    await edit(`✅ Mirror සූදානම්!${out}\n⚠️ Public link එකක් — sensitive files එපා`);
+    react?.('✅');
+    await edit(out + foot('public link — sensitive files එපා'));
 }
 
 // ───────── web tools ─────────
@@ -281,13 +284,13 @@ function cmd8ball(send, jid, msg, args) {
 
 const CMDS = { '.tts': cmdTts, '.say': cmdTts, '.tr': cmdTr, '.translate': cmdTr, '.weather': cmdWeather, '.lyrics': cmdLyrics, '.toimg': cmdToImg, '.tourl': cmdToUrl, '.url': cmdToUrl, '.mirror': cmdMirror, '.link': cmdMirror, '.ss': cmdSs, '.qr': cmdQr, '.short': cmdShort, '.calc': cmdCalc, '.github': cmdGithub, '.imagine': cmdImagine, '.img': cmdImagine, '.joke': cmdJoke, '.fact': cmdFact, '.quote': cmdQuote, '.8ball': cmd8ball, '.del': null, '.delete': null, '.setpp': null };
 
-async function handle(c, { send, jid, msg, rest, sock, me }) {
+async function handle(c, { send, jid, msg, rest, sock, me, react }) {
     if (!(c in CMDS)) return false;
     try {
         if (c === '.del' || c === '.delete') { if (!sock) throw new Error('WhatsApp connect වෙලා නෑ'); await cmdDel(send, jid, msg, sock, me); }
         else if (c === '.setpp') { if (!sock) throw new Error('WhatsApp connect වෙලා නෑ'); await cmdSetPp(send, jid, msg, sock, me); }
-        else await CMDS[c](send, jid, msg, rest);
-    } catch (e) { await send(jid, { text: '❌ ' + String(e.message).slice(0, 250) }, { quoted: msg }); }
+        else await CMDS[c](send, jid, msg, rest, react);
+    } catch (e) { react?.('❌'); await send(jid, { text: '❌ ' + String(e.message).slice(0, 200) }, { quoted: msg }); }
     return true;
 }
 

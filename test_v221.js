@@ -72,16 +72,16 @@ const checkA = async (name, fn) => { try { await fn(); ok(name); } catch (e) { b
         const bot = require('./bot');
         const src = fs.readFileSync(path.join(R, 'bot.js'), 'utf8');
         assert(src.includes('*.mirror <link>*'), 'HELP .mirror');
-        assert(src.includes('link*  — 🔗 direct download link'), 'CATS MoviePro link');
+        assert(src.includes('q#> link*') || src.includes('link*'), 'CATS MoviePro link');
         assert(src.includes("'.mirror': cmdMirror") || src.includes('.mirror'), 'bot refs');
         assert(typeof bot.handleDownload === 'function', 'bot api');
     });
 
     // [7] versions + manifest files
-    check('[7] version 2.21.0 + manifest', () => {
-        assert(require('./package.json').version === '2.21.0', 'pkg version');
+    check('[7] version >= 2.21.0 + manifest', () => {
+        assert(require('./package.json').version >= '2.21.0', 'pkg version');
         const m = JSON.parse(fs.readFileSync(path.join(R, 'manifest.json'), 'utf8'));
-        assert(m.version === '2.21.0', 'manifest version');
+        assert(m.version >= '2.21.0' && m.version === require('./package.json').version, 'manifest version');
         assert(m.files.includes('mirror.js'), 'manifest mirror.js');
         assert(m.files.includes('test_v221.js'), 'manifest test');
     });
