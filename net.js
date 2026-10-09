@@ -135,11 +135,19 @@ async function smartFetch(url, opts = {}) {
     const host = hostOf(url);
     const order = ['direct', 'doh', 'ipv6', 'proxy', 'poolproxy'];
     const pref = route.get(host);
-    if (pref) order.sort((a, b) => (b === pref) - (a === pref));
+    if (pref && (pref !== 'poolproxy' || require('./proxypool').hasCandidates())) order.sort((a, b) => (b === pref) - (a === pref));
     const errors = [];
+    let poolWaited = false;
     for (const kind of order) {
         if (kind === 'proxy' && !getProxy()) continue;
-        if (kind === 'poolproxy' && !require('./proxypool').hasCandidates()) continue;   // pool not ready/empty → skip fast
+        if (kind === 'poolproxy' && !require('./proxypool').hasCandidates()) {
+            // pool empty → normally skip fast; BUT after real network failures give it ONE short window
+            // to auto-fetch fresh free proxies (proxypool.ensureReady) — free lists die within hours
+            if (poolWaited || !require('./proxypool').enabled() || !errors.some(x => NET_ERR.test(x.code))) continue;
+            poolWaited = true;
+            try { await withTimeout(require('./proxypool').ensureReady(20000), 22000, 'pool'); } catch { }
+            if (!require('./proxypool').hasCandidates()) { errors.push({ kind, code: 'NO_POOL', msg: 'pool එකේ වැඩ කරන ඒවා නෑ (fresh fetch එකත් fail වුණා)' }); continue; }
+        }
         if (kind !== 'direct' && !undici) continue;
         try {
             const res = await viaRoute(kind, url, opts);
@@ -170,9 +178,9 @@ function explain(url, errors) {
     const v6 = errors.find(x => x.kind === 'ipv6');
     if (v6) lines.push(`• IPv6: ${v6.code === 'NO_IPV6' ? 'මේ server එකට IPv6 නෑ' : v6.code === 'ENODATA' ? 'site එකට IPv6 නෑ' : why(v6.code) + (v6.code ? ' [' + v6.code + ']' : '')}`);
     if (p) lines.push(`• Proxy: ${why(p.code)}${p.code ? ' [' + p.code + ']' : ''}`);
-    if (pp) lines.push(`• Free proxy pool: ${(pp.code === 'NO_POOL' || pp.code === 'POOL_FAIL') ? 'pool එකේ වැඩ කරන ඒවා නෑ' : why(pp.code)}${pp.code && pp.code !== 'NO_POOL' && pp.code !== 'POOL_FAIL' ? ' [' + pp.code + ']' : ''}`);
+    if (pp) lines.push(`• Free proxy pool: ${(pp.code === 'NO_POOL' || pp.code === 'POOL_FAIL') ? 'වැඩ කරන ඒවා නෑ → *.proxies check* ගහලා අලුත් proxies ගන්න' : why(pp.code)}${pp.code && pp.code !== 'NO_POOL' && pp.code !== 'POOL_FAIL' ? ' [' + pp.code + ']' : ''}`);
     let hint;
-    if (h && !p) hint = `➡️ DNS bypass එකෙනුත් බැරි වුණා → මේ server එකේ network එක (ISP/රට) හෝ ${host} site එක මේ server IP එක *block* කරනවා.\n💡 *.net ${url.slice(0, 60)}* ගහලා හරියටම බලන්න. විසඳුම: *.setproxy http://user:pass@host:port* (proxy එකක්) හෝ ඒ link එක Termux එකෙන්.`;
+    if (h && !p) hint = `➡️ DNS bypass එකෙනුත් බැරි වුණා → මේ server එකේ network එක (ISP/රට) හෝ ${host} site එක මේ server IP එක *block* කරනවා.\n💡 *.net ${url.slice(0, 60)}* ගහලා හරියටම බලන්න. විසඳුම: *.setproxy http://user:pass@host:port* (proxy එකක්), *.proxies check* (free pool refresh), හෝ ඒ link එක Termux එකෙන්.`;
     else if (p) hint = `➡️ Proxy එකෙනුත් බැරි වුණා — proxy එක වැඩද / link එක තාම valid ද බලන්න.`;
     else hint = `💡 *.net ${url.slice(0, 60)}* ගහලා බලන්න.`;
     const where = att && att !== hostOf(url) ? `${host} → redirect → *${att}* (CDN)` : host;

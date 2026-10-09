@@ -1,6 +1,6 @@
 {
-  "version": "2.16.0",
-  "notes": "Free proxy pool: proxies.txt (434 proxies) auto health-checked in background; net.js + yt-dlp use pool proxies as LAST-RESORT fallback (direct → DoH → IPv6 → your .setproxy → pool) so IP-blocked sites (YouTube bot-check, FB, TikTok) still work; .proxies command (status / check / on / off); proxies.user.txt for your own list (survives .update)",
+  "version": "2.17.0",
+  "notes": "Downloader v2: eporner.com .download support (dload/mp4 direct + video pages via yt-dlp); free proxy pool auto-refreshes from public lists (monosans/TheSpeedX/proxyscrape) when alive < 8 — pool never runs dry; smartFetch waits up to 20s for pool on hard-blocked CDNs; .proxies shows auto-fetched count",
   "files": [
     "bot.js",
     "ai.js",
@@ -25,7 +25,7 @@
     "test_v214.js",
     "test_v216.js",
     "proxypool.js",
-    "proxies.txt"
+    "proxies.txt",
+    "test_v217.js"
   ]
 }
-

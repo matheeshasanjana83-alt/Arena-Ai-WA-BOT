@@ -6,11 +6,11 @@ Private WhatsApp bot (Baileys v7) — `.ai` (Gemini / Groq), `.download`, `.yt/.
 | Command | වැඩේ |
 |---|---|
 | `.ai <ප්‍රශ්නය>` | AI එකෙන් උත්තර |
-| `.download <link>` | Direct / MediaFire / Google Drive / MEGA ... file එක WhatsApp එකට |
+| `.download <link>` | Direct / MediaFire / Google Drive / MEGA / eporner ... file එක WhatsApp එකට |
 | `.setkey gemini <key>` / `.setkey groq <key>` | AI keys |
 | `.net <link>` | Download fail නම් හේතුව (DNS block / IP block) |
 | `.setproxy <url\|off>` | Block වෙන sites වලට proxy |
-| `.proxies` | Free proxy pool status (`check` / `on` / `off`) — block වුණාම auto fallback |
+| `.proxies` | Free proxy pool status (`check` / `on` / `off`) — block වුණාම auto fallback; alive අඩු නම් free lists වලින් auto-refresh (v2.17) |
 | `.keys` · `.menu` · `.ping` | |
 | `.version` | දැන් version එක + update තියෙනවද |
 | `.update` | මේ repo එකෙන් අලුත් version එක ගන්නවා (auth / keys වෙනස් වෙන්නේ නෑ) |

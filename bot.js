@@ -33,6 +33,7 @@ let B = null;
 }
 const loadBaileys = async () => (B ||= await import('baileys'));
 const { download, human, maxBytes, maxMB, freeDisk, WA_MAX_MB } = require('./downloader');
+const { resolve } = require('./resolvers');
 const ai = require('./ai');
 const updater = require('./updater');
 const netx = require('./net');
@@ -497,13 +498,13 @@ async function handleProxies(send, jid, msg, sub) {
         return send(jid, { text: sub === 'on' ? '🧩 Free proxy pool *ON* ✅\nBlock වෙන sites වලට auto fallback විදිහට පාවිච්චි වෙනවා.' : '🚫 Free proxy pool *OFF*' }, { quoted: msg });
     }
     if (sub === 'check' || sub === 'update' || sub === 'refresh') {
-        await send(jid, { text: '🔍 Proxy pool එක check කරනවා... (proxies ගොඩක් නම් විනාඩි 1-2 ක් විතර යනවා)' }, { quoted: msg });
+        await send(jid, { text: '🔍 Proxy pool එක check කරනවා... alive අඩු නම් internet එකෙන් අලුත් free proxies ගෙනියනවා (විනාඩි 1-2 ක් විතර යනවා)' }, { quoted: msg });
         try { const r = await pool.checkNow('manual'); return send(jid, { text: `✅ Check ඉවරයි — *${r.alive}/${r.total}* proxies වැඩ කරනවා. Block වෙන downloads වලට දැන් මේවා auto fallback.` }, { quoted: msg }); }
         catch (e) { return send(jid, { text: '❌ Check fail: ' + String(e.message).slice(0, 150) }, { quoted: msg }); }
     }
     const s = pool.stats();
     const t = `🧩 *Free proxy pool*  ${s.enabled ? '✅ ON' : '⛔ OFF'}
-📦 මුළු proxies: *${s.total}*  (list: ${s.shipped} • ඔයාගේ: ${s.user})
+📦 මුළු proxies: *${s.total}*  (list: ${s.shipped} • ඔයාගේ: ${s.user} • auto: ${s.fetched})
 🔍 Check කරලා: ${s.alive ? `*${s.alive}* alive${s.checkedAgo != null ? ` (${s.checkedAgo} min කින් කලින්)` : ''}` : 'තාම check කරලා නෑ'}
 ✅ දැන් usable: *${s.usable}*
 ${s.checking ? '⏳ දැන් check එකක් run වෙනවා...' : s.usable ? `🔁 ඊළඟට පාවිච්චි වෙන්නේ: ${s.next}` : '💡 *.proxies check* ගහලා check කරන්න'}
@@ -512,6 +513,7 @@ ${s.checking ? '⏳ දැන් check එකක් run වෙනවා...' : s.
 *.proxies on* / *.proxies off*
 
 💡 ඔයාගේම proxies: bot folder එකේ *proxies.user.txt* file එකක් හදලා line එකකට එකක් (ip:port) — .update වෙද්දි මැකෙන්නේ නෑ
+🔄 Auto: alive අඩු වුණාම free proxy lists වලින් (monosans/TheSpeedX/proxyscrape) අලුත් ඒවා auto ගන්නවා
 🔒 Pool එකෙන් try කරන්නේ direct / DoH / IPv6 / proxy ඔක්කොම fail වුණාම විතරයි`;
     return send(jid, { text: t }, { quoted: msg });
 }
@@ -646,7 +648,15 @@ async function handleDownload(send, jid, msg, link) {
     };
     let files = [];
     try {
-        files = await download(link, onProgress, { stream: true });   // 🌊 big files → straight to WhatsApp (1× disk)
+        const r = await resolve(link);
+        if (r.kind === 'video') {
+            // video page (eporner etc.) → yt-dlp: formats + free-proxy pool fallback built in (media.ytdl)
+            await edit('🎬 Video එක හොයනවා (yt-dlp)... block වෙලා නම් free proxy pool එකෙනුත් try කරනවා');
+            const f = await require('./media').ytdl(r.url, { mode: 'video', maxMB: maxMB() });
+            files = [{ path: f.path, name: `video-${Date.now().toString(36)}.${f.ext || 'mp4'}`, size: f.size, mime: f.ext === 'mp4' ? 'video/mp4' : 'video/' + f.ext }];
+        } else {
+            files = await download(link, onProgress, { stream: true });   // 🌊 big files → straight to WhatsApp (1× disk)
+        }
         for (const f of files) {
             await edit(`📤 WhatsApp එකට යවනවා... (${f.name}, ${human(f.size)})`);
             await send(jid, { document: f.open ? { stream: f.open() } : { url: f.path }, fileName: f.name, mimetype: f.mime, caption: `✅ ${f.name}\n📦 ${human(f.size)}` }, { quoted: msg });

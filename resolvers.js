@@ -67,6 +67,14 @@ async function resolve(raw) {
         return { kind: 'http', url: link, referer: raw };
     }
 
+    // ── Eporner ── (CDN vid-*.eporner.com drops datacenter IPs → net.js pool route handles it;
+    //                page links → yt-dlp EpornerIE, direct .mp4/.dload → HTTP with referer)
+    if (host === 'eporner.com' || host.endsWith('.eporner.com')) {
+        if (/\.(mp4|mkv|webm|mov|ts|m3u8)$/i.test(u.pathname) || /^\/dload\//.test(u.pathname))
+            return { kind: 'http', url: raw, referer: 'https://www.eporner.com/' };
+        return { kind: 'video', url: raw };   // video page → yt-dlp path (.download handles kind 'video')
+    }
+
     // ── everything else: treat as direct link ──
     return { kind: 'http', url: raw };
 }

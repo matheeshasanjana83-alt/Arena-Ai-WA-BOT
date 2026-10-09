@@ -18,9 +18,19 @@ Free keys:
   Groq   → https://console.groq.com/keys        (login → Create API Key)
 
 Download support: direct links, GitHub, Google Drive (public), MediaFire, MEGA, Dropbox, Pixeldrain,
-litterbox/catbox, x0.at, transfer.archivete.am, filebin. (gofile / LimeWire / folders support නෑ). Max 2 GB.
+litterbox/catbox, x0.at, transfer.archivete.am, filebin, eporner (v2.17). (gofile / LimeWire / folders support නෑ). Max 2 GB.
 
 🔒 Private: ඔයා යවන messages විතරයි. වෙන අය commands යැව්වත් ignore.
+
+v2.17.0 — 🎬 eporner downloads + pool auto-refresh
+  • .download — eporner.com දැන් support: direct /dload/...mp4 links + video page links
+    (page links yt-dlp හරහා, formats + quality auto). CDN block වුණොත් pool route එකෙන් යනවා.
+  • Pool auto-refresh: alive proxies 8 ට අඩු වුණාම free proxy lists (monosans / TheSpeedX /
+    proxyscrape / roosterkid) වලින් අලුත් proxies auto ගෙනියනවා — pool එක හිස් වෙන්නේ නෑ.
+    (runtime pool එකට විතරයි — proxies.txt file එක වෙනස් වෙන්නේ නෑ; cache: proxies.cache.json)
+  • smartFetch: direct/DoH/IPv6 ඔක්කොම connect-fail වුණාම pool එක හිස් නම් තත්පර 20 ක් ඇතුළට
+    fresh fetch + check කරලා pool එකෙන්ම try කරනවා (first blocked download එකේදීත් pool එක ලැබෙනවා).
+  • .proxies — auto-fetched count එකත් පෙන්නනවා.
 
 v2.16.0 — 🧩 Free Proxy Pool (IP block වුණාම auto fallback)
   • proxies.txt (434 proxies) bot එකේම එනවා. Start වෙද්දී background check එකකින් "වැඩ කරන" ඒවා හොයාගන්නවා
