@@ -1,5 +1,5 @@
 /**
- * guard.js — Arena AI safety + anti-ban helpers (v2.8)
+ * guard.js — KAVIZ MD V1 safety + anti-ban helpers (v2.8)
  *
  *  🔒 Owner-only:  commands run ONLY for messages YOU send (fromMe + participant check)
  *                  default = "Message yourself" chat only  (.mode all → your commands work in any chat)

@@ -1,10 +1,20 @@
 /**
- * features.js — extra commands for Arena AI (v2.11), ported from SmokeBoy v3.7 (abc repo)
- *   YouTube: .yts .play .song/.yta .video/.ytv     Social: .tiktok .fb .ig .x
+ * features.js — extra commands for KAVIZ MD V1 (v2.15), ported from SmokeBoy v3.7 (abc repo)
+ *   YouTube: .yts .play .song/.yta .video/.ytv (.yt)     Social: .tiktok .fb/.facebook .ig .x
  *   Search: .wiki    GitHub: .gitclone    Tools: .sticker .take    Group: .tagall .kick .promote .demote .grouplink .groupinfo .jid
  * Every command is owner-only (checked in bot.js before we get here).
+ *
+ * v2.15 downloader fixes:
+ *   • .yt/.video — ALL qualities (2160p → 144p, default = best available) + clipto.com API fallback
+ *     when yt-dlp hits YouTube's "Sign in to confirm you're not a bot" datacenter-IP block
+ *     (video-only 720p-2160p streams auto-merged with m4a audio via ffmpeg)
+ *   • .fb — new .facebook / .faceboock / .fbvid aliases + FB page-scrape fallback
+ *     (browser_native_hd_url / browser_native_sd_url) when yt-dlp fails
+ *   • .tiktok — vm/vt short links resolved first, 3 retries with backoff
  */
 const fs = require('fs');
+const os = require('os');
+const path = require('path');
 const media = require('./media');
 
 const human = (b) => !b ? '?' : b >= 1073741824 ? (b / 1073741824).toFixed(2) + ' GB' : b >= 1048576 ? (b / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB';
@@ -40,36 +50,113 @@ async function sendFile(send, jid, msg, kind, p, extra) {
 }
 
 // ───────── YouTube / any yt-dlp site ─────────
-// ".video <link> 1080" / ".yt <link> 720p" → quality pick
+// ".video <link> 1080" / ".yt <link> 720p" → quality pick  (no quality = best available, 2160 → 144)
 const Q_RE = /\s(2160|1440|1080|720|480|360|240|144)p?\s*$/i;
+
+const MAXV = () => Math.min(200, MAXMB());   // video cap (MB)
+
+async function ytDlpFetch(url, mode, height) {
+    return media.ytdl(url, { mode, height, maxMB: mode === 'audio' ? Math.min(60, MAXMB()) : MAXV() });
+}
+
+// ───────── clipto.com API fallback — bypasses YouTube "Sign in to confirm you're not a bot"
+// datacenter-IP blocks (returns googlevideo URLs with poToken included). YouTube only.
+async function cliptoInfo(url) {
+    const r = await fetch('https://www.clipto.com/api/youtube', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36', Referer: 'https://www.clipto.com/' },
+        body: JSON.stringify({ url }),
+        signal: AbortSignal.timeout(45e3),
+    });
+    if (!r.ok) throw new Error('API ' + r.status);
+    const j = await r.json().catch(() => null);
+    if (!j?.success || !Array.isArray(j.medias) || !j.medias.length) throw new Error((j && j.error) || 'API result එකක් නෑ');
+    return j;
+}
+
+async function ffmpegMerge(vp, ap) {
+    let ff = null; try { ff = await media.getBin('ffmpeg'); } catch { return null; }
+    const out = path.join(os.tmpdir(), `kz-${process.pid}-${Date.now().toString(36)}.mp4`);
+    const r = await media._run(ff, ['-hide_banner', '-loglevel', 'error', '-y', '-i', vp, '-i', ap, '-c', 'copy', '-movflags', '+faststart', out], 300e3);
+    if (r.code !== 0) { fs.rmSync(out, { force: true }); return null; }
+    return out;
+}
+
+/** clipto.com download → { path, size, height, title }  (caller deletes the file) */
+async function cliptoFetch(url, mode, height) {
+    const j = await cliptoInfo(url);
+    const capMB = mode === 'audio' ? Math.min(60, MAXMB()) : MAXV();
+    const title = String(j.title || '').slice(0, 100);
+    const ref = 'https://www.youtube.com/';
+    if (mode === 'audio') {
+        const m4a = (j.medias || []).filter((m) => m.ext === 'm4a' || /audio\/mp4/.test(m.mimeType || ''))
+            .sort((a, b) => parseInt(b.quality) - parseInt(a.quality))[0];
+        if (!m4a) throw new Error('API එකේ audio format එකක් නෑ');
+        const p = await media.fetchToFile(m4a.url, 'kz-aud', { referer: ref, maxBytes: capMB * 1048576, ext: 'm4a' });
+        return { path: p, size: fs.statSync(p).size, title };
+    }
+    const vids = (j.medias || []).filter((m) => m.height && /video\/mp4/.test(m.mimeType || ''));
+    if (!vids.length) throw new Error('API එකේ video format එකක් නෑ');
+    const sorted = [...new Set(vids.map((v) => v.height))].sort((a, b) => b - a);   // desc: 2160...144
+    const target = height ? (sorted.find((h) => h <= height) || sorted[sorted.length - 1]) : sorted[0];
+    const v = vids.find((x) => x.height === target);
+    const vp = await media.fetchToFile(v.url, 'kz-vid', { referer: ref, maxBytes: capMB * 1048576, ext: 'mp4' });
+    if (/mp4a/.test(v.mimeType || '')) return { path: vp, size: fs.statSync(vp).size, height: target, title };   // progressive (audio inside)
+    // video-only (720p+) → merge best m4a audio with ffmpeg
+    let out = null;
+    try {
+        const m4a = (j.medias || []).filter((m) => m.ext === 'm4a' || /audio\/mp4/.test(m.mimeType || ''))
+            .sort((a, b) => parseInt(b.quality) - parseInt(a.quality))[0];
+        if (m4a) {
+            const ap = await media.fetchToFile(m4a.url, 'kz-aud2', { referer: ref, maxBytes: 30 * 1048576, ext: 'm4a' });
+            out = await ffmpegMerge(vp, ap);
+            fs.rmSync(ap, { force: true });
+        }
+    } catch { }
+    fs.rmSync(vp, { force: true });
+    if (!out) throw new Error('API video එකේ audio වෙනමයි + ffmpeg merge fail');
+    return { path: out, size: fs.statSync(out).size, height: target, title };
+}
 
 async function ytCommand(send, jid, msg, query, mode, label = 'YouTube') {
     let height = null;
     const qm = query.match(Q_RE);
     if (qm) { height = +qm[1]; query = query.slice(0, qm.index).trim(); }
-    if (!query) return send(jid, { text: `${mode === 'audio' ? '🎧' : '🎬'} *${mode === 'audio' ? '.song' : '.video'} <link හෝ නම>*${mode === 'audio' ? '' : ' [quality: 2160/1440/1080/720/480/360]'}
-උදා: ${mode === 'audio' ? '.song faded alan walker' : '.video https://youtu.be/xxxx 1080'}` }, { quoted: msg });
+    if (!query) return send(jid, { text: `${mode === 'audio' ? '🎧' : '🎬'} *${mode === 'audio' ? '.song' : '.video'} <link හෝ නම>*${mode === 'audio' ? '' : ' [quality: 2160/1440/1080/720/480/360/240/144]'}
+උදා: ${mode === 'audio' ? '.song faded alan walker' : '.video https://youtu.be/xxxx 1080'}
+quality දුන්නේ නැත්නම් best quality එක (2160p දක්වා) ගන්නවා` }, { quoted: msg });
     const edit = await status(send, jid, msg, '🔎 හොයනවා...');
-    let url = (query.match(URL_RE) || [])[0], title = '', meta = '';
+    let url = (query.match(URL_RE) || [])[0], title = '', meta = '', e1msg = '';
     try {
         if (!url) {
             const v = (await ytsearch(query)).find((x) => (x.seconds || 0) > 0 && (x.seconds || 0) <= (mode === 'audio' ? 900 : 1800));
             if (!v) return edit(`😢 "${query}" — හරියන result එකක් නෑ`);
             url = v.url; title = v.title; meta = `👤 ${v.author?.name || '—'}  •  ⏱️ ${v.timestamp || '—'}  •  👁️ ${fmtNum(v.views)}`;
         }
-        // fb.watch / fb.gg share links → resolve manually (yt-dlp generic extractor hits a redirect loop)
-        if (/^https?:\/\/(www\.)?(fb\.watch|fb\.gg)\//i.test(url)) {
-            try { url = await media.resolveRedirects(url); } catch { }
-        }
         await edit(`⬇️ ${mode === 'audio' ? 'Audio' : 'Video'} download වෙනවා...${title ? '\n🎵 ' + title : ''}${height ? `\n📺 ${height}p` : ''}`);
-        const r = await media.ytdl(url, { mode, height, maxMB: mode === 'audio' ? Math.min(60, MAXMB()) : Math.min(150, MAXMB()) });
+        let r = null;
+        try {
+            r = await ytDlpFetch(url, mode, height);   // primary: yt-dlp (all sites, best quality)
+        } catch (e1) {
+            e1msg = String(e1.message);
+            if (!/youtube\.com|youtu\.be/i.test(url)) throw e1;   // clipto fallback = YouTube only
+            await edit(`⚠️ yt-dlp fail (${e1msg.slice(0, 60).trim()})\n🔄 API fallback එකෙන් try කරනවා...`);
+            r = await cliptoFetch(url, mode, height);
+            if (!title) title = r.title || '';
+        }
         if (!title) { try { const i = await media.info(url); title = i.title || ''; meta = `👤 ${i.uploader || i.channel || '—'}  •  ⏱️ ${fmtDur(i.duration)}`; } catch { } }
         await edit(`📤 යවනවා... (${human(r.size)})`);
         const cap = `${mode === 'audio' ? '🎧' : '🎬'} *${(title || label).slice(0, 150)}*\n${meta}${r.height && mode === 'video' ? '  •  📺 ' + r.height + 'p' : ''}\n📦 ${human(r.size)}`;
         await sendFile(send, jid, msg, mode, r.path, { caption: cap });
         if (mode === 'audio') await send(jid, { text: cap });
         await edit('✅ ඉවරයි');
-    } catch (e) { await edit('❌ ' + String(e.message).slice(0, 350)); }
+    } catch (e) {
+        const em = String(e.message);
+        const botCheck = /sign in to confirm|not a bot/i.test(e1msg + em);
+        const detail = e1msg ? `${em.slice(0, 180)}\n• yt-dlp: ${e1msg.slice(0, 140)}` : em.slice(0, 350);
+        const hint = botCheck ? '\n\n💡 *.setcookies* එකෙන් මේ block එක pass වෙනවා — *.setcookies* ගහලා instructions බලන්න' : '';
+        await edit('❌ ' + detail + hint);
+    }
 }
 
 async function ytSearchCmd(send, jid, msg, q) {
@@ -80,18 +167,64 @@ async function ytSearchCmd(send, jid, msg, q) {
     return send(jid, { text: `🔎 *YouTube — ${q}*\n\n${list}\n\n> 🎧 *.song <link>*  •  🎬 *.video <link>*` }, { quoted: msg });
 }
 
+// ───────── Facebook (.fb / .facebook / .faceboock) ─────────
+const isFbLink = (u) => /facebook\.com|fb\.watch/i.test(u || '');
+
+/** FB page HTML → direct video URL (browser_native_hd_url / sd / playable_url) — works where yt-dlp can't */
+async function fbScrape(url) {
+    const r = await fetch(url, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36', 'Accept-Language': 'en-US,en;q=0.9', Accept: 'text/html,application/xhtml+xml' },
+        redirect: 'follow', signal: AbortSignal.timeout(30e3),
+    });
+    const html = await r.text();
+    for (const key of ['browser_native_hd_url', 'browser_native_sd_url', 'playable_url_quality_hd', 'playable_url']) {
+        const m = html.match(new RegExp('"' + key + '":"([^"]+)"'));
+        if (m) { try { return JSON.parse('"' + m[1] + '"'); } catch { return m[1].replace(/\\u0025/g, '%').replace(/\\u0026/g, '&').replace(/\\\//g, '/'); } }
+    }
+    if (/c_user|login_form|\\"login\\"/i.test(html.slice(0, 5000))) throw new Error('FB මේ server IP එකට login wall එකක් දානවා');
+    throw new Error('video URL එක page එකේ හම්බුණේ නෑ (private video / reel-only post)');
+}
+
+async function fbCommand(send, jid, msg, q) {
+    let url = (q.match(URL_RE) || [])[0];
+    if (!url || !isFbLink(url)) return send(jid, { text: '🎬 *.fb <link>*  — Facebook video download\nඋදා: .fb https://www.facebook.com/watch?v=xxxx\n\n*.facebook* / *.faceboock* / *.fbvid* කියලත් ගහන්න පුළුවන්' }, { quoted: msg });
+    const edit = await status(send, jid, msg, '⏳ Facebook video එක ගන්නවා...');
+    if (/^https?:\/\/(www\.)?(fb\.watch|fb\.gg)\//i.test(url)) { try { url = await media.resolveRedirects(url); } catch { } }   // share links → real URL
+    let title = '', meta = '';
+    try { const i = await media.info(url); title = i.title || ''; meta = `👤 ${i.uploader || '—'}${i.duration ? '  •  ⏱️ ' + fmtDur(i.duration) : ''}`; } catch { }
+    // 1) yt-dlp (primary — panel/datacenter IPs)
+    try {
+        const r = await ytDlpFetch(url, 'video', null);
+        await edit(`📤 යවනවා... (${human(r.size)})`);
+        await sendFile(send, jid, msg, 'video', r.path, { caption: `🎬 *${(title || 'Facebook video').slice(0, 150)}*\n${meta}\n📦 ${human(r.size)}` });
+        return edit('✅ ඉවරයි');
+    } catch (e1) {
+        // 2) page-scrape fallback (residential IPs / stale yt-dlp)
+        await edit(`⚠️ yt-dlp fail (${String(e1.message).slice(0, 60).trim()})\n🔄 Direct method එකෙන් try කරනවා...`);
+        try {
+            const vurl = await fbScrape(url);
+            const vp = await media.fetchToFile(vurl, 'fb-vid', { referer: 'https://www.facebook.com/', maxBytes: MAXV() * 1048576 });
+            await sendFile(send, jid, msg, 'video', vp, { caption: `🎬 *${(title || 'Facebook video').slice(0, 150)}*\n${meta}\n📦 ${human(fs.statSync(vp).size)}` });
+            return edit('✅ ඉවරයි');
+        } catch (e2) {
+            return edit(`❌ Facebook download fail\n• yt-dlp: ${String(e1.message).slice(0, 130)}\n• direct: ${String(e2.message).slice(0, 130)}`);
+        }
+    }
+}
+
 // ───────── TikTok (tikwm, no watermark) ─────────
 async function tiktok(send, jid, msg, q) {
-    const url = (q.match(URL_RE) || [])[0];
-    if (!url || !/tiktok\.com/i.test(url)) return send(jid, { text: '🎵 *.tiktok <link>*  — watermark නැතුව download' }, { quoted: msg });
+    let url = (q.match(URL_RE) || [])[0];
+    if (!url || !/tiktok\.com/i.test(url)) return send(jid, { text: '🎵 *.tiktok <link>*  — watermark නැතුව download\nඋදා: .tiktok https://www.tiktok.com/@user/video/xxxx  (*.tt*)' }, { quoted: msg });
     const edit = await status(send, jid, msg, '⏳ TikTok video එක ගන්නවා...');
+    if (/^https?:\/\/(www\.)?(vm|vt)\.tiktok\.com\//i.test(url)) { try { url = await media.resolveRedirects(url); } catch { } }   // short links → real URL
     try {
         let j = null;
-        for (let tries = 0; tries < 2; tries++) {                       // tikwm free API rate-limits → 1 retry
-            const r = await fetch('https://tikwm.com/api/?hd=1&url=' + encodeURIComponent(url), { headers: { 'User-Agent': 'Mozilla/5.0' } });
+        for (let tries = 0; tries < 3; tries++) {                       // tikwm free API rate-limits → 2 retries
+            const r = await fetch('https://tikwm.com/api/?hd=1&url=' + encodeURIComponent(url), { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(30e3) });
             j = await r.json().catch(() => null);
             if (j?.code === 0 && j.data) break;
-            if (tries === 0) await new Promise((res) => setTimeout(res, 1500));
+            if (tries < 2) await new Promise((res) => setTimeout(res, 1200 + tries * 1300));
         }
         if (!j || j.code !== 0 || !j.data) throw new Error((j && j.msg) || 'TikTok API error');
         const d = j.data, abs = (u) => !u ? null : u.startsWith('/') ? 'https://tikwm.com' + u : u;
@@ -122,7 +255,7 @@ async function wiki(send, jid, msg, raw) {
     let lang = 'en', q = raw;
     const m = raw.match(/^(si|en|ta|hi)\s+(.+)$/i);
     if (m) { lang = m[1].toLowerCase(); q = m[2]; } else if (/[\u0D80-\u0DFF]/.test(raw)) lang = 'si';
-    const UA = { 'User-Agent': 'ArenaAI-WhatsApp-bot/2.12 (private)' };
+    const UA = { 'User-Agent': 'KAVIZ-MD-WhatsApp-bot/2.15 (private)' };
     const sum = async (t) => fetch(`https://${lang}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(t.replace(/ /g, '_'))}`, { headers: UA });
     let r = await sum(q), d = r.ok ? await r.json() : null;
     if (!d?.extract) {
@@ -143,7 +276,7 @@ async function gitclone(send, jid, msg, q, download) {
     const mm = q.match(/github\.com\/([\w.-]+)\/([\w.-]+)/i) || q.trim().match(/^([\w.-]+)\/([\w.-]+)$/);
     if (!mm) return send(jid, { text: '🐙 *.gitclone user/repo*  හෝ  *.gitclone https://github.com/user/repo*\n→ repo එක .zip එකක් විදියට' }, { quoted: msg });
     const owner = mm[1], repo = mm[2].replace(/\.git$/, '');
-    const r = await fetch(`https://api.github.com/repos/${owner}/${repo}`, { headers: { 'User-Agent': 'arena-ai-bot', Accept: 'application/vnd.github+json' } });
+    const r = await fetch(`https://api.github.com/repos/${owner}/${repo}`, { headers: { 'User-Agent': 'kaviz-md-bot', Accept: 'application/vnd.github+json' } });
     if (r.status === 404) return send(jid, { text: `❌ ${owner}/${repo} — repo එක නෑ / private` }, { quoted: msg });
     if (!r.ok) return send(jid, { text: `❌ GitHub ${r.status}` }, { quoted: msg });
     const d = await r.json();
@@ -167,13 +300,13 @@ async function sticker(send, jid, msg, args, take) {
     if (pick(own)) { kind = pick(own); src = { key: msg.key, message: own }; }
     else if (ci?.quotedMessage && pick(unwrap(ci.quotedMessage))) { const q = unwrap(ci.quotedMessage); kind = pick(q); src = { key: { remoteJid: msg.key.remoteJid, id: ci.stanzaId, participant: ci.participant, fromMe: false }, message: q }; }
     if (!src) return send(jid, { text: '🖼️ *.sticker*  (*.s*)\n• Photo / video එකක් යවලා caption එකට *.s*\n• නැත්නම් photo / video / sticker එකකට reply කරලා *.s*\n\n🎁 *.take Pack | Author*  — sticker එකේ නම වෙනස් කරන්න\n🎞️ Video = තත්පර 6 දක්වා' }, { quoted: msg });
-    const [pack, author] = take ? (args.join(' ') || 'Arena AI').split('|').map((s) => s.trim()) : ['Arena AI', 'Arena AI'];
+    const [pack, author] = take ? (args.join(' ') || 'KAVIZ MD V1').split('|').map((s) => s.trim()) : ['KAVIZ MD V1', 'KAVIZ MD V1'];
     try {
         const buf = await mediaDownloader(src);
         const m = src.message;
         if (kind === 'video' && (m.videoMessage?.seconds || 0) > 15) return send(jid, { text: '🎞️ Video එක තත්පර 15 ට අඩු වෙන්න ඕනේ' }, { quoted: msg });
-        const out = kind === 'sticker' ? await media.addExif(buf, pack || 'Arena AI', author || 'Arena AI')
-            : await media.makeSticker(buf, { animated: kind === 'video' || !!m.imageMessage?.mimetype?.includes('gif'), pack: pack || 'Arena AI', author: author || 'Arena AI' });
+        const out = kind === 'sticker' ? await media.addExif(buf, pack || 'KAVIZ MD V1', author || 'KAVIZ MD V1')
+            : await media.makeSticker(buf, { animated: kind === 'video' || !!m.imageMessage?.mimetype?.includes('gif'), pack: pack || 'KAVIZ MD V1', author: author || 'KAVIZ MD V1' });
         return send(jid, { sticker: out }, { quoted: msg });
     } catch (e) {
         return send(jid, { text: '❌ Sticker එක හදන්න බැරි වුණා: ' + String(e.message).slice(0, 200) }, { quoted: msg });
@@ -236,7 +369,7 @@ async function group(sock, send, jid, msg, c, args, me) {
 }
 
 const GROUP_CMDS = ['.tagall', '.kick', '.promote', '.demote', '.grouplink', '.groupinfo', '.jid', '.mute', '.unmute', '.tagadmins', '.resetlink'];
-const CMDS = ['.yts', '.play', '.song', '.yta', '.video', '.ytv', '.yt', '.tiktok', '.tt', '.fb', '.ig', '.insta', '.x', '.twitter', '.wiki', '.gitclone', '.sticker', '.s', '.take', ...GROUP_CMDS];
+const CMDS = ['.yts', '.play', '.song', '.yta', '.video', '.ytv', '.yt', '.tiktok', '.tt', '.fb', '.facebook', '.faceboock', '.fbvid', '.ig', '.insta', '.x', '.twitter', '.wiki', '.gitclone', '.sticker', '.s', '.take', ...GROUP_CMDS];
 
 /** returns true if handled */
 async function handle(c, { send, jid, msg, rest, sock, me, download }) {
@@ -246,9 +379,10 @@ async function handle(c, { send, jid, msg, rest, sock, me, download }) {
         case '.yts': await ytSearchCmd(send, jid, msg, q); break;
         case '.play': case '.song': case '.yta': await ytCommand(send, jid, msg, q, 'audio'); break;
         case '.video': case '.ytv': case '.yt': await ytCommand(send, jid, msg, q, 'video'); break;
-        case '.fb': case '.ig': case '.insta': case '.x': case '.twitter':
+        case '.fb': case '.facebook': case '.faceboock': case '.fbvid': await fbCommand(send, jid, msg, q); break;
+        case '.ig': case '.insta': case '.x': case '.twitter':
             if (!URL_RE.test(q)) { await send(jid, { text: `🎬 *${c} <link>*  — public video එකක link එක දාන්න` }, { quoted: msg }); break; }
-            await ytCommand(send, jid, msg, q, 'video', { '.fb': 'Facebook', '.ig': 'Instagram', '.insta': 'Instagram' }[c] || 'X / Twitter'); break;
+            await ytCommand(send, jid, msg, q, 'video', { '.ig': 'Instagram', '.insta': 'Instagram' }[c] || 'X / Twitter'); break;
         case '.tiktok': case '.tt': await tiktok(send, jid, msg, q); break;
         case '.wiki': await wiki(send, jid, msg, q); break;
         case '.gitclone': await gitclone(send, jid, msg, q, download); break;

@@ -1,5 +1,5 @@
 /**
- * antibug.js — Arena AI 🛡️ Anti-Bug (v2.13.1)
+ * antibug.js — KAVIZ MD V1 🛡️ Anti-Bug (v2.13.1)
  *
  * "Bug" messages = messages built to freeze/crash WhatsApp: giant texts full of invisible /
  * combining characters, thousands of mentions, huge contact cards, absurdly deep nesting,

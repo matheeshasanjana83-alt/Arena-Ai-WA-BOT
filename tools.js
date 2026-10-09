@@ -1,5 +1,5 @@
 /**
- * tools.js — Arena AI v2.12 tools & fun (ideas from Knightbot-MD, rewritten with stable free APIs)
+ * tools.js — KAVIZ MD V1 v2.12 tools & fun (ideas from Knightbot-MD, rewritten with stable free APIs)
  *   .tts .tr .weather .lyrics .toimg .tourl .ss .qr .short .calc .github .imagine .del .setpp
  *   .joke .fact .quote .8ball
  * Owner-only (checked in bot.js).
@@ -112,7 +112,7 @@ async function cmdWeather(send, jid, msg, args) {
 async function cmdLyrics(send, jid, msg, args) {
     const q = args.join(' ').trim();
     if (!q) return send(jid, { text: '🎤 *.lyrics <සින්දුවේ නම>*\nඋදා: .lyrics faded alan walker' }, { quoted: msg });
-    const list = await getJson(`https://lrclib.net/api/search?q=${encodeURIComponent(q)}`, { 'Lrclib-Client': 'ArenaAI-bot' });
+    const list = await getJson(`https://lrclib.net/api/search?q=${encodeURIComponent(q)}`, { 'Lrclib-Client': 'kaviz-md-bot' });
     const s = (list || []).find((x) => x.plainLyrics) || null;
     if (!s) return send(jid, { text: `😢 "${q}" lyrics හම්බුණේ නෑ` }, { quoted: msg });
     const ly = s.plainLyrics.length > 3500 ? s.plainLyrics.slice(0, 3500) + '\n...' : s.plainLyrics;
@@ -156,7 +156,7 @@ async function cmdToUrl(send, jid, msg) {
     if (buf.length > 190 * 1048576) return send(jid, { text: '⚠️ 190 MB ට වඩා ලොකුයි' }, { quoted: msg });
     const mm = m.src.message[m.kind + 'Message'] || {};
     const ext = (mm.fileName && path.extname(mm.fileName)) || ({ image: '.jpg', video: '.mp4', sticker: '.webp', audio: '.mp3' }[m.kind] || '.bin');
-    const r = await upload(buf, 'arena-' + Date.now().toString(36) + ext);
+    const r = await upload(buf, 'kaviz-' + Date.now().toString(36) + ext);
     return send(jid, { text: `🔗 *Link එක:*\n${r.url}\n\n📦 ${(buf.length / 1048576).toFixed(2)} MB  •  ${r.perm ? '♾️ ස්ථිරයි (catbox)' : '⏳ පැය 72 යි (litterbox)'}` }, { quoted: msg });
 }
 
@@ -196,7 +196,7 @@ function cmdCalc(send, jid, msg, args) {
 async function cmdGithub(send, jid, msg, args) {
     const u = (args[0] || '').replace(/^@/, '').replace(/^https?:\/\/github\.com\//, '').split('/')[0];
     if (!u) return send(jid, { text: '🐙 *.github <username>*  — GitHub profile එක' }, { quoted: msg });
-    const r = await fetch(`https://api.github.com/users/${encodeURIComponent(u)}`, { headers: { 'User-Agent': 'arena-ai-bot' } });
+    const r = await fetch(`https://api.github.com/users/${encodeURIComponent(u)}`, { headers: { 'User-Agent': 'kaviz-md-bot' } });
     if (r.status === 404) return send(jid, { text: `❌ "${u}" කියලා GitHub user කෙනෙක් නෑ` }, { quoted: msg });
     const d = await r.json();
     const cap = `🐙 *${d.name || d.login}*  (@${d.login})\n${d.bio ? '📝 ' + d.bio + '\n' : ''}\n📦 Repos: ${d.public_repos}  •  👥 Followers: ${fmtNum(d.followers)}  •  ➡️ Following: ${d.following}\n${d.location ? '📍 ' + d.location + '\n' : ''}${d.blog ? '🌐 ' + d.blog + '\n' : ''}📅 ${new Date(d.created_at).toLocaleDateString('en-GB')}\n🔗 ${d.html_url}`;

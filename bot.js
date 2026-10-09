@@ -14,7 +14,7 @@
     process.env.ARENA_ON_PANEL = onPanel ? '1' : '';
 }
 /**
- * Arena AI — private WhatsApp bot:  .ai <question>  +  .download <link> [link2 ...]
+ * KAVIZ MD V1 — private WhatsApp bot:  .ai <question>  +  .download <link> [link2 ...]
  * Works only for YOU (messages you send). Others are ignored silently.
  */
 const fs = require('fs');
@@ -43,10 +43,10 @@ const antibug = require('./antibug');
 
 const AUTH = path.join(__dirname, 'auth');
 const LOGO = path.join(__dirname, 'logo.img');        // your own photo (.setlogo) — never touched by .update
-const BANNER = path.join(__dirname, 'banner.jpg');    // default Arena AI banner
+const BANNER = path.join(__dirname, 'banner.jpg');    // default KAVIZ MD V1 banner
 const ANNOUNCE_NEXT = path.join(__dirname, '.announce-next');
 let SOCK = null;
-// 📨 v2.12.2: Arena agent → your WhatsApp. The agent writes agent-msg.txt on the panel (panel API) → bot sends it to "Message yourself"
+// 📨 v2.12.2: KAVIZ agent → your WhatsApp. The agent writes agent-msg.txt on the panel (panel API) → bot sends it to "Message yourself"
 const AGENT_MSG = path.join(__dirname, 'agent-msg.txt');
 let agentTimer = null;
 async function agentTick(send) {
@@ -56,8 +56,8 @@ async function agentTick(send) {
         fs.renameSync(AGENT_MSG, tmp);
         const t = fs.readFileSync(tmp, 'utf8').trim(); fs.rmSync(tmp, { force: true });
         if (!t) return false;
-        for (const part of ai.splitLong(t.slice(0, 12000))) await send(ME.pn, { text: '🤖 *Arena Agent*\n\n' + part });
-        log('📨 Arena agent message → Message yourself');
+        for (const part of ai.splitLong(t.slice(0, 12000))) await send(ME.pn, { text: '🤖 *KAVIZ Agent*\n\n' + part });
+        log('📨 KAVIZ agent message → Message yourself');
         return true;
     } catch (e) { log('agent inbox: ' + e.message); return false; }
 }
@@ -120,10 +120,10 @@ function getText(m) {
     return (x?.conversation || x?.extendedTextMessage?.text || x?.imageMessage?.caption || x?.documentMessage?.caption || '').trim();
 }
 
-const HELP = `🤖 *Arena AI* — ඔක්කොම commands
+const HELP = `🤖 *KAVIZ MD V1* — ඔක්කොම commands
 
-🎬 *.yts* <නම>  •  *.song* <නම/link>  •  *.video* <නම/link> [1080/720/480]
-📱 *.tiktok*  •  *.fb*  •  *.ig*  •  *.x*  <link>
+🎬 *.yts* <නම>  •  *.song* <නම/link>  •  *.video* <නම/link> [2160/1080/720/480...]
+📱 *.tiktok*  •  *.fb* (*.facebook*)  •  *.ig*  •  *.x*  <link>
 🔍 *.wiki* <මාතෘකාව>  •  🐙 *.gitclone* user/repo
 🖼️ *.s* (photo/video reply)  •  *.take* Pack | Author
 👥 *.groupinfo*  •  *.grouplink*  •  *.tagall*  •  *.kick*  •  *.promote*  •  *.demote*  •  *.jid*
@@ -160,7 +160,7 @@ const HELP = `🤖 *Arena AI* — ඔක්කොම commands
 let botStatus = 'starting';
 if (process.env.SERVER_PORT || process.env.ARENA_ON_PANEL) {
     try {
-        require('http').createServer((q, r) => { r.writeHead(200, { 'Content-Type': 'application/json' }); r.end(JSON.stringify({ bot: 'Arena AI', status: botStatus, uptime: Math.floor(process.uptime()) })); })
+        require('http').createServer((q, r) => { r.writeHead(200, { 'Content-Type': 'application/json' }); r.end(JSON.stringify({ bot: 'KAVIZ MD V1', status: botStatus, uptime: Math.floor(process.uptime()) })); })
             .on('error', () => { }).listen(parseInt(process.env.SERVER_PORT || '3000', 10), '0.0.0.0');
     } catch { }
 }
@@ -294,9 +294,9 @@ async function onMessages({ messages, type }, send, del = async () => { }) {
 
                 if (c === '.alive' || c === '.status') { await sendAlive(send, jid, msg, 'alive'); continue; }
                 if (c === '.setlogo') { await handleSetLogo(send, jid, msg); continue; }
-                if (c === '.dellogo') { fs.rmSync(LOGO, { force: true }); await send(jid, { text: '🗑️ Logo එක අයින් කළා — default Arena AI banner එක පාවිච්චි වෙනවා' }, { quoted: msg }); continue; }
+                if (c === '.dellogo') { fs.rmSync(LOGO, { force: true }); await send(jid, { text: '🗑️ Logo එක අයින් කළා — default KAVIZ MD V1 banner එක පාවිච්චි වෙනවා' }, { quoted: msg }); continue; }
                 if (c === '.mode') { await handleMode(send, jid, msg, (rest[0] || '').toLowerCase()); continue; }
-                if (c === '.ping') { await send(jid, { text: '🏓 Pong! Arena AI වැඩ ✅' }, { quoted: msg }); continue; }
+                if (c === '.ping') { await send(jid, { text: '🏓 Pong! KAVIZ MD V1 වැඩ ✅' }, { quoted: msg }); continue; }
                 if (c === '.menu') { await handleMenu(send, jid, msg, rest[0]); continue; }
                 if (c === '.help' || c === '.commands') { await send(jid, { text: HELP }, { quoted: msg }); continue; }
                 if (c === '.maxmb' || c === '.setmax' || c === '.limit') { await handleMaxMB(send, jid, msg, (rest[0] || '').toLowerCase()); continue; }
@@ -307,7 +307,7 @@ async function onMessages({ messages, type }, send, del = async () => { }) {
                 if (c === '.update') { await handleUpdate(send, jid, msg, rest[0] === 'force'); continue; }
                 if (c === '.version') {
                     const cur = updater.localInfo();
-                    let t = `🤖 *Arena AI* v${cur.version}${cur.sha ? ' (' + cur.sha.slice(0, 7) + ')' : ''}`;
+                    let t = `🤖 *KAVIZ MD V1* v${cur.version}${cur.sha ? ' (' + cur.sha.slice(0, 7) + ')' : ''}`;
                     try { const ch = await updater.check(); t += ch.upToDate ? '\n✅ අලුත්ම version එක' : `\n🆕 Update එකක් තියෙනවා: v${ch.latest.manifest.version}\n➡️ *.update* ගහන්න`; } catch (e) { t += '\n(update check fail: ' + e.message + ')'; }
                     await send(jid, { text: t }, { quoted: msg }); continue;
                 }
@@ -374,8 +374,8 @@ async function handleReact(send, jid, msg, arg) {
 
 const CATS = [
     ['📥', 'Download', `*📥 DOWNLOAD*\n\n┃ *.download <link>*  (*.dl*)  — file එක එවනවා\n┃ *.dl link1 link2*  — links 5 දක්වා\n┃ *.gitclone user/repo*  — GitHub repo → zip\n\n✅ Direct, GitHub, Google Drive, MediaFire, MEGA, Dropbox, Pixeldrain, catbox...\n📏 Max: {MAX} / file  •  *.maxmb <MB>* එකෙන් වෙනස් කරන්න (max 2000)`],
-    ['🎬', 'YouTube', '*🎬 YOUTUBE*\n\n┃ *.yts <නම>*  — search\n┃ *.song <නම / link>*  — audio (*.play*, *.yta*)\n┃ *.video <නම / link>*  — video (*.ytv*)\n\n📺 720p → 480p → 360p (size එකට ගැලපෙන විදියට)'],
-    ['📱', 'Social', '*📱 SOCIAL MEDIA*\n\n┃ *.tiktok <link>*  — watermark නැතුව (*.tt*)\n┃ *.fb <link>*  — Facebook video\n┃ *.ig <link>*  — Instagram reel / video\n┃ *.x <link>*  — X / Twitter video\n\n🔓 Public videos විතරයි'],
+    ['🎬', 'YouTube', '*🎬 YOUTUBE*\n\n┃ *.yts <නම>*  — search\n┃ *.song <නම / link>*  — audio (*.play*, *.yta*)\n┃ *.video <නම / link>*  — video (*.ytv*, *.yt*)\n┃ *.video <link> 1080*  — quality තෝරන්න\n\n📺 2160p → 144p ඔක්කොම (quality නැතුව = best)'],
+    ['📱', 'Social', '*📱 SOCIAL MEDIA*\n\n┃ *.tiktok <link>*  — watermark නැතුව (*.tt*)\n┃ *.fb <link>*  — Facebook video (*.facebook*, *.faceboock*)\n┃ *.ig <link>*  — Instagram reel / video\n┃ *.x <link>*  — X / Twitter video\n\n🔓 Public videos විතරයි'],
     ['🔍', 'Search', '*🔍 SEARCH*\n\n┃ *.wiki <මාතෘකාව>*  — Wikipedia\n┃ *.wiki si <මාතෘකාව>*  — සිංහල Wikipedia\n┃ *.yts <නම>*  — YouTube search'],
     ['🖼️', 'Sticker', '*🖼️ STICKER*\n\n┃ *.s*  — photo / video එකකට reply කරලා (නැත්නම් caption එකට)\n┃ *.take Pack | Author*  — sticker එකක නම වෙනස් කරන්න\n\n🎞️ Video stickers තත්පර 6 දක්වා'],
     ['🛠️', 'Tools', '*🛠️ TOOLS*\n\n┃ *.tr <භාෂාව> <text>*  — translate (reply කරලත්)\n┃ *.tts <text>*  — voice එකක් (සිංහල OK)\n┃ *.weather <නගරය>*  — කාලගුණය (දින 3)\n┃ *.lyrics <සින්දුව>*  — lyrics\n┃ *.imagine <විස්තරය>*  — AI image\n┃ *.toimg*  — sticker → photo\n┃ *.tourl*  — media → download link\n┃ *.ss <website>*  — screenshot\n┃ *.qr <text>*  •  *.short <link>*  •  *.calc <ගණනය>*\n┃ *.github <user>*  — GitHub profile\n┃ *.del*  — reply කරපු message එක මකන්න\n┃ *.setpp*  — photo reply → profile photo'],
@@ -391,7 +391,7 @@ function menuCaption(name) {
     const v = (() => { try { return updater.localInfo().version; } catch { return require('./package.json').version; } })();
     const ram = Math.round(process.memoryUsage().rss / 1048576);
     return [
-        '*◈ ARENA AI · MENU ◈*',
+        '*◈ KAVIZ MD V1 · MENU ◈*',
         `👋 ʜɪ *${String(name || 'Boss').slice(0, 25)}*`,
         '',
         '╭─〔 🤖 *BOT INFO* 〕',
@@ -433,7 +433,7 @@ function aliveCaption(kind = 'online') {
     const v = (() => { try { return updater.localInfo().version; } catch { return require('./package.json').version; } })();
     const head = kind === 'updated' ? '🔄 ᴜᴘᴅᴀᴛᴇᴅ & ᴏɴʟɪɴᴇ' : kind === 'alive' ? '💠 sᴛɪʟʟ ʜᴇʀᴇ' : '🟢 ᴏɴʟɪɴᴇ';
     return [
-        `*◈ ARENA AI ◈*  ${head}`,
+        `*◈ KAVIZ MD V1 ◈*  ${head}`,
         '',
         `┊ ⚡ *v${v}*`,
         `┊ 🕒 ${nowLK()}`,
@@ -634,6 +634,7 @@ process.on('unhandledRejection', (e) => log('unhandled: ' + (e?.message || e)));
 process.on('uncaughtException', (e) => log('uncaught: ' + e.message));
 module.exports = { _agentTick: agentTick, AGENT_MSG, handleDownload, getText, onMessages, replyJid, ME, aliveCaption, _setMediaDownloader: (f) => { mediaDownloader = f; }, _setSock: (x) => { SOCK = x; } };
 if (require.main === module) {
-    console.log('🚀 Arena AI starting...');
+    console.log('🚀 KAVIZ MD V1 starting...');
+    require('./media').checkUpdate(true).catch(() => { });   // yt-dlp fresh → FB "Cannot parse data" / YT format errors fix (max 1 check/hour)
     start().catch((e) => { log('Startup fail: ' + e.message); process.exit(1); });
 }

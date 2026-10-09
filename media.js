@@ -1,5 +1,5 @@
 /**
- * media.js — yt-dlp + ffmpeg manager for Arena AI (v2.11)
+ * media.js — yt-dlp + ffmpeg manager for KAVIZ MD V1 (v2.15)
  *   (ported & cleaned up from SmokeBoy v3.7 downloader.js)
  *
  *  • Panel / Linux (x64, arm64): downloads static yt-dlp + ffmpeg into ./bin on first use
@@ -31,7 +31,7 @@ const ASSETS = {
 };
 
 async function downloadBin(url, dest) {
-    const r = await fetch(url, { redirect: 'follow', headers: { 'User-Agent': 'arena-ai-bot' } });
+    const r = await fetch(url, { redirect: 'follow', headers: { 'User-Agent': 'kaviz-md-bot' } });
     if (!r.ok) throw new Error(`${path.basename(dest)} download fail (${r.status})`);
     fs.mkdirSync(path.dirname(dest), { recursive: true });
     const tmp = dest + '.part';
@@ -73,7 +73,7 @@ async function checkUpdate(force = false) {
     lastForced = Date.now();
     updateRunning = (async () => {
         try {
-            const r = await fetch('https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest', { headers: { 'User-Agent': 'arena-ai-bot', Accept: 'application/vnd.github+json' } });
+            const r = await fetch('https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest', { headers: { 'User-Agent': 'kaviz-md-bot', Accept: 'application/vnd.github+json' } });
             if (!r.ok) return;
             const latest = String((await r.json()).tag_name || '').replace(/^v/, '');
             if (!latest) return;
@@ -157,10 +157,10 @@ async function ytdl(url, { mode = 'video', maxMB = 100, height = null } = {}) {
     let ff = null; try { ff = await getBin('ffmpeg'); } catch { }
     const px = proxyArg();
     const ALL_H = [2160, 1440, 1080, 720, 480, 360];
-    // user picked a height → try it first, then fall down; default chain: 1080 → 720 → 480 → 360
+    // user picked a height → try it first, then fall down; default chain: ALL qualities (2160 → 360) — v2.15 "all quality"
     const heights = mode === 'audio' ? [null] : height
         ? [...ALL_H.filter((x) => x <= height), ...ALL_H.filter((x) => x > height)]
-        : [1080, 720, 480, 360];
+        : [2160, 1440, 1080, 720, 480, 360];
     const ck = cookiesFile();
     // attempts: plain → alt-clients → cookies (if any) → proxy combos
     const attempts = [];
@@ -228,12 +228,12 @@ async function toWebp(input, { animated = false } = {}) {
     } finally { fs.rmSync(out, { force: true }); }
 }
 
-async function addExif(webp, pack = 'Arena AI', author = 'Arena AI') {
+async function addExif(webp, pack = 'KAVIZ MD V1', author = 'KAVIZ MD V1') {
     try {
         const { Image } = require('node-webpmux');
         const img = new Image();
         await img.load(webp);
-        const json = { 'sticker-pack-id': 'arena-ai-' + Date.now(), 'sticker-pack-name': pack, 'sticker-pack-publisher': author, emojis: ['🤖'] };
+        const json = { 'sticker-pack-id': 'kaviz-md-' + Date.now(), 'sticker-pack-name': pack, 'sticker-pack-publisher': author, emojis: ['🤖'] };
         const head = Buffer.from([0x49, 0x49, 0x2A, 0x00, 0x08, 0x00, 0x00, 0x00, 0x01, 0x00, 0x41, 0x57, 0x07, 0x00, 0x00, 0x00, 0x00, 0x00, 0x16, 0x00, 0x00, 0x00]);
         const body = Buffer.from(JSON.stringify(json), 'utf8');
         const exif = Buffer.concat([head, body]);
@@ -250,16 +250,32 @@ async function makeSticker(buf, { animated = false, pack, author } = {}) {
     finally { fs.rmSync(inp, { force: true }); }
 }
 
-/** server-side download of a media URL → file path (proxy-aware via smartFetch, caller deletes) */
-async function fetchToFile(url, prefix, { referer } = {}) {
+/** server-side download of a media URL → file path (proxy-aware via smartFetch, caller deletes)
+ *  opts: { referer, maxBytes (abort mid-stream when larger), ext ('mp4' default) } */
+async function fetchToFile(url, prefix, { referer, maxBytes, ext } = {}) {
     const { smartFetch } = require('./net');
     const headers = { 'User-Agent': 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Mobile Safari/537.36', Accept: '*/*' };
     if (referer) headers.Referer = referer;
     const r = await smartFetch(url, { headers, redirect: 'follow' });
     if (!r.ok) { try { await r.body?.cancel(); } catch { } throw new Error(`HTTP ${r.status}`); }
-    const p = path.join(TMP(), `${prefix}-${process.pid}-${Date.now().toString(36)}.mp4`);
+    const p = path.join(TMP(), `${prefix}-${process.pid}-${Date.now().toString(36)}.${ext || 'mp4'}`);
     try {
-        await new Promise((res, rej) => { const w = fs.createWriteStream(p); Readable.fromWeb(r.body).on('error', rej).pipe(w).on('finish', res).on('error', rej); });
+        await new Promise((res, rej) => {
+            const w = fs.createWriteStream(p);
+            let loaded = 0, done = false;
+            const src = Readable.fromWeb(r.body);
+            src.on('data', (c) => {
+                loaded += c.length;
+                if (maxBytes && loaded > maxBytes && !done) {
+                    done = true; src.destroy(); w.destroy();
+                    rej(new Error(`file එක ${Math.round(maxBytes / 1048576)} MB limit එකට වඩා ලොකුයි`));
+                }
+            });
+            src.on('error', (e) => { if (!done) { done = true; rej(e); } });
+            w.on('error', (e) => { if (!done) { done = true; rej(e); } });
+            w.on('finish', () => { if (!done) { done = true; res(); } });
+            src.pipe(w);
+        });
         const size = fs.statSync(p).size;
         if (size < 10 * 1024) throw new Error('download වුණු file එක වැරදියි (පුංචියි)');
         return p;

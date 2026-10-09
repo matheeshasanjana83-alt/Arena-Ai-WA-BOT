@@ -1,5 +1,5 @@
 #!/data/data/com.termux/files/usr/bin/bash
-# Arena AI - Termux setup (එක පාරක් run කරන්න):  bash termux-setup.sh
+# KAVIZ MD V1 - Termux setup (එක පාරක් run කරන්න):  bash termux-setup.sh
 echo "=== 1/2  Termux update + Node.js ==="
 yes | pkg update
 yes | pkg upgrade

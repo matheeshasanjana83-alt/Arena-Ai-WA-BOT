@@ -15,7 +15,7 @@ const mk = (text, fromMe = true, jid = ME) => ({ key: { id: 'IN' + (++n), remote
     r = await run(mk('.ping', false, '94770000000@s.whatsapp.net')); t('🔒 වෙන කෙනෙක් .ping → ignore', r.length === 0);
     r = await run(mk('.download https://x0.at/D07z.zip', false, '120363@g.us')); t('🔒 group එකේ වෙන කෙනෙක් .download → ignore', r.length === 0);
     r = await run(mk('hello')); t('සාමාන්‍ය message → ignore', r.length === 0);
-    r = await run(mk('.download')); t('.download link නැතුව → help', r.length === 1 && /Arena AI/.test(r[0].text));
+    r = await run(mk('.download')); t('.download link නැතුව → help', r.length === 1 && /KAVIZ MD V1/.test(r[0].text));
     r = await run(mk('.download https://raw.githubusercontent.com/matheeshasanjana83-alt/abc/main/downloads/Joystick-Layout-NoCLEO-v1.zip'));
     const doc = r.find(x => x.document);
     t('.download GitHub → document එවනවා', !!doc && doc.fileName === 'Joystick-Layout-NoCLEO-v1.zip' && doc.size === 3127);
@@ -99,7 +99,7 @@ const mk = (text, fromMe = true, jid = ME) => ({ key: { id: 'IN' + (++n), remote
     const ans = r.find(x => x.edit && /උත්තරය/.test(x.text || ''));
     t('.ai → Gemini උත්තරය (edit)', !!ans && /GTA cheats/.test(ans.text));
     t('markdown → WhatsApp (*bold*, heading)', !!ans && /\*හායි!\*/.test(ans.text) && /^\*උත්තරය\*/.test(ans.text) && !/\*\*/.test(ans.text));
-    t('system prompt = Arena AI', calls.at(-1).body.systemInstruction.parts[0].text.includes('Arena AI'));
+    t('system prompt = KAVIZ MD V1', calls.at(-1).body.systemInstruction.parts[0].text.includes('KAVIZ MD V1'));
     r = await run2(mk('.ai තව කියන්න')); t('memory: 2nd question එකට කලින් කතාව යවනවා (turns=3)', r.some(x => /turns=3/.test(x.text || '')));
     r = await run2(mk('.ai reset')); r = await run2(mk('.ai අලුත් එකක්')); t('.ai reset → memory clear (turns=1)', r.some(x => /turns=1/.test(x.text || '')));
     const qm = mk('.ai'); qm.message = { extendedTextMessage: { text: '.ai', contextInfo: { quotedMessage: { conversation: 'Hello world message' } } } };
@@ -157,7 +157,7 @@ const mk = (text, fromMe = true, jid = ME) => ({ key: { id: 'IN' + (++n), remote
         const LOGO = path.join(__dirname, 'logo.img'); const hadLogo = fs.existsSync(LOGO) ? fs.readFileSync(LOGO) : null;
         fs.rmSync(LOGO, { force: true });
         r = await run(mk('.alive')); const card = r.find(x => x.image);
-        t('.alive → banner photo + card', !!card && card.image.length === fs.statSync(path.join(__dirname, 'banner.jpg')).size && /ARENA AI/.test(card.caption) && /v\d+\.\d+/.test(card.caption));
+        t('.alive → banner photo + card', !!card && card.image.length === fs.statSync(path.join(__dirname, 'banner.jpg')).size && /KAVIZ MD V1/.test(card.caption) && /v\d+\.\d+/.test(card.caption));
         t('card එක කෙටියි (පේළි 9 ට අඩුයි)', card && card.caption.split('\n').length <= 9);
         r = await run(mk('.setlogo')); t('.setlogo photo නැතුව → උදව් message', r.some(x => /reply/.test(x.text || '')) && !fs.existsSync(LOGO));
         const fake = Buffer.alloc(4000, 7); let got = null;
@@ -183,7 +183,7 @@ const mk = (text, fromMe = true, jid = ME) => ({ key: { id: 'IN' + (++n), remote
         r = await run(q1); t('menu එකට reply කරලා 1 → Download category', r.some(x => /DOWNLOAD/.test(x.text || '')));
         r = await run(mk('2')); t('menu එකෙන් පස්සේ 2 විතරක් → YouTube category', r.some(x => /\*🎬 YOUTUBE\*/.test(x.text || '')));
         r = await run(mk('9')); t('9 → AI category', r.some(x => /\*🤖 AI\*/.test(x.text || '')));
-        r = await run(mk('13')); t('13 → status card (photo)', r.some(x => x.image && /ARENA AI/.test(x.caption)));
+        r = await run(mk('13')); t('13 → status card (photo)', r.some(x => x.image && /KAVIZ MD V1/.test(x.caption)));
         r = await run(mk('99')); t('වැරදි number → error', r.some(x => /අතර number/.test(x.text || '')));
         const other = mk('1'); other.message = { extendedTextMessage: { text: '1', contextInfo: { stanzaId: 'SOMETHING_ELSE' } } };
         r = await run(other); t('වෙන message එකකට reply කරපු "1" → ignore', r.length === 0);
@@ -222,7 +222,7 @@ const mk = (text, fromMe = true, jid = ME) => ({ key: { id: 'IN' + (++n), remote
         bot._setMediaDownloader(async (m) => m.message.videoMessage ? fs.readFileSync('/tmp/ytt/v.mp4') : m.message.stickerMessage ? globalThis.__lastSticker : jpg);
         const sm = mk('.s'); sm.message = { imageMessage: { caption: '.s', mimetype: 'image/jpeg' } };
         r = await run(sm); const st = r.find(x => x.sticker);
-        t('.s photo → webp sticker (512, Exif)', !!st && st.sticker.slice(0, 4).toString() === 'RIFF' && st.sticker.includes(Buffer.from('Arena AI')));
+        t('.s photo → webp sticker (512, Exif)', !!st && st.sticker.slice(0, 4).toString() === 'RIFF' && st.sticker.includes(Buffer.from('KAVIZ MD V1')));
         if (fs.existsSync('/tmp/ytt/v.mp4')) {
             const vm = mk('.s'); vm.message = { extendedTextMessage: { text: '.s', contextInfo: { stanzaId: 'V1', quotedMessage: { videoMessage: { seconds: 5, mimetype: 'video/mp4' } } } } };
             r = await run(vm); const vs = r.find(x => x.sticker);
@@ -346,7 +346,7 @@ const mk = (text, fromMe = true, jid = ME) => ({ key: { id: 'IN' + (++n), remote
         bot.ME.pn = ME;
         fs.writeFileSync(bot.AGENT_MSG, 'Hello from the agent 👋\nදෙවෙනි line එක');
         const ok = await bot._agentTick(fsend);
-        t('📨 agent-msg.txt → Message yourself එකට යනවා', ok && sent.length === 1 && sent[0][0] === ME && /Arena Agent/.test(sent[0][1].text) && /දෙවෙනි line/.test(sent[0][1].text));
+        t('📨 agent-msg.txt → Message yourself එකට යනවා', ok && sent.length === 1 && sent[0][0] === ME && /KAVIZ Agent/.test(sent[0][1].text) && /දෙවෙනි line/.test(sent[0][1].text));
         t('📨 යැව්වට පස්සේ file එක මැකෙනවා (ආයෙත් යන්නේ නෑ)', !fs.existsSync(bot.AGENT_MSG) && (await bot._agentTick(fsend)) === false && sent.length === 1);
         fs.writeFileSync(bot.AGENT_MSG, '   ');
         t('📨 හිස් file → මුකුත් යවන්නේ නෑ', (await bot._agentTick(fsend)) === false && sent.length === 1);

@@ -1,6 +1,6 @@
 {
-  "version": "2.14.0",
-  "notes": "Downloader fixes: .yt/.video quality pick (.video <link> 1080/720/480 — up to 4K) + YouTube bot-check fix (.setcookies — browser cookies.txt file එකක් යවලා දාන්න) + alt player clients fallback; .fb — fb.watch share links fixed + yt-dlp auto-update (stale extractor = FB Cannot parse data error fix); .tiktok — video server-side download (proxy-aware, CDN fail fix) + tikwm retry",
+  "version": "2.15.0",
+  "notes": "KAVIZ MD V1 rebrand + downloader fixes: .yt/.video ALL qualities (2160p→144p, default = best available) + clipto.com API fallback for YouTube bot-check ('Sign in to confirm you're not a bot' datacenter block — video-only HD streams auto-merged with m4a via ffmpeg) + video cap 150→200 MB; .fb — new .facebook/.faceboock/.fbvid aliases + FB page-scrape fallback (browser_native_hd_url) when yt-dlp fails; .tiktok — vm/vt short links resolved first + 3 retries with backoff; yt-dlp force-updated on bot start (stale extractor = FB 'Cannot parse data' fix)",
   "files": [
     "bot.js",
     "ai.js",

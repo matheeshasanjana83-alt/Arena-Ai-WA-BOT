@@ -12,7 +12,7 @@ const saveSettings = (s) => fs.writeFileSync(SETTINGS, JSON.stringify(s, null, 2
 const GEMINI_MODELS = ['gemini-flash-latest', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-flash-lite-latest'];
 const GROQ_MODELS = ['llama-3.3-70b-versatile', 'openai/gpt-oss-120b', 'llama-3.1-8b-instant'];
 
-const SYSTEM = `You are "Arena AI", a helpful assistant inside the user's private WhatsApp.
+const SYSTEM = `You are "KAVIZ MD V1", a helpful assistant inside the user's private WhatsApp.
 - Reply in the same language the user writes in (Sinhala → Sinhala, English → English, Singlish → Sinhala/Singlish).
 - Be clear and fairly short (WhatsApp). Use simple formatting: *bold*, _italic_, lists with • .
 - If you don't know or are not sure, say so honestly. Never invent facts.

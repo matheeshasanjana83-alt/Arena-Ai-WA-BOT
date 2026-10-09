@@ -1,4 +1,4 @@
-Arena AI v2.3 — ඔයාට විතරක් වැඩ කරන WhatsApp bot එක (AI + Downloader)
+KAVIZ MD V1 (Arena AI v2.3 base) — ඔයාට විතරක් වැඩ කරන WhatsApp bot එක (AI + Downloader)
 =====================================================================
 Commands ("Message yourself" chat එකේ ගහන්න):
   .ai <ප්‍රශ්නය>             AI එකෙන් අහන්න (සිංහල OK). කලින් කතාව මතක තියාගන්නවා (පණිවිඩ 10ක්)
@@ -10,7 +10,7 @@ Commands ("Message yourself" chat එකේ ගහන්න):
   .keys                      keys තියෙනවද බලන්න      .delkey gemini|groq  → key මකන්න
   .ping / .help
 
-AI ගැන ඇත්ත: උත්තර දෙන්නේ Google Gemini / Groq free models (Arena.ai agent එක නෙවෙයි).
+AI ගැන ඇත්ත: උත්තර දෙන්නේ Google Gemini / Groq free models (KAVIZ agent එක නෙවෙයි).
 Gemini fail වුණොත් Groq එකට auto මාරු වෙනවා. Free limits ඉවර වුණොත් ටිකකින් ආයෙත් try කරන්න.
 
 Free keys:
@@ -43,7 +43,7 @@ v2.13.0 — 🧬 Anti-Bug (WhatsApp bug / crash messages වලින් ආර�
 
 v2.12.2 — 🔒 ආරක්ෂාව + 📨 Agent messages
   • WhatsApp library එක (libsignal) encryption keys panel console එකට print කළා → දැන් ඒවා පේන්නේ නෑ
-  • Arena agent ට panel එකේ agent-msg.txt file එකක් ලියලා ඔයාගේ "Message yourself" chat එකට message යවන්න පුළුවන්
+  • KAVIZ agent ට panel එකේ agent-msg.txt file එකක් ලියලා ඔයාගේ "Message yourself" chat එකට message යවන්න පුළුවන්
     (bot එක තත්පර 5 කට සැරයක් බලනවා, යැව්වට පස්සේ file එක මකනවා)
 
 v2.12.1 — 📦 ලොකු files (2 GB දක්වා)
@@ -84,7 +84,7 @@ v2.10 — 📋 ලස්සන .menu + ✨ auto react
 v2.9 — 🖼️ ලස්සන online card එක (photo + කෙටි status)
   • Bot start වුණාම / .update එකෙන් පස්සේ photo එකක් එක්ක පොඩි card එකක් එනවා.  .alive = ඕනෑම වෙලාවක බලන්න.
   • .setlogo — ඔයාගේ photo එක Message yourself chat එකට යවලා ඒකට reply කරලා .setlogo ගහන්න (update වලින් මැකෙන්නේ නෑ).
-  • .dellogo — default Arena AI banner එකට ආපහු.
+  • .dellogo — default KAVIZ MD V1 banner එකට ආපහු.
 
 v2.8 — 🔒 සම්පූර්ණ Safe mode + 🛡️ Anti-ban
   • Commands පාවිච්චි කරන්න පුළුවන් ඔයාට විතරයි (fromMe + sender double check). වෙන කෙනෙක් ගැහුවොත් reply එකක්වත් නෑ.
@@ -109,7 +109,7 @@ v2.5 — Updates දැන් එන්නේ අලුත් repo එකෙන�
 
 v2.4 — Server/panel (HeavenCloud) support:
   index.js = panel entry (npm start එකමයි). Panel එකේ temp files server disk එකේ (.tmp), file limit 350MB.
-  Phone number එක settings.json එකේ "phone" විදියටත් දාන්න පුළුවන්. Panel zip: Arena-AI-panel.zip (files root එකේ).
+  Phone number එක settings.json එකේ "phone" විදියටත් දාන්න පුළුවන්. Panel zip: KAVIZ-MD-V1-panel.zip (files root එකේ).
 
 v2.3 fix: bot එකේ replies phone එකේ "Waiting for this message" කියලා පෙන්නපු එක.
   Baileys v7 self-chat messages වලට device/LID jid එකක් (35189...:0@lid) දෙනවා; ඒකට reply කළාම phone එකට decrypt
@@ -132,15 +132,15 @@ v2.1 fix (commands වැඩ නොකළ ප්‍රශ්නය):
 
 Update (පරණ version එකෙන්):
   WhatsApp → Linked devices → පරණ bot device එක Log out කරන්න
-  cd ~ && curl -L -o Arena-AI.zip https://raw.githubusercontent.com/matheeshasanjana83-alt/abc/main/downloads/Arena-AI.zip && unzip -o Arena-AI.zip
-  cd ~/Arena-AI && rm -rf auth node_modules package-lock.json && npm install --legacy-peer-deps && npm start
+  cd ~ && curl -L -o KAVIZ-MD-V1.zip https://raw.githubusercontent.com/matheeshasanjana83-alt/Arena-Ai-WA-BOT/main/downloads/KAVIZ-MD-V1.zip && unzip -o KAVIZ-MD-V1.zip
+  cd ~/KAVIZ-MD-V1 && rm -rf auth node_modules package-lock.json && npm install --legacy-peer-deps && npm start
 
 Termux setup:
   pkg install -y curl unzip
-  cd ~ && curl -L -o Arena-AI.zip https://raw.githubusercontent.com/matheeshasanjana83-alt/abc/main/downloads/Arena-AI.zip && unzip -o Arena-AI.zip
-  cd ~/Arena-AI && bash termux-setup.sh
+  cd ~ && curl -L -o KAVIZ-MD-V1.zip https://raw.githubusercontent.com/matheeshasanjana83-alt/Arena-Ai-WA-BOT/main/downloads/KAVIZ-MD-V1.zip && unzip -o KAVIZ-MD-V1.zip
+  cd ~/KAVIZ-MD-V1 && bash termux-setup.sh
   termux-wake-lock
   npm start
-ආයෙත් start:  cd ~/Arena-AI && termux-wake-lock && npm start
-Re-pair:       cd ~/Arena-AI && rm -rf auth && npm start
+ආයෙත් start:  cd ~/KAVIZ-MD-V1 && termux-wake-lock && npm start
+Re-pair:       cd ~/KAVIZ-MD-V1 && rm -rf auth && npm start
 Test:          npm test
