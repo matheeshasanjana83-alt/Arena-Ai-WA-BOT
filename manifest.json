@@ -1,6 +1,6 @@
 {
-  "version": "2.19.0",
-  "notes": "MOVIE එකම එනවා! .moviepro <n> -> CineSubz quality list (480p/720p/1080p + size); .moviepro <n> <q#> -> movie FILE downloaded and sent to chat (gate decode -> real CDN link -> live-check -> stream download); dead file / CDN protection -> direct link + telegram link fallback. IMDb card now enriched (rating/description). 12 offline tests.",
+  "version": "2.20.0",
+  "notes": "ANTI-SPAM toolkit: .block <number|reply> / .unblock / .blocklist / .spamlog — server-side block, spammer's messages never reach you again. .antispam on|off|<N> → DM flood guard (per-minute window → auto block + self-chat notice). Owner-only, no report-flood features (those get YOUR number banned). antispam.json survives .update.",
   "files": [
     "bot.js",
     "ai.js",
@@ -22,6 +22,7 @@
     "features.js",
     "tools.js",
     "antibug.js",
+    "antispam.js",
     "test_v214.js",
     "test_v216.js",
     "proxypool.js",
@@ -29,6 +30,7 @@
     "test_v217.js",
     "movies.js",
     "test_v218.js",
-    "test_v219.js"
+    "test_v219.js",
+    "test_v220.js"
   ]
 }

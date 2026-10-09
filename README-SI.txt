@@ -22,6 +22,19 @@ litterbox/catbox, x0.at, transfer.archivete.am, filebin, eporner (v2.17). (gofil
 
 🔒 Private: ඔයා යවන messages විතරයි. වෙන අය commands යැව්වත් ignore.
 
+v2.20.0 — 🚫 Anti-spam + block toolkit
+  • .block <නම්බර්|reply> — spammer කෙනෙක් block (server-side — ඒ number එකෙන්
+    ආයෙ messages/calls ඔයාට එන්නෙම නෑ). 076... / +94-76-... / 9476... format ඔක්කොම OK.
+  • .unblock <නම්බර්|reply>  •  .blocklist — block කරපු ලැයිස්තුව
+  • .antispam on|off|<N> — DM flood guard: මිනිත්තුවකට N (default 10) ට වැඩියෙන්
+    messages එවන කෙනෙක් → auto block + blocklist + spamlog + ඔයාට notice එකක්.
+    (පරණ history-sync messages ගණන් ගන්නෙ නෑ — false block නෑ; group/status skip)
+  • .spamlog — අලුත්ම auto/manual block සිදුවීම් 15
+  • ℹ️ Report flood එකක් නෑ: WhatsApp report කරන එකම පාර phone එකේ Report button එක
+    (එක number එකකින් bot reports යැව්වොත් ඔයාගෙම number එක ban වෙනවා — block එක තමයි
+    spammer ලාට safe + ස්ථිර විසඳුම). antispam.json — .update වලින් මෙන්නෙ නෑ.
+  • test_v220.js — 12 offline checks (flood/unblock/reply-block/history-guard...)
+
 v2.19.0 — 🍿 .moviepro — movie FILE එකම chat එකට (trailer නෙවෙයි!)
   • .moviepro <අංකය> — info card එකට CineSubz quality list එකත් එනවා
     (WEB-DL 480p / 720p / 1080p + size — cinesubz.net එකෙන් auto)
