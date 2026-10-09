@@ -35,6 +35,17 @@ v2.20.0 — 🚫 Anti-spam + block toolkit
     spammer ලාට safe + ස්ථිර විසඳුම). antispam.json — .update වලින් මෙන්නෙ නෑ.
   • test_v220.js — 12 offline checks (flood/unblock/reply-block/history-guard...)
 
+v2.21.0 — 🔗 Mirror relay: file → direct share link (අනිත් bots වල /dl link UX එක)
+  • .mirror <link> (.link) — link එකේ file එක download කරලා browser එකෙන් උනේන
+    direct download link එකක් විදිහට යවනවා (video/file share වලට — status/grp).
+  • .tourl FIX — පරණ catbox host එක වැඩ කරන්නේ නෑ; දැන් qu.ax (දින 30) →
+    transfer.archivete.am (දින 7) fallback. Photo/video/audio/file reply → .tourl.
+  • .moviepro <අංකය> <quality#> link — movie එක WhatsApp file එකක් වෙනුවට direct link
+    එකක් විදිහට (500 status viewers ලාට share කරන්න ලේසි).
+  • mirror.js — upload chain: qu.ax (දින 30, ~950MB) → transfer (big files stream).
+    Proxy-pool fallback එකත් වැඩ (net.js smartFetch).
+  • ⚠️ Public links — sensitive/personal files .mirror/.tourl කරන්න එපා.
+
 v2.19.0 — 🍿 .moviepro — movie FILE එකම chat එකට (trailer නෙවෙයි!)
   • .moviepro <අංකය> — info card එකට CineSubz quality list එකත් එනවා
     (WEB-DL 480p / 720p / 1080p + size — cinesubz.net එකෙන් auto)

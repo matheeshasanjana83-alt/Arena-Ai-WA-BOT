@@ -11,9 +11,10 @@ Private WhatsApp bot (Baileys v7) — `.ai` (Gemini / Groq), `.download`, `.yt/.
 | `.net <link>` | Download fail නම් හේතුව (DNS block / IP block) |
 | `.setproxy <url\|off>` | Block වෙන sites වලට proxy |
 | `.proxies` | Free proxy pool status (`check` / `on` / `off`) — block වුණාම auto fallback; alive අඩු නම් free lists වලින් auto-refresh (v2.17) |
-| `.moviepro <නම>` | Movie search → info card + **CineSubz quality list (480p/720p/1080p)** → `.moviepro <n> <q#>` ගහාම **movie file එකම chat එකට** 🍿 (v2.19) · `.moviepro <n> trailer` = trailer |
+| `.moviepro <නම>` | Movie search → info card + **CineSubz quality list (480p/720p/1080p)** → `.moviepro <n> <q#>` ගහාම **movie file එකම chat එකට** 🍿 (v2.19) · `.moviepro <n> <q#> link` = 🔗 direct link (v2.21) · `.moviepro <n> trailer` = trailer |
 | `.block <නම්බර්\|reply>` | Spammer block (server-side — ඒ number එකෙන් ආයෙ messages එන්නෙම නෑ) · `.unblock` · `.blocklist` · `.spamlog` (v2.20) |
 | `.antispam on\|off\|<N>` | DM flood guard — මිනිත්තුවකට N (default 10) ට වැඩි messages → auto block + notice (v2.20) |
+| `.mirror <link>` | URL → download → **direct share link** (qu.ax දින 30 → transfer දින 7) — අනිත් bots වල `/dl` link UX එක · `.link` alias · `.tourl` fixed (v2.21) |
 | `.keys` · `.menu` · `.ping` | |
 | `.version` | දැන් version එක + update තියෙනවද |
 | `.update` | මේ repo එකෙන් අලුත් version එක ගන්නවා (auth / keys වෙනස් වෙන්නේ නෑ) |
@@ -21,7 +22,7 @@ Private WhatsApp bot (Baileys v7) — `.ai` (Gemini / Groq), `.download`, `.yt/.
 | `.video`/`.yt` `.song` `.yts` | YouTube — all qualities (2160p→144p) + API fallback (v2.15) |
 | `.tiktok` `.tt` | TikTok — watermark නැතුව (v2.15 short-link fix) |
 | `.fb`/`.facebook`/`.faceboock` | Facebook video — yt-dlp + direct-scrape fallback (v2.15) |
-| `.toimg` `.tourl` `.ss` `.qr` `.short` `.calc` `.github` `.del` `.setpp` | Tools (v2.12) |
+| `.toimg` `.tourl` `.mirror` `.ss` `.qr` `.short` `.calc` `.github` `.del` `.setpp` | Tools (v2.12 · .mirror v2.21) |
 | `.joke` `.fact` `.quote` `.8ball` · `.mute` `.unmute` `.tagadmins` `.resetlink` | Fun · Group (v2.12) |
 
 > v2.12 command ideas: [Knightbot-MD](https://github.com/mruniquehacker/Knightbot-MD) by mruniquehacker (MIT) — code rewritten for KAVIZ MD V1.

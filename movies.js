@@ -240,7 +240,7 @@ async function trailerCmd(send, jid, msg, m) {
 
 /* ───────────────────────── movie file download ───────────────────────── */
 
-async function movieFileCmd(send, jid, msg, m, qi, quals) {
+async function movieFileCmd(send, jid, msg, m, qi, quals, linkMode = false) {
     const item = quals.items[qi - 1];
     if (!item) return send(jid, { text: `❌ ${qi} කියලා quality එකක් නෑ (1-${quals.items.length})` }, { quoted: msg });
     const label = item.label || 'movie';
@@ -268,16 +268,22 @@ async function movieFileCmd(send, jid, msg, m, qi, quals) {
         };
         await edit(`⏳ Movie එක download වෙනවා...\n${label}`);
         const { download } = require('./downloader');
-        const files = await download(r.real, onProgress, { stream: true });   // 🌊 big → straight to WA
+        const files = await download(r.real, onProgress, { stream: !linkMode });   // 🌊 file mode → straight to WA; link mode → temp file → mirror
         for (const f of files) {
-            await edit(`📤 WhatsApp එකට යවනවා... (${human(f.size)})`);
-            await send(jid, {
-                document: f.open ? { stream: f.open() } : { url: f.path }, fileName: f.name, mimetype: f.mime,
-                caption: `🎬 *${m.name}*${m.releaseInfo ? ` (${m.releaseInfo})` : ''}\n📦 ${human(f.size)}  •  ${label}\n⭐ ${m.imdbRating || '—'} IMDb`,
-            }, { quoted: msg });
+            if (linkMode) {
+                await edit(`📤 Mirror upload වෙනවා... (${human(f.size)})`);
+                const rel = await require('./mirror').uploadFile(f.path, f.name);
+                await edit(`✅ *${m.name}* — direct link! 🔗\n\n🔗 ${rel.url}\n\n📦 ${human(f.size)}  •  ${label}\n⭐ ${m.imdbRating || '—'} IMDb  •  ⏳ දින ${rel.days} (${rel.host})\n⚠️ Public link එකක් — sensitive files එපා`);
+            } else {
+                await edit(`📤 WhatsApp එකට යවනවා... (${human(f.size)})`);
+                await send(jid, {
+                    document: f.open ? { stream: f.open() } : { url: f.path }, fileName: f.name, mimetype: f.mime,
+                    caption: `🎬 *${m.name}*${m.releaseInfo ? ` (${m.releaseInfo})` : ''}\n📦 ${human(f.size)}  •  ${label}\n⭐ ${m.imdbRating || '—'} IMDb`,
+                }, { quoted: msg });
+            }
             if (f.path) require('fs').rm(f.path, { force: true }, () => { });
         }
-        await edit(`✅ Movie එක ආවා! 🍿`);
+        if (!linkMode) await edit(`✅ Movie එක ආවා! 🍿`);
     } catch (e) {
         const msgTxt = String(e.message || '');
         // CDN served its protected player instead of the file → clean link fallback
@@ -301,7 +307,7 @@ async function handle(c, ctx) {
     if (c !== '.moviepro' && c !== '.mvpro' && c !== '.movie') return false;
     const { send, jid, msg, rest } = ctx;
     const arg = rest.join(' ').trim();
-    const pick = arg.match(/^(\d{1,2})(?:\s+(trailer|t))?(?:\s+(\d{1,2}))?$/i);
+    const pick = arg.match(/^(\d{1,2})(?:\s+(trailer|t))?(?:\s+(\d{1,2}))?(?:\s+(link|l))?$/i);
 
     if (pick) {
         const s = sessions.get(jid);
@@ -319,9 +325,10 @@ async function handle(c, ctx) {
                 return send(jid, { text: '⏳ Quality list එක load වෙලා නෑ — මුලින්ම *.moviepro ' + n + '* ගහලා list එක එනකම් ඉන්න' }, { quoted: msg });
             }
             s.movie.picked = full;
-            await movieFileCmd(send, jid, msg, full, +pick[3], s.movie);
+            await movieFileCmd(send, jid, msg, full, +pick[3], s.movie, !!(pick[4] && /^l/i.test(pick[4])));
             return true;
         }
+        if (pick[4]) return send(jid, { text: '🔗 Link mode එකට quality අංකය එකත් ඕනෙ — උදා: *.moviepro ' + n + ' 1 link*' }, { quoted: msg });
 
         // info card + CineSubz quality list
         const st = await send(jid, { text: `🔎 *${full.name}* — download links හොයනවා...` }, { quoted: msg });
@@ -337,7 +344,7 @@ async function handle(c, ctx) {
 
     if (!arg) {
         return send(jid, {
-            text: `🎬 *MoviePro* — search කරලා *movie එකම* chat එකට ගන්න\n\n*.moviepro <movie නම>* — search\n   උදා: *.moviepro avatar way of water*\n*.moviepro <අංකය>* — details + quality list (480p/720p/1080p)\n*.moviepro <අංකය> <quality#>* — 🎬 movie file එකම එනවා\n*.moviepro <අංකය> trailer* — trailer එක video විදිහට`,
+            text: `🎬 *MoviePro* — search කරලා *movie එකම* chat එකට ගන්න\n\n*.moviepro <movie නම>* — search\n   උදා: *.moviepro avatar way of water*\n*.moviepro <අංකය>* — details + quality list (480p/720p/1080p)\n*.moviepro <අංකය> <quality#>* — 🎬 movie file එකම එනවා\n*.moviepro <අංකය> <quality#> link* — 🔗 direct download link එකක් (status/grp share වලට)\n*.moviepro <අංකය> trailer* — trailer එක video විදිහට`,
         }, { quoted: msg });
     }
 

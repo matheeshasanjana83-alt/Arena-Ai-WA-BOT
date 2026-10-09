@@ -1,6 +1,6 @@
 {
   "name": "kaviz-md-v1",
-  "version": "2.20.0",
+  "version": "2.21.0",
   "description": "KAVIZ MD V1 - private WhatsApp bot: .ai + .download (+eporner) + .moviepro + .yt/.fb/.tiktok + auto free proxy pool",
   "main": "index.js",
   "scripts": {

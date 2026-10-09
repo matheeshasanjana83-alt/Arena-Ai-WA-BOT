@@ -136,18 +136,10 @@ async function cmdToImg(send, jid, msg) {
 }
 
 // ───────── media → link ─────────
+const mirror = require('./mirror');
 async function upload(buf, name) {
-    const tryHost = async (url, fields) => {
-        const fd = new FormData();
-        for (const [k, v] of Object.entries(fields)) fd.append(k, v);
-        fd.append('fileToUpload', new Blob([buf]), name);
-        const r = await fetch(url, { method: 'POST', body: fd, headers: UA });
-        const t = (await r.text()).trim();
-        if (!/^https?:\/\//.test(t)) throw new Error(t.slice(0, 80) || 'upload fail');
-        return t;
-    };
-    try { return { url: await tryHost('https://catbox.moe/user/api.php', { reqtype: 'fileupload' }), perm: true }; }
-    catch { return { url: await tryHost('https://litterbox.catbox.moe/resources/internals/api.php', { reqtype: 'fileupload', time: '72h' }), perm: false }; }
+    const r = await mirror.uploadBuffer(buf, name);
+    return { url: r.url, perm: false, days: r.days, host: r.host };
 }
 async function cmdToUrl(send, jid, msg) {
     const m = mediaOf(msg);
@@ -157,7 +149,36 @@ async function cmdToUrl(send, jid, msg) {
     const mm = m.src.message[m.kind + 'Message'] || {};
     const ext = (mm.fileName && path.extname(mm.fileName)) || ({ image: '.jpg', video: '.mp4', sticker: '.webp', audio: '.mp3' }[m.kind] || '.bin');
     const r = await upload(buf, 'kaviz-' + Date.now().toString(36) + ext);
-    return send(jid, { text: `🔗 *Link එක:*\n${r.url}\n\n📦 ${(buf.length / 1048576).toFixed(2)} MB  •  ${r.perm ? '♾️ ස්ථිරයි (catbox)' : '⏳ පැය 72 යි (litterbox)'}` }, { quoted: msg });
+    return send(jid, { text: `🔗 *Link එක:*\n${r.url}\n\n📦 ${(buf.length / 1048576).toFixed(2)} MB  •  ⏳ දින ${r.days} වලංගු (${r.host})\n⚠️ Public link එකක් — sensitive files එපා` }, { quoted: msg });
+}
+
+// ───────── URL → mirror link (අනිත් bots වල /dl link UX එක) ─────────
+async function cmdMirror(send, jid, msg, args) {
+    const u = (args.join(' ').match(URL_RE) || [])[0];
+    if (!u) {
+        if (mediaOf(msg)) return cmdToUrl(send, jid, msg);   // media reply → .tourl වගේම
+        return send(jid, { text: '🪞 *.mirror <link>*  — link එකක file එක download කරලා direct download link එකක් විදිහට යවනවා\nඋදා: .mirror https://site.com/video.mp4\n\n media එකකට reply කරලා ගහුවොත් .tourl වගේම වැඩ' }, { quoted: msg });
+    }
+    const { download } = require('./downloader');
+    const st = await send(jid, { text: `🪞 Download වෙනවා...\n${u.slice(0, 120)}` }, { quoted: msg });
+    const edit = async (t) => { try { await send(jid, { text: t, edit: st.key }); } catch { } };
+    let last = 0;
+    const onProgress = (loaded, total) => {
+        const now = Date.now();
+        if (now - last < 8000) return;
+        last = now;
+        const pct = total ? Math.floor(loaded * 100 / total) : null;
+        edit(`🪞 Download වෙනවා...\n${pct === null ? '' : '▰'.repeat(Math.round(pct / 10)) + '▱'.repeat(10 - Math.round(pct / 10)) + ` ${pct}%\n`}${(loaded / 1048576).toFixed(1)} MB`);
+    };
+    const files = await download(u, onProgress, { stream: false });
+    let out = '';
+    for (const f of files) {
+        await edit(`📤 Upload වෙනවා... (${(f.size / 1048576).toFixed(1)} MB)`);
+        const r = await mirror.uploadFile(f.path, f.name);
+        out += `\n🔗 *${f.name}*\n${r.url}\n📦 ${(f.size / 1048576).toFixed(2)} MB  •  ⏳ දින ${r.days} (${r.host})\n`;
+        if (f.path) fs.rm(f.path, { force: true }, () => { });
+    }
+    await edit(`✅ Mirror සූදානම්!${out}\n⚠️ Public link එකක් — sensitive files එපා`);
 }
 
 // ───────── web tools ─────────
@@ -258,7 +279,7 @@ function cmd8ball(send, jid, msg, args) {
     return send(jid, { text: `🎱 _${args.join(' ').slice(0, 200)}_\n\n${BALL[Math.floor(Math.random() * BALL.length)]}` }, { quoted: msg });
 }
 
-const CMDS = { '.tts': cmdTts, '.say': cmdTts, '.tr': cmdTr, '.translate': cmdTr, '.weather': cmdWeather, '.lyrics': cmdLyrics, '.toimg': cmdToImg, '.tourl': cmdToUrl, '.url': cmdToUrl, '.ss': cmdSs, '.qr': cmdQr, '.short': cmdShort, '.calc': cmdCalc, '.github': cmdGithub, '.imagine': cmdImagine, '.img': cmdImagine, '.joke': cmdJoke, '.fact': cmdFact, '.quote': cmdQuote, '.8ball': cmd8ball, '.del': null, '.delete': null, '.setpp': null };
+const CMDS = { '.tts': cmdTts, '.say': cmdTts, '.tr': cmdTr, '.translate': cmdTr, '.weather': cmdWeather, '.lyrics': cmdLyrics, '.toimg': cmdToImg, '.tourl': cmdToUrl, '.url': cmdToUrl, '.mirror': cmdMirror, '.link': cmdMirror, '.ss': cmdSs, '.qr': cmdQr, '.short': cmdShort, '.calc': cmdCalc, '.github': cmdGithub, '.imagine': cmdImagine, '.img': cmdImagine, '.joke': cmdJoke, '.fact': cmdFact, '.quote': cmdQuote, '.8ball': cmd8ball, '.del': null, '.delete': null, '.setpp': null };
 
 async function handle(c, { send, jid, msg, rest, sock, me }) {
     if (!(c in CMDS)) return false;

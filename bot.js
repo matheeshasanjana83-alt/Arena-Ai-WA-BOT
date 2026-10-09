@@ -131,7 +131,7 @@ const HELP = `🤖 *KAVIZ MD V1* — ඔක්කොම commands
 🔍 *.wiki* <මාතෘකාව>  •  🐙 *.gitclone* user/repo
 🖼️ *.s* (photo/video reply)  •  *.take* Pack | Author
 👥 *.groupinfo*  •  *.grouplink*  •  *.tagall*  •  *.kick*  •  *.promote*  •  *.demote*  •  *.jid*
-🛠️ *.tr*  •  *.tts*  •  *.weather*  •  *.lyrics*  •  *.imagine*  •  *.toimg*  •  *.tourl*  •  *.ss*  •  *.qr*  •  *.short*  •  *.calc*  •  *.github*  •  *.del*  •  *.setpp*
+🛠️ *.tr*  •  *.tts*  •  *.weather*  •  *.lyrics*  •  *.imagine*  •  *.toimg*  •  *.tourl*  •  *.mirror*  •  *.ss*  •  *.qr*  •  *.short*  •  *.calc*  •  *.github*  •  *.del*  •  *.setpp*
 🎉 *.joke*  •  *.fact*  •  *.quote*  •  *.8ball*
 👥 *.mute*  •  *.unmute*  •  *.tagadmins*  •  *.resetlink*
 🔄 *.restart*
@@ -141,6 +141,7 @@ const HELP = `🤖 *KAVIZ MD V1* — ඔක්කොම commands
   • *.ai reset* — කතාව අලුතෙන් පටන් ගන්න
 *.download <link>*  — file එක download කරලා එවනවා (*.dl*)
   • links කිහිපයක් එකට (5 දක්වා): .download link1 link2
+*.mirror <link>*  — link එකේ file එක download කරලා *direct share link* එකක් (*.link*)
 *.setkey gemini <KEY>*  /  *.setkey groq <KEY>*  — free API key දාන්න
 *.keys*  — keys තියෙනවද බලන්න
 *.net <link>*  — download fail නම් හේතුව බලන්න (DNS / IP block)
@@ -388,13 +389,13 @@ async function handleReact(send, jid, msg, arg) {
 }
 
 const CATS = [
-    ['📥', 'Download', `*📥 DOWNLOAD*\n\n┃ *.download <link>*  (*.dl*)  — file එක එවනවා\n┃ *.dl link1 link2*  — links 5 දක්වා\n┃ *.gitclone user/repo*  — GitHub repo → zip\n\n✅ Direct, GitHub, Google Drive, MediaFire, MEGA, Dropbox, Pixeldrain, catbox...\n📏 Max: {MAX} / file  •  *.maxmb <MB>* එකෙන් වෙනස් කරන්න (max 2000)`],
+    ['📥', 'Download', `*📥 DOWNLOAD*\n\n┃ *.download <link>*  (*.dl*)  — file එක එවනවා\n┃ *.dl link1 link2*  — links 5 දක්වා\n┃ *.mirror <link>*  — file එක → 🔗 direct share link (*.link*)\n┃ *.gitclone user/repo*  — GitHub repo → zip\n\n✅ Direct, GitHub, Google Drive, MediaFire, MEGA, Dropbox, Pixeldrain, catbox...\n📏 Max: {MAX} / file  •  *.maxmb <MB>* එකෙන් වෙනස් කරන්න (max 2000)`],
     ['🎬', 'YouTube', '*🎬 YOUTUBE*\n\n┃ *.yts <නම>*  — search\n┃ *.song <නම / link>*  — audio (*.play*, *.yta*)\n┃ *.video <නම / link>*  — video (*.ytv*, *.yt*)\n┃ *.video <link> 1080*  — quality තෝරන්න\n\n📺 2160p → 144p ඔක්කොම (quality නැතුව = best)'],
-    ['🎥', 'MoviePro', '*🎥 MOVIEPRO*\n\n┃ *.moviepro <movie නම>*  — search (උදා: .moviepro avatar)\n┃ *.moviepro <අංකය>*  — poster + info card + quality list (480p/720p/1080p)\n┃ *.moviepro <අංකය> <quality#>*  — 🍿 movie file එකම chat එකට එනවා (උදා: .moviepro 1 1)\n┃ *.moviepro <අංකය> trailer*  — trailer video එක යවනවා\n┃ list එකට *අංකය විතරක්* reply කළත් වැඩ\n\n🔎 IMDb search + CineSubz downloads — key ඕනේ නෑ'],
+    ['🎥', 'MoviePro', '*🎥 MOVIEPRO*\n\n┃ *.moviepro <movie නම>*  — search (උදා: .moviepro avatar)\n┃ *.moviepro <අංකය>*  — poster + info card + quality list (480p/720p/1080p)\n┃ *.moviepro <අංකය> <quality#>*  — 🍿 movie file එකම chat එකට එනවා (උදා: .moviepro 1 1)\n┃ *.moviepro <අංකය> <quality#> link*  — 🔗 direct download link එකක් (status share වලට)\n┃ *.moviepro <අංකය> trailer*  — trailer video එක යවනවා\n┃ list එකට *අංකය විතරක්* reply කළත් වැඩ\n\n🔎 IMDb search + CineSubz downloads — key ඕනේ නෑ'],
     ['📱', 'Social', '*📱 SOCIAL MEDIA*\n\n┃ *.tiktok <link>*  — watermark නැතුව (*.tt*)\n┃ *.fb <link>*  — Facebook video (*.facebook*, *.faceboock*)\n┃ *.ig <link>*  — Instagram reel / video\n┃ *.x <link>*  — X / Twitter video\n\n🔓 Public videos විතරයි'],
     ['🔍', 'Search', '*🔍 SEARCH*\n\n┃ *.wiki <මාතෘකාව>*  — Wikipedia\n┃ *.wiki si <මාතෘකාව>*  — සිංහල Wikipedia\n┃ *.yts <නම>*  — YouTube search'],
     ['🖼️', 'Sticker', '*🖼️ STICKER*\n\n┃ *.s*  — photo / video එකකට reply කරලා (නැත්නම් caption එකට)\n┃ *.take Pack | Author*  — sticker එකක නම වෙනස් කරන්න\n\n🎞️ Video stickers තත්පර 6 දක්වා'],
-    ['🛠️', 'Tools', '*🛠️ TOOLS*\n\n┃ *.tr <භාෂාව> <text>*  — translate (reply කරලත්)\n┃ *.tts <text>*  — voice එකක් (සිංහල OK)\n┃ *.weather <නගරය>*  — කාලගුණය (දින 3)\n┃ *.lyrics <සින්දුව>*  — lyrics\n┃ *.imagine <විස්තරය>*  — AI image\n┃ *.toimg*  — sticker → photo\n┃ *.tourl*  — media → download link\n┃ *.ss <website>*  — screenshot\n┃ *.qr <text>*  •  *.short <link>*  •  *.calc <ගණනය>*\n┃ *.github <user>*  — GitHub profile\n┃ *.del*  — reply කරපු message එක මකන්න\n┃ *.setpp*  — photo reply → profile photo'],
+    ['🛠️', 'Tools', '*🛠️ TOOLS*\n\n┃ *.tr <භාෂාව> <text>*  — translate (reply කරලත්)\n┃ *.tts <text>*  — voice එකක් (සිංහල OK)\n┃ *.weather <නගරය>*  — කාලගුණය (දින 3)\n┃ *.lyrics <සින්දුව>*  — lyrics\n┃ *.imagine <විස්තරය>*  — AI image\n┃ *.toimg*  — sticker → photo\n┃ *.tourl*  — media → download link\n┃ *.mirror <link>*  — link එකේ file එක → direct share link\n┃ *.ss <website>*  — screenshot\n┃ *.qr <text>*  •  *.short <link>*  •  *.calc <ගණනය>*\n┃ *.github <user>*  — GitHub profile\n┃ *.del*  — reply කරපු message එක මකන්න\n┃ *.setpp*  — photo reply → profile photo'],
     ['🎉', 'Fun', '*🎉 FUN*\n\n┃ *.joke*  — විහිළුවක්\n┃ *.fact*  — රසවත් කරුණක් (+සිංහල)\n┃ *.quote*  — quote එකක්\n┃ *.8ball <ප්‍රශ්නය>*  — 🎱'],
     ['👥', 'Group', '*👥 GROUP*  (group එකේ ඔයා ගහන්න)\n\n┃ *.groupinfo*  — group විස්තර\n┃ *.grouplink*  — invite link (admin)\n┃ *.tagall [message]*  — ඔක්කොටම mention (විනාඩි 10 කට 1)\n┃ *.kick @user*  — අයින් කරන්න (admin)\n┃ *.promote @user*  /  *.demote @user*\n┃ *.mute*  /  *.unmute*  — admins only / open\n┃ *.tagadmins*  •  *.resetlink*\n┃ *.jid*  — chat ID එක\n\n💡 @mention නැත්නම් message එකකට reply කරලා ගහන්න'],
     ['🤖', 'AI', '*🤖 AI*\n\n┃ *.ai <ප්‍රශ්නය>*  — Gemini / Groq (සිංහල OK)\n┃ message එකකට reply කරලා *.ai*  — ඒ message එක ගැන\n┃ *.ai reset*  — කතාව අලුතෙන්\n┃ *.setkey gemini <KEY>*  /  *.setkey groq <KEY>*\n┃ *.keys*  — keys බලන්න'],

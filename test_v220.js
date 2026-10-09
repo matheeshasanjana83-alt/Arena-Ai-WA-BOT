@@ -122,8 +122,9 @@ let failed = false;
     }
     require('./bot.js');   // full module graph loads offline
     const m = require('./manifest.json');
-    if (m.version !== '2.20.0' || !m.files.includes('antispam.js') || !m.files.includes('test_v220.js')) throw new Error('manifest wrong');
-    if (require('./package.json').version !== '2.20.0') throw new Error('package.json version wrong');
+    const pkgV = require('./package.json').version;
+    if (m.version !== pkgV || m.version < '2.20.0' || !m.files.includes('antispam.js') || !m.files.includes('test_v220.js')) throw new Error('manifest wrong');
+    if (pkgV < '2.20.0') throw new Error('package.json version wrong');
     if (!fs.readFileSync('updater.js', 'utf8').includes('antispam\\.json')) throw new Error('updater PROTECTED missing antispam.json');
     const src = fs.readFileSync('bot.js', 'utf8');
     for (const cmd of [".block", ".unblock", ".blocklist", ".spamlog", ".antispam"]) if (!src.includes(`'${cmd}'`)) throw new Error('bot.js route missing: ' + cmd);
