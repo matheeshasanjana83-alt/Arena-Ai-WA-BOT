@@ -22,6 +22,19 @@ litterbox/catbox, x0.at, transfer.archivete.am, filebin, eporner (v2.17). (gofil
 
 🔒 Private: ඔයා යවන messages විතරයි. වෙන අය commands යැව්වත් ignore.
 
+v2.19.0 — 🍿 .moviepro — movie FILE එකම chat එකට (trailer නෙවෙයි!)
+  • .moviepro <අංකය> — info card එකට CineSubz quality list එකත් එනවා
+    (WEB-DL 480p / 720p / 1080p + size — cinesubz.net එකෙන් auto)
+  • .moviepro <අංකය> <quality#> (උදා: .moviepro 1 1) — movie file එකම
+    download කරලා document එකක් විදිහට chat එකට එනවා:
+    CineSubz zt-links gate decode → real CDN link (drive.csplayer2.space) →
+    live-check → download engine (stream, proxy pool fallback) → WhatsApp
+  • File එක server එකෙන් අයින් නම් / CDN එක player protection දැම්මොත් —
+    clean fallback: direct CDN link + CineSubz telegram link + gate link
+  • limit එකට වඩා ලොකු files (2GB+) — link එකම එනවා (.maxmb වෙනස් කරන්න පුළුවන්)
+  • .moviepro <අංකය> trailer — trailer option එකත් තියෙනවා (v2.18 විදිහටම)
+  • test_v219.js — 12 offline checks (gate decode/mapping/size/tg/card)
+
 v2.18.0 — 🎥 .moviepro (movies — in-chat interactive flow)
   • .moviepro <movie නම> — IMDb (Cinemeta — free, key ඕනේ නෑ) search → results 8 දක්වා
   • .moviepro <අංකය> — poster + ⭐rating + genres + description + IMDb link +

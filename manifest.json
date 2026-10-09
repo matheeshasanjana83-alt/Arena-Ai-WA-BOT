@@ -1,6 +1,6 @@
 {
-  "version": "2.18.0",
-  "notes": "NEW .moviepro: in-chat movie search (IMDb/Cinemeta, no key) -> numbered list -> poster info card + Sinhala subtitle link (sinhalasub.lk) + download page (cinesubz.net) + trailer video (.moviepro <n> trailer via yt pipeline); bare-number replies pick from the list like .menu",
+  "version": "2.19.0",
+  "notes": "MOVIE එකම එනවා! .moviepro <n> -> CineSubz quality list (480p/720p/1080p + size); .moviepro <n> <q#> -> movie FILE downloaded and sent to chat (gate decode -> real CDN link -> live-check -> stream download); dead file / CDN protection -> direct link + telegram link fallback. IMDb card now enriched (rating/description). 12 offline tests.",
   "files": [
     "bot.js",
     "ai.js",
@@ -28,6 +28,7 @@
     "proxies.txt",
     "test_v217.js",
     "movies.js",
-    "test_v218.js"
+    "test_v218.js",
+    "test_v219.js"
   ]
 }

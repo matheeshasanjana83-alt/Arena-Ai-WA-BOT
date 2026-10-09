@@ -21,10 +21,12 @@ const ok = (name, fn) => Promise.resolve().then(fn).then(() => { pass++; console
         assert.ok(t.includes('*1.* Avatar (2009)') && t.includes('⭐7.9'), 'list missing');
         assert.ok(t.includes('.moviepro 1'), 'pick hint missing');
     });
-    await ok('cardText: poster card fields (IMDb, සිංහල උපසිරැසි, cinesubz, trailer)', () => {
+    await ok('cardText: poster card fields (IMDb, සිංහල උපසිරැසි, cinesubz, trailer hint) — v2.19 card', () => {
         const m = { name: 'Avatar', releaseInfo: '2009', imdbRating: '7.9', runtime: '162 min', genres: ['Action'], cast: ['Sam Worthington'], description: 'A paraplegic Marine...', imdb_id: 'tt0499549', poster: 'https://x/y.jpg', trailerStreams: [{ ytId: '5PSNL1qE6VY' }] };
         const t = movies.cardText(m, 1);
-        for (const s of ['IMDb: https://www.imdb.com/title/tt0499549/', 'sinhalasub.lk', 'cinesubz.net', 'youtu.be/5PSNL1qE6VY', '.moviepro 1 trailer', '⭐ 7.9/10']) assert.ok(t.includes(s), 'missing: ' + s);
+        for (const s of ['IMDb: https://www.imdb.com/title/tt0499549/', 'sinhalasub.lk', 'cinesubz.net', '.moviepro 1 trailer', '⭐ 7.9/10']) assert.ok(t.includes(s), 'missing: ' + s);
+        // v2.19: trailer URL is now delivered via the .moviepro <n> trailer command, not a raw link
+        assert.ok(!t.includes('youtu.be/5PSNL1qE6VY'), 'raw trailer URL should be replaced by command hint');
     });
     await ok('cardText: null-safe (no rating/trailer/cast)', () => {
         const t = movies.cardText({ name: 'X', description: null }, 3);
@@ -48,8 +50,9 @@ const ok = (name, fn) => Promise.resolve().then(fn).then(() => { pass++; console
         assert.ok(movies.hasSession('other@s.whatsapp.net') === false, 'session leaked to other chat');
         const ctx2 = { ...ctx, rest: ['1'] };
         await movies.handle('.moviepro', ctx2);
-        await new Promise(r => setTimeout(r, 1500));
-        assert.ok(sent.some(s => (s.caption || s.text || '').includes('sinhalasub.lk')), 'card not sent');
+        await new Promise(r => setTimeout(r, 20000));   // v2.19: enrichMeta + cinesubz quality fetch before the card
+        assert.ok(sent.some(s => (s.caption || s.text || '').includes('Avatar')), 'card not sent');
+        assert.ok(sent.some(s => (s.caption || s.text || '').includes('CineSubz') || (s.caption || s.text || '').includes('Download page')), 'quality list / fallback link missing');
     });
     await ok('handle(): junk number → friendly error (no crash)', async () => {
         const sent = [];

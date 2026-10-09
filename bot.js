@@ -125,7 +125,7 @@ function getText(m) {
 const HELP = `🤖 *KAVIZ MD V1* — ඔක්කොම commands
 
 🎬 *.yts* <නම>  •  *.song* <නම/link>  •  *.video* <නම/link> [2160/1080/720/480...]
-🎥 *.moviepro* <නම> — movie search + info + trailer (v2.18)
+🎥 *.moviepro* <නම> — movie search → *movie file එකම chat එකට* (v2.19)
 📱 *.tiktok*  •  *.fb* (*.facebook*)  •  *.ig*  •  *.x*  <link>
 🔍 *.wiki* <මාතෘකාව>  •  🐙 *.gitclone* user/repo
 🖼️ *.s* (photo/video reply)  •  *.take* Pack | Author
@@ -382,7 +382,7 @@ async function handleReact(send, jid, msg, arg) {
 const CATS = [
     ['📥', 'Download', `*📥 DOWNLOAD*\n\n┃ *.download <link>*  (*.dl*)  — file එක එවනවා\n┃ *.dl link1 link2*  — links 5 දක්වා\n┃ *.gitclone user/repo*  — GitHub repo → zip\n\n✅ Direct, GitHub, Google Drive, MediaFire, MEGA, Dropbox, Pixeldrain, catbox...\n📏 Max: {MAX} / file  •  *.maxmb <MB>* එකෙන් වෙනස් කරන්න (max 2000)`],
     ['🎬', 'YouTube', '*🎬 YOUTUBE*\n\n┃ *.yts <නම>*  — search\n┃ *.song <නම / link>*  — audio (*.play*, *.yta*)\n┃ *.video <නම / link>*  — video (*.ytv*, *.yt*)\n┃ *.video <link> 1080*  — quality තෝරන්න\n\n📺 2160p → 144p ඔක්කොම (quality නැතුව = best)'],
-    ['🎥', 'MoviePro', '*🎥 MOVIEPRO*\n\n┃ *.moviepro <movie නම>*  — search (උදා: .moviepro avatar)\n┃ *.moviepro <අංකය>*  — poster + info card + 🇱🇰 සිංහල උපසිරැසි link + download page\n┃ *.moviepro <අංකය> trailer*  — trailer video එක යවනවා\n┃ list එකට *අංකය විතරක්* reply කළත් වැඩ\n\n🔎 IMDb (Cinemeta) search — key ඕනේ නෑ'],
+    ['🎥', 'MoviePro', '*🎥 MOVIEPRO*\n\n┃ *.moviepro <movie නම>*  — search (උදා: .moviepro avatar)\n┃ *.moviepro <අංකය>*  — poster + info card + quality list (480p/720p/1080p)\n┃ *.moviepro <අංකය> <quality#>*  — 🍿 movie file එකම chat එකට එනවා (උදා: .moviepro 1 1)\n┃ *.moviepro <අංකය> trailer*  — trailer video එක යවනවා\n┃ list එකට *අංකය විතරක්* reply කළත් වැඩ\n\n🔎 IMDb search + CineSubz downloads — key ඕනේ නෑ'],
     ['📱', 'Social', '*📱 SOCIAL MEDIA*\n\n┃ *.tiktok <link>*  — watermark නැතුව (*.tt*)\n┃ *.fb <link>*  — Facebook video (*.facebook*, *.faceboock*)\n┃ *.ig <link>*  — Instagram reel / video\n┃ *.x <link>*  — X / Twitter video\n\n🔓 Public videos විතරයි'],
     ['🔍', 'Search', '*🔍 SEARCH*\n\n┃ *.wiki <මාතෘකාව>*  — Wikipedia\n┃ *.wiki si <මාතෘකාව>*  — සිංහල Wikipedia\n┃ *.yts <නම>*  — YouTube search'],
     ['🖼️', 'Sticker', '*🖼️ STICKER*\n\n┃ *.s*  — photo / video එකකට reply කරලා (නැත්නම් caption එකට)\n┃ *.take Pack | Author*  — sticker එකක නම වෙනස් කරන්න\n\n🎞️ Video stickers තත්පර 6 දක්වා'],
