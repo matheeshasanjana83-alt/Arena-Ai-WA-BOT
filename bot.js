@@ -141,6 +141,7 @@ const HELP = `🤖 *KAVIZ MD V1* — ඔක්කොම commands
 *.keys*  — keys තියෙනවද බලන්න
 *.net <link>*  — download fail නම් හේතුව බලන්න (DNS / IP block)
 *.setproxy <url|off>*  — block වෙන sites වලට proxy
+*.proxies*  — free proxy pool status (block වුණාම auto fallback)
 *.setcookies*  — YouTube bot-check fix (cookies.txt file එකක් යවලා)
 *.update*  — bot එක GitHub එකෙන් update කරන්න (pair කරන්න ඕනේ නෑ)
 *.version*  — දැන් තියෙන version එක
@@ -319,6 +320,7 @@ async function onMessages({ messages, type }, send, del = async () => { }) {
                     await send(jid, { text: '🔧 *Network check*\n\n' + rep, edit: st.key }); continue;
                 }
                 if (c === '.setproxy') { await handleProxy(send, del, jid, msg, rest.join(' ').trim()); continue; }
+                if (c === '.proxies' || c === '.proxypool') { await handleProxies(send, jid, msg, (rest[0] || '').toLowerCase()); continue; }
                 if (c === '.setcookies') { await handleCookies(send, del, jid, msg, rest.join(' ').trim()); continue; }
                 if (c === '.keys') { const k = ai.getKeys(); await send(jid, { text: `🔑 *API keys*\nGemini: ${k.gemini ? '✅ ' + mask(k.gemini) : '❌ නෑ'}\nGroq: ${k.groq ? '✅ ' + mask(k.groq) : '❌ නෑ'}` }, { quoted: msg }); continue; }
                 if (c === '.restart') { await send(jid, { text: '🔄 Restart වෙනවා... තත්පර 10 කින් *.ping*' }, { quoted: msg }); setTimeout(() => process.exit(process.env.ARENA_LAUNCHER ? 100 : 0), 1500); continue; }
@@ -382,7 +384,7 @@ const CATS = [
     ['🎉', 'Fun', '*🎉 FUN*\n\n┃ *.joke*  — විහිළුවක්\n┃ *.fact*  — රසවත් කරුණක් (+සිංහල)\n┃ *.quote*  — quote එකක්\n┃ *.8ball <ප්‍රශ්නය>*  — 🎱'],
     ['👥', 'Group', '*👥 GROUP*  (group එකේ ඔයා ගහන්න)\n\n┃ *.groupinfo*  — group විස්තර\n┃ *.grouplink*  — invite link (admin)\n┃ *.tagall [message]*  — ඔක්කොටම mention (විනාඩි 10 කට 1)\n┃ *.kick @user*  — අයින් කරන්න (admin)\n┃ *.promote @user*  /  *.demote @user*\n┃ *.mute*  /  *.unmute*  — admins only / open\n┃ *.tagadmins*  •  *.resetlink*\n┃ *.jid*  — chat ID එක\n\n💡 @mention නැත්නම් message එකකට reply කරලා ගහන්න'],
     ['🤖', 'AI', '*🤖 AI*\n\n┃ *.ai <ප්‍රශ්නය>*  — Gemini / Groq (සිංහල OK)\n┃ message එකකට reply කරලා *.ai*  — ඒ message එක ගැන\n┃ *.ai reset*  — කතාව අලුතෙන්\n┃ *.setkey gemini <KEY>*  /  *.setkey groq <KEY>*\n┃ *.keys*  — keys බලන්න'],
-    ['🔧', 'Network', '*🔧 NETWORK*\n\n┃ *.net <link>*  — download fail නම් හේතුව (DNS / IP block)\n┃ *.setproxy <url>*  — block sites වලට proxy (YouTube වලටත්)\n┃ *.setproxy off*\n┃ *.setcookies*  — YouTube bot-check fix (cookies.txt file එකක් යවලා)\n┃ *.setcookies off*'],
+    ['🔧', 'Network', '*🔧 NETWORK*\n\n┃ *.net <link>*  — download fail නම් හේතුව (DNS / IP block)\n┃ *.setproxy <url>*  — block sites වලට proxy (YouTube වලටත්)\n┃ *.setproxy off*\n┃ *.proxies*  — free proxy pool (block වුණාම auto fallback)\n┃ *.proxies check* / *off* / *on*\n┃ *.setcookies*  — YouTube bot-check fix (cookies.txt file එකක් යවලා)\n┃ *.setcookies off*'],
     ['⚙️', 'Settings', '*⚙️ SETTINGS*\n\n┃ *.setlogo*  — photo එකකට reply කරලා → menu logo\n┃ *.dellogo*  — default banner\n┃ *.react on|off*  — auto react\n┃ *.maxmb <MB>*  — download limit (max 2000)\n┃ *.mode self|all*  — commands වැඩ කරන chats\n┃ *.update*  — GitHub එකෙන් update\n┃ *.restart*  — bot restart\n┃ *.version*'],
     ['🛡️', 'Security', '*🛡️ SECURITY*\n\n┃ 🔒 Commands පාවිච්චි කරන්න පුළුවන් *ඔයාට විතරයි*\n┃ 🔒 Default: Message yourself chat එකේ විතරයි (*.mode*)\n┃ 👥 Group tools: ඔයා group එකේ ගැහුවොත් විතරයි\n┃ 🛡️ Anti-ban: rate limit, human delay, backoff, tagall limit\n┃ 🙈 Keys / passwords logs වල පේන්නේ නෑ\n┃ 🧬 *Anti-bug*: crash/bug messages (status too) → auto delete (+ block) + report  •  .antibug scan\n┃ *.antibug on|off*  •  *.antibug block on|off*'],
     ['📊', 'Status', null],
@@ -483,6 +485,35 @@ async function handleMode(send, jid, msg, arg) {
             : '🔒 *Mode: self* — commands වැඩ කරන්නේ *Message yourself* chat එකේ විතරයි.' }, { quoted: msg });
     }
     return send(jid, { text: `🔒 *Mode: ${guard.chatMode()}*\n\n*.mode self* — "Message yourself" chat එකේ විතරයි (default, ආරක්ෂිතම)\n*.mode all* — ඔයා ඕනෑම chat එකක ගහන commands වැඩ\n\n(කොහොම වුණත් commands පාවිච්චි කරන්න පුළුවන් *ඔයාට විතරයි*)` }, { quoted: msg });
+}
+
+// ───────── .proxies — free proxy pool (stats / check / on / off) ─────────
+async function handleProxies(send, jid, msg, sub) {
+    const pool = require('./proxypool');
+    if (sub === 'on' || sub === 'off') {
+        const f = path.join(__dirname, 'settings.json'); const d = readSettings(); d.proxyPool = sub === 'on';
+        try { fs.writeFileSync(f, JSON.stringify(d, null, 2)); } catch { }
+        pool.resetSettingsCache();
+        return send(jid, { text: sub === 'on' ? '🧩 Free proxy pool *ON* ✅\nBlock වෙන sites වලට auto fallback විදිහට පාවිච්චි වෙනවා.' : '🚫 Free proxy pool *OFF*' }, { quoted: msg });
+    }
+    if (sub === 'check' || sub === 'update' || sub === 'refresh') {
+        await send(jid, { text: '🔍 Proxy pool එක check කරනවා... (proxies ගොඩක් නම් විනාඩි 1-2 ක් විතර යනවා)' }, { quoted: msg });
+        try { const r = await pool.checkNow('manual'); return send(jid, { text: `✅ Check ඉවරයි — *${r.alive}/${r.total}* proxies වැඩ කරනවා. Block වෙන downloads වලට දැන් මේවා auto fallback.` }, { quoted: msg }); }
+        catch (e) { return send(jid, { text: '❌ Check fail: ' + String(e.message).slice(0, 150) }, { quoted: msg }); }
+    }
+    const s = pool.stats();
+    const t = `🧩 *Free proxy pool*  ${s.enabled ? '✅ ON' : '⛔ OFF'}
+📦 මුළු proxies: *${s.total}*  (list: ${s.shipped} • ඔයාගේ: ${s.user})
+🔍 Check කරලා: ${s.alive ? `*${s.alive}* alive${s.checkedAgo != null ? ` (${s.checkedAgo} min කින් කලින්)` : ''}` : 'තාම check කරලා නෑ'}
+✅ දැන් usable: *${s.usable}*
+${s.checking ? '⏳ දැන් check එකක් run වෙනවා...' : s.usable ? `🔁 ඊළඟට පාවිච්චි වෙන්නේ: ${s.next}` : '💡 *.proxies check* ගහලා check කරන්න'}
+
+*.proxies check* — දැන්ම check කරන්න
+*.proxies on* / *.proxies off*
+
+💡 ඔයාගේම proxies: bot folder එකේ *proxies.user.txt* file එකක් හදලා line එකකට එකක් (ip:port) — .update වෙද්දි මැකෙන්නේ නෑ
+🔒 Pool එකෙන් try කරන්නේ direct / DoH / IPv6 / proxy ඔක්කොම fail වුණාම විතරයි`;
+    return send(jid, { text: t }, { quoted: msg });
 }
 
 async function handleProxy(send, del, jid, msg, arg) {
@@ -636,5 +667,6 @@ module.exports = { _agentTick: agentTick, AGENT_MSG, handleDownload, getText, on
 if (require.main === module) {
     console.log('🚀 KAVIZ MD V1 starting...');
     require('./media').checkUpdate(true).catch(() => { });   // yt-dlp fresh → FB "Cannot parse data" / YT format errors fix (max 1 check/hour)
+    require('./proxypool').warmup();                          // free-proxy pool check in background (net.js / yt-dlp fallback)
     start().catch((e) => { log('Startup fail: ' + e.message); process.exit(1); });
 }

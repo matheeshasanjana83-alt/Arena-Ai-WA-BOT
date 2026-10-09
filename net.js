@@ -89,9 +89,32 @@ function proxyAgent() {
     return _proxyAgent;
 }
 
+// ───────────── free-proxy pool (last resort — proxypool.js) ─────────────
+let _poolAgents = new Map();
+function poolAgentFor(p) {
+    let a = _poolAgents.get(p);
+    if (!a) { a = new undici.ProxyAgent({ uri: p, connect: { timeout: 8000 } }); _poolAgents.set(p, a); if (_poolAgents.size > 40) _poolAgents.clear(); }
+    return a;
+}
+async function viaPool(url, opts) {
+    const pool = require('./proxypool');
+    const list = pool.candidates(2);
+    if (!list.length) throw Object.assign(new Error('proxy pool එකේ දැනට වැඩ කරන ඒවා නෑ'), { code: 'NO_POOL' });
+    let lastE = null;
+    for (const p of list) {
+        try {
+            const res = await undici.fetch(url, { ...opts, dispatcher: poolAgentFor(p) });
+            pool.markGood(p);
+            console.log(`[net] ${hostOf(url)} → pool proxy ${p} හරහා වැඩ ✅`);
+            return res;
+        } catch (e) { pool.markBad(p); lastE = e; }
+    }
+    throw lastE || Object.assign(new Error('pool proxies fail'), { code: 'POOL_FAIL' });
+}
+
 // ───────────── smart fetch ─────────────
-const route = new Map();   // host → 'doh' | 'proxy'   (what worked last time)
-const ROUTE_NAME = { direct: 'සාමාන්‍ය', doh: 'DNS bypass (DoH)', ipv6: 'IPv6', proxy: 'proxy' };
+const route = new Map();   // host → 'doh' | 'proxy' | 'poolproxy'   (what worked last time)
+const ROUTE_NAME = { direct: 'සාමාන්‍ය', doh: 'DNS bypass (DoH)', ipv6: 'IPv6', proxy: 'proxy', poolproxy: 'free proxy pool' };
 let lastRouteUsed = 'direct';
 
 async function viaRoute(kind, url, opts) {
@@ -102,6 +125,7 @@ async function viaRoute(kind, url, opts) {
         if (!(await serverHasV6())) throw Object.assign(new Error('මේ server එකට IPv6 නෑ'), { code: 'NO_IPV6' });
         return undici.fetch(url, { ...opts, dispatcher: v6Agent() });
     }
+    if (kind === 'poolproxy') return viaPool(url, opts);
     const pa = proxyAgent();
     if (!pa) throw Object.assign(new Error('proxy set කරලා නෑ'), { code: 'NO_PROXY' });
     return undici.fetch(url, { ...opts, dispatcher: pa });
@@ -109,12 +133,13 @@ async function viaRoute(kind, url, opts) {
 
 async function smartFetch(url, opts = {}) {
     const host = hostOf(url);
-    const order = ['direct', 'doh', 'ipv6', 'proxy'];
+    const order = ['direct', 'doh', 'ipv6', 'proxy', 'poolproxy'];
     const pref = route.get(host);
     if (pref) order.sort((a, b) => (b === pref) - (a === pref));
     const errors = [];
     for (const kind of order) {
         if (kind === 'proxy' && !getProxy()) continue;
+        if (kind === 'poolproxy' && !require('./proxypool').hasCandidates()) continue;   // pool not ready/empty → skip fast
         if (kind !== 'direct' && !undici) continue;
         try {
             const res = await viaRoute(kind, url, opts);
@@ -134,7 +159,7 @@ async function smartFetch(url, opts = {}) {
 function explain(url, errors) {
     let host = hostOf(url) || 'site';
     const att = errors.map(x => (x.msg || '').match(/attempted address: ([^:,)\s]+)/)?.[1]).find(Boolean);
-    const d = errors.find(x => x.kind === 'direct'), h = errors.find(x => x.kind === 'doh'), p = errors.find(x => x.kind === 'proxy');
+    const d = errors.find(x => x.kind === 'direct'), h = errors.find(x => x.kind === 'doh'), p = errors.find(x => x.kind === 'proxy'), pp = errors.find(x => x.kind === 'poolproxy');
     const lines = [];
     const why = (c) => ({
         ENOTFOUND: 'DNS එකෙන් හොයාගන්න බෑ', EAI_AGAIN: 'DNS error', UND_ERR_CONNECT_TIMEOUT: 'connect timeout', ETIMEDOUT: 'timeout',
@@ -145,6 +170,7 @@ function explain(url, errors) {
     const v6 = errors.find(x => x.kind === 'ipv6');
     if (v6) lines.push(`• IPv6: ${v6.code === 'NO_IPV6' ? 'මේ server එකට IPv6 නෑ' : v6.code === 'ENODATA' ? 'site එකට IPv6 නෑ' : why(v6.code) + (v6.code ? ' [' + v6.code + ']' : '')}`);
     if (p) lines.push(`• Proxy: ${why(p.code)}${p.code ? ' [' + p.code + ']' : ''}`);
+    if (pp) lines.push(`• Free proxy pool: ${(pp.code === 'NO_POOL' || pp.code === 'POOL_FAIL') ? 'pool එකේ වැඩ කරන ඒවා නෑ' : why(pp.code)}${pp.code && pp.code !== 'NO_POOL' && pp.code !== 'POOL_FAIL' ? ' [' + pp.code + ']' : ''}`);
     let hint;
     if (h && !p) hint = `➡️ DNS bypass එකෙනුත් බැරි වුණා → මේ server එකේ network එක (ISP/රට) හෝ ${host} site එක මේ server IP එක *block* කරනවා.\n💡 *.net ${url.slice(0, 60)}* ගහලා හරියටම බලන්න. විසඳුම: *.setproxy http://user:pass@host:port* (proxy එකක්) හෝ ඒ link එක Termux එකෙන්.`;
     else if (p) hint = `➡️ Proxy එකෙනුත් බැරි වුණා — proxy එක වැඩද / link එක තාම valid ද බලන්න.`;

@@ -22,6 +22,21 @@ litterbox/catbox, x0.at, transfer.archivete.am, filebin. (gofile / LimeWire / fo
 
 🔒 Private: ඔයා යවන messages විතරයි. වෙන අය commands යැව්වත් ignore.
 
+v2.16.0 — 🧩 Free Proxy Pool (IP block වුණාම auto fallback)
+  • proxies.txt (434 proxies) bot එකේම එනවා. Start වෙද්දී background check එකකින් "වැඩ කරන" ඒවා හොයාගන්නවා
+    (results cache වෙනවා, විනාඩි 20 කට සැරයක් refresh).
+  • Direct / DNS bypass / IPv6 / ඔයාගේ .setproxy එකෙන් බැරි වුණොත් විතරයි pool එකෙන් try කරන්නේ —
+    ඒ නිසා සාමාන්‍ය downloads වලට කිසිම බාධාවක් නෑ. YouTube bot-check / FB / TikTok block වලටත් yt-dlp
+    හරහාම pool proxies පාවිච්චි වෙනවා.
+  • .proxies — pool status  •  .proxies check — දැන්ම check  •  .proxies on / off
+  • ඔයාගේම proxies: bot folder එකේ proxies.user.txt (ip:port lines) — .update වෙද්දී මැකෙන්නේ නෑ.
+  💡 Free proxies ගොඩක් ඉක්මනට මැරෙනවා — හොඳම විසඳුම .setcookies (YouTube) + ඔයාගේම proxy එකක් (.setproxy).
+
+v2.15.0 — KAVIZ MD V1 rebrand + downloader fixes
+  • .yt / .video — ALL qualities (2160p → 144p; quality නැතුව = best) + clipto.com fallback (YouTube bot-check)
+  • .fb / .facebook / .faceboock / .fbvid — FB page-scrape fallback  •  .tiktok — vm/vt short links + retries
+  • yt-dlp bot start වෙද්දීම auto-update (stale extractor = FB "Cannot parse data" fix)
+
 v2.13.1 — 🧬 Anti-Bug Instituts visthara (status + contacts + invisible bugs)
   • Status (status@broadcast) + newsletters tik scan kellayi: bug ekak → delete for me + report (block karanne na)
   • Contact card bombs: vCard ekak TEL 20+ / lines 200+ → catch

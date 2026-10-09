@@ -10,3 +10,5 @@ bin/
 agent-msg.txt
 agent-msg.txt.sending
 cookies.txt
+proxies.cache.json
+proxies.user.txt

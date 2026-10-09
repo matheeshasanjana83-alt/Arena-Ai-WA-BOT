@@ -140,7 +140,14 @@ async function info(url) {
     if (r.code !== 0 && /sign in to confirm|not a bot/i.test(r.err))   // bot check → alternate clients
         r = await run(yt, cookieArgs(['-J', '--no-playlist', '--no-warnings', '--skip-download']).concat(['--extractor-args', 'youtube:player_client=web_safari,tv,mweb', url]), 120e3);
     const px = proxyArg();
-    if (r.code !== 0 && px && blocked(r.err)) r = await run(yt, cookieArgs(['-J', '--no-playlist', '--no-warnings', '--skip-download']).concat(['--proxy', px, url]), 120e3);
+    const pool = require('./proxypool');
+    // bot-check/403 → your proxy first, then free-proxy pool candidates
+    const pxList = [...(px ? [px] : []), ...pool.candidates(2)].filter((v, i, a) => v && a.indexOf(v) === i);
+    for (const p of pxList) {
+        if (r.code === 0 || !blocked(r.err)) break;
+        r = await run(yt, cookieArgs(['-J', '--no-playlist', '--no-warnings', '--skip-download']).concat(['--proxy', p, url]), 120e3);
+        if (pool.isPool(p)) (r.code === 0 ? pool.markGood(p) : pool.markBad(p));
+    }
     if (r.code !== 0) {
         if (EXTRACT_BROKEN.test(r.err || r.out)) checkUpdate(true).catch(() => { });   // stale extractor → update in background
         throw new Error(ytError(r.err || r.out));
@@ -162,9 +169,11 @@ async function ytdl(url, { mode = 'video', maxMB = 100, height = null } = {}) {
         ? [...ALL_H.filter((x) => x <= height), ...ALL_H.filter((x) => x > height)]
         : [2160, 1440, 1080, 720, 480, 360];
     const ck = cookiesFile();
-    // attempts: plain → alt-clients → cookies (if any) → proxy combos
+    const pool = require('./proxypool');
+    // attempts: plain → alt-clients → cookies (if any) → your proxy → free-proxy pool candidates
+    const pxList = [...(px ? [px] : []), ...pool.candidates(2)].filter((v, i, a) => v && a.indexOf(v) === i);
     const attempts = [];
-    for (const useProxy of px ? [false, true] : [false]) {
+    for (const useProxy of [null, ...pxList]) {
         attempts.push({ proxy: useProxy, alt: false, ck: false });
         if (ck) attempts.push({ proxy: useProxy, alt: false, ck: true });
         attempts.push({ proxy: useProxy, alt: true, ck: false });
@@ -183,9 +192,10 @@ async function ytdl(url, { mode = 'video', maxMB = 100, height = null } = {}) {
             if (at.alt) args.push('--extractor-args', 'youtube:player_client=web_safari,tv,mweb');
             if (ff) args.push('--ffmpeg-location', ff);
             if (mode === 'video' && ff) args.push('--merge-output-format', 'mp4');
-            if (at.proxy) args.push('--proxy', px);
+            if (at.proxy) args.push('--proxy', at.proxy);
             args.push(url);
             const r = await run(yt, args);
+            if (at.proxy && pool.isPool(at.proxy)) (r.code === 0 ? pool.markGood(at.proxy) : pool.markBad(at.proxy));
             const produced = fs.readdirSync(TMP()).filter((f) => f.startsWith(prefix + '.') && !/\.(part|ytdl|temp)$/.test(f));
             const main = produced.find((f) => !/\.f\d+\./.test(f)) || produced[0];
             if (r.code === 0 && main) {

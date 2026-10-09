@@ -1,7 +1,7 @@
 {
   "name": "kaviz-md-v1",
-  "version": "2.15.0",
-  "description": "KAVIZ MD V1 - private WhatsApp bot: .ai (Gemini/Groq) + .download + .yt/.fb/.tiktok",
+  "version": "2.16.0",
+  "description": "KAVIZ MD V1 - private WhatsApp bot: .ai (Gemini/Groq) + .download + .yt/.fb/.tiktok + free proxy pool",
   "main": "index.js",
   "scripts": {
     "start": "node launcher.js",

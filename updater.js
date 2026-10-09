@@ -13,7 +13,7 @@ const BRANCH = process.env.UPDATE_BRANCH || 'main';
 const ROOT = __dirname;
 const VERSION_FILE = path.join(ROOT, '.version.json');
 const BACKUP = path.join(ROOT, '.backup');
-const PROTECTED = /^(auth|node_modules|\.backup)(\/|$)|^settings\.json$|^\.version\.json$|^logo\.img$/;
+const PROTECTED = /^(auth|node_modules|\.backup)(\/|$)|^settings\.json$|^\.version\.json$|^logo\.img$|^cookies\.txt$|^proxies\.user\.txt$|^proxies\.cache\.json$/;
 const UA = { 'User-Agent': 'kaviz-md-bot-updater', Accept: 'application/vnd.github+json' };
 
 const localInfo = () => { try { return JSON.parse(fs.readFileSync(VERSION_FILE, 'utf8')); } catch { return { version: require('./package.json').version, sha: null }; } };
