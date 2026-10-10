@@ -1,6 +1,6 @@
 {
-  "version": "2.23.0",
-  "notes": "MOVIEPRO SERIES FLOW: .moviepro now finds TV series too (Cinemeta movies+series search) — pick a series → IMDb card (release/rating/genres/country) + Episodes List (Season packs + every episode, paginated); season row → Video Quality options → all-episode direct link pack; episode row → quality list → episode FILE to chat (or mirror link with 'link'). Real CineSubz episode pipeline: episode page → zeta player ajax → direct mp4 (?play=true). Movies flow unchanged. No report-flood.",
+  "version": "2.24.0",
+  "notes": "MOVIEPRO REPLY FLOW (Asitha-style): every card accepts a bare-number reply — search list → card → options → files, no commands needed. Season pack now delivers FILES (episode එකින් එක, 'Starting Season N Download… Total Episodes/Quality' card, 50/run + 'next' continues); quality rows read real labels (Video: 720p / Server names); row numbers up to 3 digits (big seasons); 'link' suffix still gives direct-link packs. Series/movie/episode pipelines unchanged. No report-flood.",
   "files": [
     "bot.js",
     "ai.js",
@@ -36,6 +36,7 @@
     "test_v221.js",
     "style.js",
     "test_v222.js",
-    "test_v223.js"
+    "test_v223.js",
+    "test_v224.js"
   ]
 }

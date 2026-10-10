@@ -22,6 +22,21 @@ litterbox/catbox, x0.at, transfer.archivete.am, filebin, eporner (v2.17). (gofil
 
 🔒 Private: ඔයා යවන messages විතරයි. වෙන අය commands යැව්වත් ignore.
 
+v2.24.0 — 🧳 MoviePro REPLY flow (Asitha-style — commands නැතුව අංකය reply කරන්න)
+  • දැන් හැම card එකකටම අංකය එකක් reply කරන්න පුළුවන් — commands ගහන්න ඕනෙ නෑ:
+      .moviepro breaking bad  →  list
+      reply "6" (series එකට)  →  🍀 IMDb card + Episodes List
+      reply "1" (season row)  →  🧳 SELECT DOWNLOAD OPTION FOR SEASON 1 (Video Qualities)
+      reply "1" (quality)     →  🧳 Starting Season 1 Download… Total Episodes / Quality
+  • SEASON PACK = FILES එකින් එක — හැම episode එකක්ම separate message එකක් විදිහට:
+      🎬 *Breaking Bad S1E1*  ·  ⚡ Quality: 720p  (filename: Breaking Bad S01E01 [720p].mp4)
+    එක run එකක files 50 දක්වා — ඉතුරු ටිකට ".moviepro <n> <row> <q> next" (හෝ ඒ command එක ආයෙත්)
+  • Quality rows සැබෑ labels: "Server CS Player 720p" → 🎥 Video: 720p (quality token නැත්නම් server නම)
+  • Row numbers 3 digits දක්වා (ලොකු seasons වලට — 173 rows වගේ)
+  • 🔗 links ඕනෙ නම් පරණ විදිහ තියෙනවා: .moviepro <n> <row#> <q#> link (direct links 25 බැගින්)
+  • Subtitle rows දාන්නේ නෑ — CineSubz එකේ subtitle files නෑ (probed 2026-10); බොරු options පෙන්නන්නේ නෑ
+  • Movies/episode pipelines වෙනස් වෙලා නෑ (movie file / episode file / trailer ඔක්කොම දැනට වගේ)
+
 v2.23.0 — 📺 MoviePro SERIES flow (TV series + season packs)
   • .moviepro <නම> — දැන් movies + TV series දෙකම හොයනවා (series = 📺 mark එකත් එක්ක)
   • .moviepro <අංකය> (series එකකට) — IMDb details card (📅 release · ⏱ runtime · ⭐ rating ·

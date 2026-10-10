@@ -101,11 +101,11 @@ t('cardText shows quality rows + movie-file hint when quals present (v2.22)', ()
     const quals = { page: { poster: 'p', url: 'u' }, items: [{ gate: 'g1', label: 'WEB-DL 480p • 2.3 GB' }, { gate: 'g2', label: 'WEB-DL 720p • 3.8 GB' }] };
     const t1 = movies.cardText(meta, 2, quals);
     assert.ok(t1.includes('WEB-DL 480p • 2.3 GB'), 'quality row missing');
-    assert.ok(t1.includes('.moviepro 2 <quality#>'), 'pick hint missing');
+    assert.ok(t1.includes('අංකය reply'), 'pick hint missing (v2.24 reply flow)');
     assert.ok(t1.includes('movie file එකම එනවා'), 'movie-file hint missing');
     const t2 = movies.cardText(meta, 2, null);   // no quals → fallback links
     assert.ok(t2.includes('cinesubz.net'), 'fallback link missing');
-    assert.ok(!t2.includes('quality#'), 'should not show quality hint');
+    assert.ok(!t2.includes('අංකය reply'), 'should not show quality hint without quals');
 });
 
 t('bot.js still loads (routing intact)', () => {

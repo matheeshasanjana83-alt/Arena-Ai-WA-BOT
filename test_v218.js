@@ -52,7 +52,7 @@ const ok = (name, fn) => Promise.resolve().then(fn).then(() => { pass++; console
         await movies.handle('.moviepro', ctx2);
         await new Promise(r => setTimeout(r, 20000));   // v2.19: enrichMeta + cinesubz quality fetch before the card
         assert.ok(sent.some(s => (s.caption || s.text || '').includes('Avatar')), 'card not sent');
-        assert.ok(sent.some(s => (s.caption || s.text || '').includes('<quality#>') || (s.caption || s.text || '').includes('sinhalasub.lk') || (s.caption || s.text || '').includes('cinesubz.net')), 'quality list / fallback link missing');
+        assert.ok(sent.some(s => (s.caption || s.text || '').includes('අංකය reply') || (s.caption || s.text || '').includes('sinhalasub.lk') || (s.caption || s.text || '').includes('cinesubz.net')), 'quality list / fallback link missing');
     });
     await ok('handle(): junk number → friendly error (no crash)', async () => {
         const sent = [];

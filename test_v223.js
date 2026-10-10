@@ -93,14 +93,14 @@ const EP_HTML = `<li id='player-option-1' class='zetaflix_player_option active' 
         const tv = { poster: 'p', eps: [{ slug: 'a', pid: '1', season: 1, ep: 1, title: 'Episode 1', date: 'May. 02, 2017' }] };
         const rows = movies.tvRows(tv);
         const txt = movies.seriesText({ name: 'Money Heist', releaseInfo: '2017–2021', imdbRating: '8.2', genres: ['Crime'], country: 'Spain', description: 'd' }, 2, tv, rows, 0);
-        for (const s of ['🍀 *Money Heist*', '⭐ 8.2', '🌍 Spain', '📦 Download Season 1 (All Episodes)', 'Season 1 Episode 1', 'May. 02, 2017', '*.moviepro 2 <row#>*']) {
+        for (const s of ['🍀 *Money Heist*', '⭐ 8.2', '🌍 Spain', '📦 Download Season 1 (All Episodes)', 'Season 1 Episode 1', 'May. 02, 2017', 'අංකය reply']) {
             if (!txt.includes(s)) throw new Error('missing: ' + s);
         }
     });
 
     t('8 seasonOptText + packText formats', () => {
-        const so = movies.seasonOptText({ name: 'X' }, 2, 1, 1, [{ token: '480p' }, { token: '720p' }], 'https://sinhalasub.lk/?s=x');
-        for (const s of ['Download Season 1', 'Video: 480p', 'Video: 720p', 'sinhalasub.lk', '*.moviepro 2 1 <quality#>*']) {
+        const so = movies.seasonOptText({ name: 'X' }, 2, 1, 1, [{ token: '480p' }, { token: '720p' }]);
+        for (const s of ['SELECT DOWNLOAD OPTION FOR SEASON 1', 'Video: 480p', 'Video: 720p', 'files', '*.moviepro 2 1 <q#> link*']) {
             if (!so.includes(s)) throw new Error('seasonOpt missing ' + s);
         }
         const pk = movies.packText({ name: 'X' }, {}, 1, '720p', [{ ep: 1, url: 'https://cs/f1.mp4?play=true' }], 1, 2, true);
@@ -145,12 +145,14 @@ const EP_HTML = `<li id='player-option-1' class='zetaflix_player_option active' 
     t('11 grammar: 5-token series picks parse (offline handle dry-run)', () => {
         const src = fs.readFileSync('movies.js', 'utf8');
         // runtime grammar checks (the literal lives in movies.js handle())
-        const m = '1 2 3 link'.match(/^(\d{1,2})(?:\s+(trailer|t|next|n))?(?:\s+(\d{1,2}))?(?:\s+(\d{1,2}))?(?:\s+(link|l|next|n))?$/i);
+        const m = '1 2 3 link'.match(/^(\d{1,3})(?:\s+(trailer|t|next|n))?(?:\s+(\d{1,3}))?(?:\s+(\d{1,3}))?(?:\s+(link|l|next|n))?$/i);
         if (!m) throw new Error('grammar cannot parse n row q link');
-        const m2 = '1 next'.match(/^(\d{1,2})(?:\s+(trailer|t|next|n))?(?:\s+(\d{1,2}))?(?:\s+(\d{1,2}))?(?:\s+(link|l|next|n))?$/i);
+        const m2 = '1 next'.match(/^(\d{1,3})(?:\s+(trailer|t|next|n))?(?:\s+(\d{1,3}))?(?:\s+(\d{1,3}))?(?:\s+(link|l|next|n))?$/i);
         if (!m2 || !/^n/i.test(m2[2])) throw new Error('grammar cannot parse n next');
-        const m3 = '1 2 3 next'.match(/^(\d{1,2})(?:\s+(trailer|t|next|n))?(?:\s+(\d{1,2}))?(?:\s+(\d{1,2}))?(?:\s+(link|l|next|n))?$/i);
+        const m3 = '1 2 3 next'.match(/^(\d{1,3})(?:\s+(trailer|t|next|n))?(?:\s+(\d{1,3}))?(?:\s+(\d{1,3}))?(?:\s+(link|l|next|n))?$/i);
         if (!m3 || !m3[5]) throw new Error('grammar cannot parse n row q next');
+        const m4 = '1 172 2 next'.match(/^(\d{1,3})(?:\s+(trailer|t|next|n))?(?:\s+(\d{1,3}))?(?:\s+(\d{1,3}))?(?:\s+(link|l|next|n))?$/i);
+        if (!m4 || m4[3] !== '172') throw new Error('grammar cannot parse 3-digit rows');
         if (!src.includes('deliverStream') || !src.includes('episodeFileCmd') || !src.includes('seasonPackCmd')) throw new Error('series delivery fns missing');
     });
 

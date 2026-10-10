@@ -86,7 +86,7 @@ process.chdir(__dirname);
     const lt = movies.listText('avatar', [{ name: 'Avatar: The Way of Water', releaseInfo: '2022', imdbRating: '7.6' }]);
     if (!lt.includes('Avatar: The Way of Water (2022)') || !lt.includes(BRAND)) throw new Error('listText broken: ' + lt);
     const card = movies.cardText({ name: 'Avatar', imdbRating: '7.6', description: 'x', imdb_id: 'tt0499549', cast: ['a', 'b'] }, 1, { items: [{ label: 'WEB-DL 1080p \u2022 2 GB' }], page: { url: 'https://cinesubz.net/movie/x' } });
-    if (!card.includes('*.moviepro 1 <quality#>*') || !card.includes('1080p')) throw new Error('cardText broken');
+    if (!card.includes('1080p') || !card.includes('අංකය reply')) throw new Error('cardText broken');
     console.log('[11] movies listText/cardText builders: OK \u2705');
 
     // 12) exports intact (regression)
