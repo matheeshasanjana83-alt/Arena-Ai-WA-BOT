@@ -1,7 +1,7 @@
 'use strict';
 /**
  * test_v221.js — Mirror relay (file/URL → direct share link)
- * qu.ax (30d) → transfer.archivete.am (7d) chain · .tourl fix · .moviepro link mode
+ * qu.ax (30d) → transfer.archivete.am (7d) chain · .tourl fix
  */
 const assert = require('assert');
 const fs = require('fs');
@@ -48,20 +48,7 @@ const checkA = async (name, fn) => { try { await fn(); ok(name); } catch (e) { b
         } finally { fs.rmSync(p, { force: true }); }
     });
 
-    // [4] movies.js link-mode regex (same pattern as handle())
-    check('[4] .moviepro <n> <q#> link parsing', () => {
-        const re = /^(\d{1,2})(?:\s+(trailer|t))?(?:\s+(\d{1,2}))?(?:\s+(link|l))?$/i;
-        let m = '.moviepro 2 1 link'.replace(/^\.moviepro\s*/, '').match(re);
-        assert(m && m[1] === '2' && m[3] === '1' && /^l/i.test(m[4]), 'n q link');
-        m = '.moviepro 2 1'.replace(/^\.moviepro\s*/, '').match(re);
-        assert(m && m[3] === '1' && !m[4], 'n q (no link)');
-        m = '.moviepro 2 link'.replace(/^\.moviepro\s*/, '').match(re);
-        assert(m && !m[3] && /^l/i.test(m[4]), 'n link → needs quality hint');
-        m = '.moviepro 2 trailer'.replace(/^\.moviepro\s*/, '').match(re);
-        assert(m && m[2] === 'trailer', 'trailer still works');
-    });
-
-    // [5] tools.js routing: .mirror / .link / .tourl / .url
+    // [4] tools.js routing: .mirror / .link / .tourl / .url
     check('[5] tools CMDS routes', () => {
         const tools = require('./tools');
         for (const c of ['.mirror', '.link', '.tourl', '.url']) assert(tools.CMDS.includes(c), 'no ' + c);
@@ -72,8 +59,8 @@ const checkA = async (name, fn) => { try { await fn(); ok(name); } catch (e) { b
         const bot = require('./bot');
         const src = fs.readFileSync(path.join(R, 'bot.js'), 'utf8');
         assert(src.includes('*.mirror <link>*'), 'HELP .mirror');
-        assert(src.includes('q#> link*') || src.includes('link*'), 'CATS MoviePro link');
-        assert(src.includes("'.mirror': cmdMirror") || src.includes('.mirror'), 'bot refs');
+        assert(!/moviepro/i.test(src), 'moviepro still referenced in bot.js');
+        assert(src.includes('.mirror'), 'bot refs');
         assert(typeof bot.handleDownload === 'function', 'bot api');
     });
 
@@ -95,14 +82,14 @@ const checkA = async (name, fn) => { try { await fn(); ok(name); } catch (e) { b
 
     // [9] syntax: all touched files
     check('[9] node --check all touched', () => {
-        for (const f of ['mirror.js', 'tools.js', 'movies.js', 'bot.js']) {
+        for (const f of ['mirror.js', 'tools.js', 'bot.js']) {
             execFileSync(process.execPath, ['--check', path.join(R, f)]);
         }
     });
 
     // [10] no report-flood anywhere in new code
-    check('[10] no report-flood in mirror/movies/tools', () => {
-        for (const f of ['mirror.js', 'movies.js', 'tools.js']) {
+    check('[10] no report-flood in mirror/tools', () => {
+        for (const f of ['mirror.js', 'tools.js']) {
             const s = fs.readFileSync(path.join(R, f), 'utf8');
             assert(!/report100|report50|report30/i.test(s), f + ' mentions report-flood');
         }

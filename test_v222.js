@@ -31,7 +31,7 @@ process.chdir(__dirname);
     console.log('[2] v' + pkgV + ' + manifest ships style.js + test_v222.js: OK \u2705');
 
     // 3) syntax on all touched files
-    for (const f of ['bot.js', 'style.js', 'features.js', 'tools.js', 'movies.js']) {
+    for (const f of ['bot.js', 'style.js', 'features.js', 'tools.js']) {
         execSync(`node --check ${f}`, { cwd: __dirname, stdio: 'pipe' });
     }
     console.log('[3] node --check \u00d75: OK \u2705');
@@ -40,11 +40,10 @@ process.chdir(__dirname);
     require('./bot.js');
     const features = require('./features');
     const tools = require('./tools');
-    const movies = require('./movies');
-    console.log('[4] bot/features/tools/movies module graph: OK \u2705');
+    console.log('[4] bot/features/tools module graph: OK \u2705');
 
     // 5) "✅ ඉවරයි" residue removed — bubbles get deleted, files speak for themselves
-    for (const f of ['bot.js', 'features.js', 'tools.js', 'movies.js']) {
+    for (const f of ['bot.js', 'features.js', 'tools.js']) {
         const src = fs.readFileSync(f, 'utf8');
         if (/ඉවරයි/.test(src)) throw new Error(f + ' still has residue text');
     }
@@ -61,7 +60,7 @@ process.chdir(__dirname);
     if (!botSrc.includes("reactTo(msg.key, '\u2705')") || !botSrc.includes("reactTo(msg.key, '\u274c')")) throw new Error('\u2705/\u274c done reacts missing');
     if (!botSrc.includes('HEAVY = new Set')) throw new Error('HEAVY set missing');
     if (!/ME, (download, )?react \}\)/.test(botSrc)) throw new Error('ctx.react not passed to handlers');
-    for (const [f] of [['features.js'], ['tools.js'], ['movies.js']]) {
+    for (const [f] of [['features.js'], ['tools.js']]) {
         if (!fs.readFileSync(f, 'utf8').includes('react?.')) throw new Error(f + ' does not use ctx.react');
     }
     console.log('[7] \u23f3 \u2192 \u2705/\u274c react flow (bot + all 3 handler modules): OK \u2705');
@@ -70,7 +69,6 @@ process.chdir(__dirname);
     const count = (f, re) => (fs.readFileSync(f, 'utf8').match(re) || []).length;
     if (count('bot.js', /delete: status\.key/g) < 1) throw new Error('bot.js bubble delete missing');
     if (count('features.js', /delete: st\.key/g) < 1) throw new Error('features.js status.del missing');
-    if (count('movies.js', /delete: (status|st)\.key/g) < 2) throw new Error('movies.js bubble deletes missing');
     console.log('[8] progress-bubble self-delete wired: OK \u2705');
 
     // 9) .ping shows latency
@@ -82,18 +80,10 @@ process.chdir(__dirname);
     if (botSrc.includes('\u2503 *.')) throw new Error('old menu \u2503 rail remains');
     console.log('[10] menu \u2726 compact categories: OK \u2705');
 
-    // 11) movies builders still work with the brand footer
-    const lt = movies.listText('avatar', [{ name: 'Avatar: The Way of Water', releaseInfo: '2022', imdbRating: '7.6' }]);
-    if (!lt.includes('Avatar: The Way of Water (2022)') || !lt.includes(BRAND)) throw new Error('listText broken: ' + lt);
-    const card = movies.cardText({ name: 'Avatar', imdbRating: '7.6', description: 'x', imdb_id: 'tt0499549', cast: ['a', 'b'] }, 1, { items: [{ label: 'WEB-DL 1080p \u2022 2 GB' }], page: { url: 'https://cinesubz.net/movie/x' } });
-    if (!card.includes('1080p') || !card.includes('අංකය reply')) throw new Error('cardText broken');
-    console.log('[11] movies listText/cardText builders: OK \u2705');
-
     // 12) exports intact (regression)
     for (const c of ['.yts', '.song', '.video', '.fb', '.tiktok', '.gitclone', '.s']) if (!features.CMDS.includes(c)) throw new Error('features CMDS missing ' + c);
     for (const c of ['.tourl', '.mirror', '.link', '.tts', '.tr', '.8ball']) if (!tools.CMDS.includes(c)) throw new Error('tools CMDS missing ' + c);
-    if (!movies.hasSession('x@y')) { /* false is fine \u2014 just ensure callable */ }
-    console.log('[12] features/tools CMDS + movies exports: OK \u2705');
+    console.log('[12] features/tools CMDS: OK \u2705');
 
     // 13) regression guard \u2014 updater PROTECTED still covers runtime state
     const usrc = fs.readFileSync('updater.js', 'utf8');
@@ -102,7 +92,7 @@ process.chdir(__dirname);
     console.log('[13] updater PROTECTED (antispam.json, proxies.user.txt): OK \u2705');
 
     // 14) report-flood still absent (standing policy)
-    const allSrc = ['bot.js', 'features.js', 'tools.js', 'movies.js', 'mirror.js', 'style.js'].map((f) => fs.readFileSync(f, 'utf8')).join('\n');
+    const allSrc = ['bot.js', 'features.js', 'tools.js', 'mirror.js', 'style.js'].map((f) => fs.readFileSync(f, 'utf8')).join('\n');
     if (/report30|report50|report100|report-flood|\.report \d/.test(allSrc)) throw new Error('report-flood strings appeared');
     console.log('[14] no report-flood strings (policy held): OK \u2705');
 

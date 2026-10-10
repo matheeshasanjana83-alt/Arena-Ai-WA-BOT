@@ -22,6 +22,12 @@ litterbox/catbox, x0.at, transfer.archivete.am, filebin, eporner (v2.17). (gofil
 
 🔒 Private: ඔයා යවන messages විතරයි. වෙන අය commands යැව්වත් ignore.
 
+v2.25.0 — 🗑️ MoviePro අයින් කළා (.moviepro / .mvpro / .movie)
+  • .moviepro command එක සහ movies.js module එක මුළුමනින් අයින් — වැඩ නැති නිසා
+  • .update කළාම panel එකේ movies.js + පරණ movie test files ඇතුළුව auto-delete වෙනවා (updater අලුත් "removed" list feature)
+  • Menu / HELP / categories වලින් MoviePro අයින්; bare-number reply දැන් .menu categories වලට විතරයි
+  • අනිත් හැම feature එකක්ම කලින් විදිහටම: .download · .yt/.fb/.tiktok/ig/x · .ai · .mirror/.tourl · .s · tools ඔක්කොම
+
 v2.24.0 — 🧳 MoviePro REPLY flow (Asitha-style — commands නැතුව අංකය reply කරන්න)
   • දැන් හැම card එකකටම අංකය එකක් reply කරන්න පුළුවන් — commands ගහන්න ඕනෙ නෑ:
       .moviepro breaking bad  →  list

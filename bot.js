@@ -39,7 +39,6 @@ const updater = require('./updater');
 const netx = require('./net');
 const guard = require('./guard');
 const features = require('./features');
-const movies = require('./movies');
 const tools = require('./tools');
 const antibug = require('./antibug');
 const antispam = require('./antispam');
@@ -128,7 +127,6 @@ const HELP = `*◈ KAVIZ MD V1 ◈* — commands
 
 📥 *.download <link>* (*.dl*) · *.mirror <link>* · *.gitclone user/repo*
 🎬 *.yts* <නම> · *.song* <නම/link> · *.video* <නම/link> [2160..144]
-🎥 *.moviepro* <නම> — movie/series files (reply අංකය → options → files)
 📱 *.tiktok* · *.fb* · *.ig* · *.x* <link>
 🖼️ *.s* (reply) · *.take* Pack | Author
 🔍 *.wiki* <මාතෘකාව>
@@ -257,10 +255,9 @@ async function onMessages({ messages, type }, send, del = async () => { }) {
                 if (type !== 'notify' && ts && ts < STARTED - 60) continue;   // old history — don't re-run old commands
                 seen.add(msg.key.id); if (seen.size > 1000) seen.delete(seen.values().next().value);
                 let text = getText(msg.message);
-                if (/^\d{1,3}$/.test(text)) {                                   // number reply → .menu category / .moviepro step
+                if (/^\d{1,3}$/.test(text)) {                                   // number reply → .menu category
                     const st = menuState.get(replyJid(msg.key)), qid = msg.message?.extendedTextMessage?.contextInfo?.stanzaId;
                     if (st && (qid ? qid === st.id : Date.now() - st.at < 180e3)) text = '.menu ' + text;
-                    else { const b = movies.bridgeReply(replyJid(msg.key), qid, text); if (b) text = b; }
                 }
                 if (!text.startsWith('.')) continue;
                 const jid = replyJid(msg.key);
@@ -323,7 +320,6 @@ async function onMessages({ messages, type }, send, del = async () => { }) {
                 if (c === '.restart') { await send(jid, { text: '🔄 Restart වෙනවා... තත්පර 10 කින් *.ping*' }, { quoted: msg }); setTimeout(() => process.exit(process.env.ARENA_LAUNCHER ? 100 : 0), 1500); continue; }
                 if (await tools.handle(c, { send, jid, msg, rest, sock: SOCK, me: ME, react })) continue;
                 if (await features.handle(c, { send, jid, msg, rest, sock: SOCK, me: ME, download, react })) continue;
-                if (await movies.handle(c, { send, jid, msg, rest, sock: SOCK, me: ME, react })) continue;
                 if (!['.download', '.dl', '.dn'].includes(c)) continue;
 
                 const links = (text.match(/https?:\/\/\S+/g) || []).slice(0, 5);   // 🛡️ max 5 per command
@@ -354,7 +350,7 @@ const reactTo = (key, emoji) => {   // ⏳ → ✅/❌ pro-bot feedback (respect
     if (!reactOn() || !key?.id) return;
     try { SOCK?.sendMessage(key.remoteJid, { react: { text: emoji, key } }).catch(() => { }); } catch { }
 };
-const HEAVY = new Set(['.download', '.dl', '.dn', '.song', '.play', '.yta', '.video', '.ytv', '.yt', '.fb', '.facebook', '.faceboock', '.fbvid', '.ig', '.insta', '.x', '.twitter', '.tiktok', '.tt', '.moviepro', '.mvpro', '.movie', '.mirror', '.link', '.tourl', '.url', '.gitclone', '.ai', '.ask', '.gpt', '.imagine', '.img', '.s', '.sticker', '.take', '.tts', '.say', '.ss', '.setcookies', '.setlogo', '.update']);
+const HEAVY = new Set(['.download', '.dl', '.dn', '.song', '.play', '.yta', '.video', '.ytv', '.yt', '.fb', '.facebook', '.faceboock', '.fbvid', '.ig', '.insta', '.x', '.twitter', '.tiktok', '.tt', '.mirror', '.link', '.tourl', '.url', '.gitclone', '.ai', '.ask', '.gpt', '.imagine', '.img', '.s', '.sticker', '.take', '.tts', '.say', '.ss', '.setcookies', '.setlogo', '.update']);
 async function handleMaxMB(send, jid, msg, arg) {
     const free = freeDisk(process.env.DL_TMP || require('os').tmpdir());
     const freeTxt = free == null ? '' : `\n💾 Disk free: ${human(free)}`;
@@ -380,7 +376,6 @@ async function handleReact(send, jid, msg, arg) {
 const CATS = [
     ['📥', 'Download', `*📥 DOWNLOAD*\n\n✦ *.download <link>* — file එක එවනවා\n✦ *.dl link1 link2* — links 5 දක්වා\n✦ *.mirror <link>* — 🔗 direct share link\n✦ *.gitclone user/repo* — repo → zip\n\n> 📏 max {MAX} / file · *.maxmb* වෙනස් කරන්න`],
     ['🎬', 'YouTube', `*🎬 YOUTUBE*\n\n✦ *.yts <නම>* — search\n✦ *.song <නම / link>* — audio (*.play*)\n✦ *.video <නම / link>* — video (*.yt*)\n✦ *.video <link> 1080* — quality pick\n\n> 2160p → 144p · quality නැත්නම් best`],
-    ['🎥', 'MoviePro', `*🎥 MOVIEPRO*\n\n✦ *.moviepro <නම>* — search (movies + 📺 series)\n✦ අංකය reply — card → options → files\n✦ 🧳 season row + quality — episodes ඔක්කොම files එකින් එක\n✦ *.moviepro <n> <row#> <q#> link* — 🔗 direct links\n✦ *.moviepro <n> next* — 📺 episodes page 2\n\n> card එකට අංකය විතරක් reply කරන්න`],
     ['📱', 'Social', `*📱 SOCIAL*\n\n✦ *.tiktok <link>* — watermark නෑ (*.tt*)\n✦ *.fb <link>* — Facebook (*.facebook*)\n✦ *.ig <link>* — Instagram\n✦ *.x <link>* — X / Twitter`],
     ['🔍', 'Search', `*🔍 SEARCH*\n\n✦ *.wiki <මාතෘකාව>* — Wikipedia\n✦ *.wiki si <මාතෘකාව>* — සිංහල wiki\n✦ *.yts <නම>* — YouTube search`],
     ['🖼️', 'Sticker', `*🖼️ STICKER*\n\n✦ *.s* — photo/video reply → sticker\n✦ *.take Pack | Author* — නම වෙනස් කරන්න\n\n> video sticker — තත්පර 6 දක්වා`],

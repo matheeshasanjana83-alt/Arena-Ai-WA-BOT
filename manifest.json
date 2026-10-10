@@ -1,6 +1,13 @@
 {
-  "version": "2.24.0",
-  "notes": "MOVIEPRO REPLY FLOW (Asitha-style): every card accepts a bare-number reply — search list → card → options → files, no commands needed. Season pack now delivers FILES (episode එකින් එක, 'Starting Season N Download… Total Episodes/Quality' card, 50/run + 'next' continues); quality rows read real labels (Video: 720p / Server names); row numbers up to 3 digits (big seasons); 'link' suffix still gives direct-link packs. Series/movie/episode pipelines unchanged. No report-flood.",
+  "version": "2.25.0",
+  "notes": "MOVIEPRO REMOVED: .moviepro/.mvpro/.movie commands සහ movies.js මුළුමනින් අයින් (වැඩ නැති නිසා). .update කළාම panel එකෙනුත් movies.js + පරණ test files auto-delete වෙනවා (manifest removed list — updater අලුත් feature). Menu/HELP/categories වලින් අයින්, bare-number reply bridge දැන් .menu categories වලට විතරයි. අනිත් හැම feature එකක්ම (download/yt/fb/tiktok/ai/tools/mirror) වෙනස් වෙලා නෑ. No report-flood.",
+  "removed": [
+    "movies.js",
+    "test_v218.js",
+    "test_v219.js",
+    "test_v223.js",
+    "test_v224.js"
+  ],
   "files": [
     "bot.js",
     "ai.js",
@@ -28,15 +35,11 @@
     "proxypool.js",
     "proxies.txt",
     "test_v217.js",
-    "movies.js",
-    "test_v218.js",
-    "test_v219.js",
     "test_v220.js",
     "mirror.js",
     "test_v221.js",
     "style.js",
     "test_v222.js",
-    "test_v223.js",
-    "test_v224.js"
+    "test_v225.js"
   ]
 }

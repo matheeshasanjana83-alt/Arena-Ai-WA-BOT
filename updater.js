@@ -58,7 +58,8 @@ async function apply({ force = false, onStatus = () => { } } = {}) {
     const { sha, manifest } = c.latest;
     const files = manifest.files || [];
     if (!files.length || !files.includes('bot.js')) throw new Error('manifest එක වැරදියි');
-    for (const f of files) if (f.includes('..') || path.isAbsolute(f) || PROTECTED.test(f)) throw new Error('අනාරක්ෂිත file path: ' + f);
+    const removed = manifest.removed || [];
+    for (const f of [...files, ...removed]) if (f.includes('..') || path.isAbsolute(f) || PROTECTED.test(f)) throw new Error('අනාරක්ෂිත file path: ' + f);
 
     onStatus(`⬇️ files ${files.length} ක් download කරනවා...`);
     const data = {};
@@ -70,11 +71,11 @@ async function apply({ force = false, onStatus = () => { } } = {}) {
         catch (e) { throw new Error(`${f} එකේ error එකක් — update එක install කළේ නෑ (${e.message})`); }
     }
 
-    // backup current files (for automatic rollback by launcher.js)
+    // backup current files (for automatic rollback by launcher.js) — removed files too (rollback needs them back)
     fs.rmSync(BACKUP, { recursive: true, force: true });
     fs.mkdirSync(BACKUP, { recursive: true });
     const backed = [];
-    for (const f of files) {
+    for (const f of [...files, ...removed]) {
         const src = path.join(ROOT, f);
         if (fs.existsSync(src)) { fs.mkdirSync(path.dirname(path.join(BACKUP, f)), { recursive: true }); fs.copyFileSync(src, path.join(BACKUP, f)); backed.push(f); }
     }
@@ -87,13 +88,17 @@ async function apply({ force = false, onStatus = () => { } } = {}) {
         fs.writeFileSync(dst + '.tmp', data[f]);
         fs.renameSync(dst + '.tmp', dst);
     }
+    let removedCount = 0;
+    for (const f of removed) {                       // commands/features dropped in this version — panel එකෙනුත් අයින්
+        try { fs.rmSync(path.join(ROOT, f), { force: true }); removedCount++; } catch { }
+    }
     const newPkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
     const depsChanged = JSON.stringify(oldPkg.dependencies || {}) !== JSON.stringify(newPkg.dependencies || {});
     if (depsChanged) { onStatus('📦 අලුත් packages install කරනවා (මිනිත්තුවක් විතර)...'); await runNpmInstall(); }
 
     fs.writeFileSync(VERSION_FILE, JSON.stringify({ version: manifest.version, sha, repo: REPO, date: c.latest.date }, null, 2));
     fs.writeFileSync(path.join(BACKUP, 'pending'), String(Date.now())); // launcher: rollback if the new version crash-loops
-    return { updated: true, from: c.current.version, to: manifest.version, notes: manifest.notes || c.latest.message, depsChanged, files: files.length };
+    return { updated: true, from: c.current.version, to: manifest.version, notes: manifest.notes || c.latest.message, depsChanged, files: files.length, removed: removedCount };
 }
 
 module.exports = { check, apply, localInfo, REPO, DIR };
