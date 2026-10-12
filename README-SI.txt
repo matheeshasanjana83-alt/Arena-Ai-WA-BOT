@@ -22,11 +22,16 @@ litterbox/catbox, x0.at, transfer.archivete.am, filebin, eporner (v2.17). (gofil
 
 🔒 Private: ඔයා යවන messages විතරයි. වෙන අය commands යැව්වත් ignore.
 
+v2.27.0 — 🍿 MovieDex FIX: FULL menu + fast replies
+  • Series FULL MENU: seasons + episodes ඔක්කොම එක message එකේම — කලින් 60/page (Black Clover = 3 pages) → දැන් 200 rows/page, 174-episode shows එක පාරම (mega series 200+ rows විතරයි pages වෙන්නේ)
+  • Reply fast-fail: quality menu probes 8 tries → 2 — API flake වුණොත් මිනිත්තු ගානක් hang වෙන්නේ නෑ, seconds වලින් menu/error
+  • Session expire වුණොත් number reply වලට silence නෑ — ".moviedex <name> ආයෙත්" hint එක එනවා
+
 v2.26.0 — 🍿 NEW: .moviedex — movie + 📺 TV series download
   • අලුත් command: .moviedex <movie/series නම> (alias .mdx) — MovieBox mobile API එකෙන් (signed guest access, live verified)
   • Search: movies + series එකම list එකේ (series = 📺) → අංකය reply → info card (IMDb rating / genres / description / poster)
   • Movies: quality options (1080p / 720p / 480p — real sizes) → අංකය reply → movie FILE එකම chat එකට
-  • Series: Episodes List (📦 season rows + Season N Episode M rows, 60/page + next) → season row → 🧳 quality options → season pack = episodes එකින් එක files (50/run + next) · episode row → 🎬 quality → episode file
+  • Series: Episodes List — v2.27 FULL MENU (📦 season rows + Season N Episode M rows ඔක්කොම එක message එකේ, 200+ row mega shows විතරයි pages) → season row → 🧳 quality options → season pack = episodes එකින් එක files (50/run + next) · episode row → 🎬 quality → episode file
   • Delivery pipeline: MovieBox signCookie → DASH manifest (index.mpd) → fMP4 segments (own concurrent downloader) → ffmpeg -c copy mux (hevc → .mkv) → WhatsApp document
   • 'link' suffix → 🔗 mirror share link (.moviedex <n> <q#> link) · .maxmb size guard · quality sizes honest (~ estimates)
   • අංකය reply UX: card එකක් ආවම අංකය විතරක් reply කරාම ඇති — menu bridge එකත් එහෙමම (menu cards first)

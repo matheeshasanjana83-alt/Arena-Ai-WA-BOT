@@ -118,7 +118,7 @@ async function mbApi(p, bodyObj, tries = 8) {
             last = e; fails++;
             if (/HTTP 441|HTTP 401|miss token|UNAUTHORIZED/i.test(String(e.message))) {
                 mbToken = null;
-                if (!await mbLogin()) throw new Error('MovieBox re-login fail');
+                if (!await mbLogin(tries <= 3 ? 2 : 6)) throw new Error('MovieBox re-login fail');   // probes fail FAST — no minute-long login loops
             } else {
                 if (fails % 2 === 0) mbIdentity();   // flagged fingerprint → new device
                 await sleepMs(900);
@@ -172,9 +172,9 @@ async function mbSearch(q, n = 10) {
     return list.slice(0, n);
 }
 
-/** full details (get) — data IS the subject (flat) */
-async function mbDetails(sid) {
-    const j = await mbApi(`/wefeed-mobile-bff/subject-api/get?subjectId=${sid}`);
+/** full details (get) — data IS the subject (flat) · tries=4: card flow stays bounded (no minute-long silence) */
+async function mbDetails(sid, tries = 4) {
+    const j = await mbApi(`/wefeed-mobile-bff/subject-api/get?subjectId=${sid}`, undefined, tries);
     const d = j.data || {};
     return {
         sid: String(d.subjectId ?? sid),
@@ -193,19 +193,19 @@ async function mbDetails(sid) {
     };
 }
 
-/** seasons for a series → [{ se, maxEp }] */
-async function mbSeasons(sid) {
-    const j = await mbApi(`/wefeed-mobile-bff/subject-api/season-info?subjectId=${sid}`);
+/** seasons for a series → [{ se, maxEp }] · tries=4 bounded */
+async function mbSeasons(sid, tries = 4) {
+    const j = await mbApi(`/wefeed-mobile-bff/subject-api/season-info?subjectId=${sid}`, undefined, tries);
     const raw = (j.data || {}).seasons ?? j.data ?? [];
     const arr = Array.isArray(raw) ? raw : (raw.seasons || []);
     return arr.map(s => ({ se: Number(s.se ?? s.season ?? 1), maxEp: Number(s.maxEp ?? (s.episodeNumbers || []).length ?? 0) }))
         .filter(s => s.maxEp > 0).sort((a, b) => a.se - b.se);
 }
 
-/** play-info streams for a movie (se/ep empty) or one episode */
-async function mbPlay(sid, se, ep) {
+/** play-info streams for a movie (se/ep empty) or one episode · tries: 8 downloads / 2-3 menus (v2.27 fast-fail) */
+async function mbPlay(sid, se, ep, tries = 8) {
     const q = se && ep ? `&se=${se}&ep=${ep}` : '';
-    const j = await mbApi(`/wefeed-mobile-bff/subject-api/play-info/v2?subjectId=${sid}${q}`);
+    const j = await mbApi(`/wefeed-mobile-bff/subject-api/play-info/v2?subjectId=${sid}${q}`, undefined, tries);
     const streams = (j.data || {}).streams || [];
     return streams.filter(s => s.signCookie && (s.url || '').startsWith('http'));
 }
@@ -383,7 +383,7 @@ async function dashDownload({ mpd, cookie, height, outPath, onProgress, wantSize
 
 const SESSION_TTL = 15 * 60e3;
 const UI_TTL = 10 * 60e3;
-const EP_PAGE_ROWS = 60;        // episode rows per page
+const EP_PAGE_ROWS = 200;       // rows per message — v2.27: FULL menu (all seasons + episodes) in ONE message for any normal series
 const SEASON_FILE_CAP = 50;     // episode files per pack run ('next' continues)
 const EP_SEND_GAP = 5000;       // pause between episode sends
 const PACK_LINK_CAP = 40;       // mirror links per pack message
@@ -488,6 +488,7 @@ function seriesText(m, n, rows, pageIdx) {
     const more = start + EP_PAGE_ROWS < rows.length;
     out.push('', `> අංකය reply කරන්න — season → 🧳 pack options · episode → 🎬 quality`);
     if (more) out.push(`> *.moviedex ${n} next* — ඊළඟ page එක (${Math.ceil(rows.length / EP_PAGE_ROWS)} pages)`);
+    else if (page.length > 12) out.push(`> ✦ *full menu* — seasons + episodes ${rows.length} ම මේ message එකේම`);
     return out.filter(Boolean).join('\n');
 }
 
@@ -495,7 +496,7 @@ async function sendSeriesCard(send, jid, msg, m, n, rows, pageIdx = 0) {
     const text = seriesText(m, n, rows, pageIdx);
     try {
         if (!m.poster) throw new Error('no poster');
-        return await send(jid, { image: { url: m.poster }, caption: text.slice(0, 6000) }, { quoted: msg });
+        return await send(jid, { image: { url: m.poster }, caption: text.slice(0, 9999) }, { quoted: msg });   // v2.27: full menu fits
     } catch {
         return await send(jid, { text }, { quoted: msg });
     }
@@ -664,9 +665,13 @@ async function seasonFilesCmd(send, jid, msg, m, season, maxEp, qNo, height, fro
 /** bot.js bridges a bare-number reply here → full .moviedex grammar (or null → not ours) */
 function bridgeReply(jid, qid, digits) {
     const s = sessions.get(jid);
-    if (!hasSession(jid)) return null;
+    if (!s || !s.list?.length) return null;
     const d = parseInt(digits, 10);
     if (!Number.isFinite(d)) return null;
+    if (!hasSession(jid)) {   // v2.27: recently-expired session (≤30 min) still routes → user gets the "expire" hint, never silence
+        if (Date.now() - (s.at || 0) > SESSION_TTL + 30 * 60e3) return null;
+        return `.moviedex ${d}`;
+    }
     const ui = s.ui;
     if (ui && ui.kind && Date.now() - ui.at < UI_TTL) {
         const quotedOurs = !!(qid && ui.key && String(qid) === String(ui.key));
@@ -768,7 +773,7 @@ async function handle(c, ctx) {
                         const edit = async (t) => { try { await send(jid, { text: t, edit: st.key }); } catch { } };
                         let qRows = [];
                         try {
-                            const streams = await mbPlay(full.sid, row.season, 1);
+                            const streams = await mbPlay(full.sid, row.season, 1, 2);   // v2.27: probe fast-fails — menu එක seconds වලින්
                             if (streams.length) qRows = (await streamQualities(streams[0]))?.rows || [];
                         } catch { }
                         try { await send(jid, { delete: st.key }); } catch { }
@@ -791,7 +796,7 @@ async function handle(c, ctx) {
                 const edit = async (t) => { try { await send(jid, { text: t, edit: st.key }); } catch { } };
                 let qRows = [];
                 try {
-                    const streams = await mbPlay(full.sid, row.season, row.ep);
+                    const streams = await mbPlay(full.sid, row.season, row.ep, 2);   // v2.27: probe fast-fails — menu එක seconds වලින්
                     if (streams.length) qRows = (await streamQualities(streams[0]))?.rows || [];
                 } catch { }
                 try { await send(jid, { delete: st.key }); } catch { }
@@ -825,7 +830,7 @@ async function handle(c, ctx) {
         const st = await send(jid, { text: `🔎 ${cut(full.name, 50)}…` }, { quoted: msg });
         const edit = async (t) => { try { await send(jid, { text: t, edit: st.key }); } catch { } };
         let streams = [];
-        try { streams = await mbPlay(full.sid); } catch { }
+        try { streams = await mbPlay(full.sid, null, null, 3); } catch { }
         let rows = [];
         if (streams.length) rows = (await streamQualities(streams[0]))?.rows || [];
         (s.mv ||= {})[n] = { streams, at: Date.now() };

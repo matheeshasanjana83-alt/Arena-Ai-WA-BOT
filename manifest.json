@@ -1,12 +1,13 @@
 {
-  "version": "2.26.0",
-  "notes": "NEW: .moviedex — movie + TV series download command. MovieBox mobile-BFF source (signed guest API, verified live): search movies + 📺 series → info card (IMDb rating/genres/desc + poster) → quality options (1080p/720p/480p, real sizes) → movie FILE / season pack (episodes එකින් එක files, 50/run + next) / single episode file. Own DASH downloader (signCookie → index.mpd → fMP4 segments → ffmpeg -c copy mux, hevc → mkv). Reply UX: අංකය reply කරන්න විතරයි — card → options → file. 'link' suffix → 🔗 mirror share link. Aliases: .mdx. ffmpeg ඕනේ (auto-download on panels; Termux: pkg install ffmpeg). No report-flood.",
+  "version": "2.27.0",
+  "notes": "MovieDex FIX — full menu + fast replies. 1) Series FULL MENU: seasons + episodes ඔක්කොම එක message එකෙම (කලින් 60/page → දැන් 200 rows/page — Black Clover වගේ 174-episode shows pages නැතුව එක පාරම). Mega series (200+ rows) විතරයි paginate වෙන්නේ. 2) Reply fast-fail: quality menu probes දැන් 2 tries විතරයි (කලින් 8) — API flake වුණොත් මිනිත්තු ගානක් hang වෙන්නේ නෑ, seconds වලින් menu/error එනවා. 3) Session expire වුණොත් reply numbers ට silence වෙනුනේ නෑ — \".moviedex <name> ආයෙත්\" hint එක එනවා. No report-flood.",
   "removed": [
     "movies.js",
     "test_v218.js",
     "test_v219.js",
     "test_v223.js",
-    "test_v224.js"
+    "test_v224.js",
+    "test_v226.js"
   ],
   "files": [
     "bot.js",
@@ -42,6 +43,6 @@
     "test_v222.js",
     "test_v225.js",
     "moviedex.js",
-    "test_v226.js"
+    "test_v227.js"
   ]
 }
