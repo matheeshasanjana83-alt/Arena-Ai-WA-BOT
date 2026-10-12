@@ -1,6 +1,6 @@
 {
-  "version": "2.25.0",
-  "notes": "MOVIEPRO REMOVED: .moviepro/.mvpro/.movie commands සහ movies.js මුළුමනින් අයින් (වැඩ නැති නිසා). .update කළාම panel එකෙනුත් movies.js + පරණ test files auto-delete වෙනවා (manifest removed list — updater අලුත් feature). Menu/HELP/categories වලින් අයින්, bare-number reply bridge දැන් .menu categories වලට විතරයි. අනිත් හැම feature එකක්ම (download/yt/fb/tiktok/ai/tools/mirror) වෙනස් වෙලා නෑ. No report-flood.",
+  "version": "2.26.0",
+  "notes": "NEW: .moviedex — movie + TV series download command. MovieBox mobile-BFF source (signed guest API, verified live): search movies + 📺 series → info card (IMDb rating/genres/desc + poster) → quality options (1080p/720p/480p, real sizes) → movie FILE / season pack (episodes එකින් එක files, 50/run + next) / single episode file. Own DASH downloader (signCookie → index.mpd → fMP4 segments → ffmpeg -c copy mux, hevc → mkv). Reply UX: අංකය reply කරන්න විතරයි — card → options → file. 'link' suffix → 🔗 mirror share link. Aliases: .mdx. ffmpeg ඕනේ (auto-download on panels; Termux: pkg install ffmpeg). No report-flood.",
   "removed": [
     "movies.js",
     "test_v218.js",
@@ -40,6 +40,8 @@
     "test_v221.js",
     "style.js",
     "test_v222.js",
-    "test_v225.js"
+    "test_v225.js",
+    "moviedex.js",
+    "test_v226.js"
   ]
 }

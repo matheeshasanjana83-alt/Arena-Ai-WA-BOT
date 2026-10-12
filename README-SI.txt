@@ -22,6 +22,17 @@ litterbox/catbox, x0.at, transfer.archivete.am, filebin, eporner (v2.17). (gofil
 
 🔒 Private: ඔයා යවන messages විතරයි. වෙන අය commands යැව්වත් ignore.
 
+v2.26.0 — 🍿 NEW: .moviedex — movie + 📺 TV series download
+  • අලුත් command: .moviedex <movie/series නම> (alias .mdx) — MovieBox mobile API එකෙන් (signed guest access, live verified)
+  • Search: movies + series එකම list එකේ (series = 📺) → අංකය reply → info card (IMDb rating / genres / description / poster)
+  • Movies: quality options (1080p / 720p / 480p — real sizes) → අංකය reply → movie FILE එකම chat එකට
+  • Series: Episodes List (📦 season rows + Season N Episode M rows, 60/page + next) → season row → 🧳 quality options → season pack = episodes එකින් එක files (50/run + next) · episode row → 🎬 quality → episode file
+  • Delivery pipeline: MovieBox signCookie → DASH manifest (index.mpd) → fMP4 segments (own concurrent downloader) → ffmpeg -c copy mux (hevc → .mkv) → WhatsApp document
+  • 'link' suffix → 🔗 mirror share link (.moviedex <n> <q#> link) · .maxmb size guard · quality sizes honest (~ estimates)
+  • අංකය reply UX: card එකක් ආවම අංකය විතරක් reply කරාම ඇති — menu bridge එකත් එහෙමම (menu cards first)
+  • ffmpeg ඕනේ: panels auto-download කරගන්නවා · Termux: pkg install ffmpeg
+  • ⚠️ 1080p full movies WhatsApp 2GB limit එකට වඩා ලොකු වෙනවා — 720p/480p use කරන්න (හෝ link mode)
+
 v2.25.0 — 🗑️ MoviePro අයින් කළා (.moviepro / .mvpro / .movie)
   • .moviepro command එක සහ movies.js module එක මුළුමනින් අයින් — වැඩ නැති නිසා
   • .update කළාම panel එකේ movies.js + පරණ movie test files ඇතුළුව auto-delete වෙනවා (updater අලුත් "removed" list feature)

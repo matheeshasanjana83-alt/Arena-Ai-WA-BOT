@@ -1,10 +1,11 @@
 # 🤖 KAVIZ MD V1 — WhatsApp Bot
 
-Private WhatsApp bot (Baileys v7) — `.ai` (Gemini / Groq), `.download`, `.yt/.video/.song`, `.tiktok`, `.fb`, `.update`.
+Private WhatsApp bot (Baileys v7) — `.ai` (Gemini / Groq), `.moviedex` (movies + TV series files), `.download`, `.yt/.video/.song`, `.tiktok`, `.fb`, `.update`.
 
 ## Commands
 | Command | වැඩේ |
 |---|---|
+| `.moviedex <නම>` (`.mdx`) | **Movie + 📺 TV series download** — search → info card (rating/genres/desc + poster) → quality (1080p/720p/480p + sizes) → movie **file** · season pack (episodes එකින් එක files, 50/run + `next`) · episode file · `link` suffix → 🔗 share link. අංකය reply කරන්න විතරයි (v2.26). ffmpeg ඕනේ (panel auto-download · Termux: `pkg install ffmpeg`) |
 | `.ai <ප්‍රශ්නය>` | AI එකෙන් උත්තර |
 | `.download <link>` | Direct / MediaFire / Google Drive / MEGA / eporner ... file එක WhatsApp එකට |
 | `.setkey gemini <key>` / `.setkey groq <key>` | AI keys |
