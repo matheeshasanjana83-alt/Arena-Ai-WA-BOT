@@ -1,6 +1,6 @@
 {
-  "version": "2.34.0",
-  "notes": "🛡️ Anti-Bug v4 — REAL CRASHER TOOLKIT ANALYSIS: LimeWire 'WhatsApp Documents.zip' (10 leaked bug tools — AmbaCrash v14, HADES, SKYVIEN, XLOID INVICTUS, DELVIN CRASH, SATANIC DEVIL, CFC V30, Shiroxyx 4.0, HARVEST INFINITY, Neobeast) dissect කරලා ඒවා යවන හැම payload class එකක්ම detector කළා: ① numeric field bombs — pageCount 3567587327, fileLength 48-nines (number/string/protobuf Long), orderMessage.totalAmount1000 9.9e16, trustBannerAction 99999, negative expiration, forwardingScore 999999, conversionDelaySeconds 9999 ② line storms — 'i lose\\n'×9999 වගේ එකම line 500+ වරක් ③ lone-surrogate/U+FFFD storms — UTF-16 encoder crashers ④ real-payload reconstructions: crashcursor (buttonId NUL×850000 + @0×50000 + pageCount 3.5B), RavageCursorOrder (ꦾ×99999 + amount bomb), QBug paramsJson NUL×500k, XLOID accessibilityText/buttonParamsJson, CrashCalls ꦾ×550000+@1×300000 — ඔක්කොම severe → auto report ×30 → block (v2.33 retaliation). False-positive armor: normal orders, real PDFs, 1.5GB files, forwards, emoji pairs, සිංහල, Quran, 4K — clean. .antibug test දැන් 39/39 cases.",
+  "version": "2.35.0",
+  "notes": "🤖 AI: Z.ai GLM provider අලුතින් — .setkey zai <KEY> (alias z.ai/glm) → glm-4.6 → glm-4.5-air → glm-4.5-flash fallback (balance-dead model මතක තියාගෙන fail-fast), thinking:disabled (WhatsApp speed), reasoning_content reply එකට නොයනවා, Gemini → Groq → Z.ai provider order intact. .keys වල Z.ai line, KEY_HELP + AI menu update. Anti-Bug v4 (v2.34) detectors + v2.33 retaliation unchanged.",
   "removed": [
     "movies.js",
     "test_v218.js",
@@ -14,7 +14,8 @@
     "test_v230.js",
     "test_v231.js",
     "test_v232.js",
-    "test_v233.js"
+    "test_v233.js",
+    "test_v234.js"
   ],
   "files": [
     "bot.js",
@@ -52,6 +53,6 @@
     "moviedex.js",
     "pairsite.js",
     "autoupdate.js",
-    "test_v234.js"
+    "test_v235.js"
   ]
 }

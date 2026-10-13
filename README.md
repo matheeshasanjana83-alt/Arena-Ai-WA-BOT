@@ -8,7 +8,7 @@ Private WhatsApp bot (Baileys v7) — `.ai` (Gemini / Groq), `.moviedex` (movies
 | `.moviedex <නම>` (`.mdx`) | **Movie + 📺 TV series download** — search → info card (rating/genres/desc + poster) → quality (1080p/720p/480p + sizes) → movie **file** · series **FULL menu** (all seasons + episodes in one message) → season pack (episodes එකින් එක files, 50/run + `next`) · episode file · `link` suffix → 🔗 share link. අංකය reply කරන්න විතරයි (v2.28: අන්තිම cards 8ම routing — series card එකටත් පස්සේ reply වැඩ). ffmpeg ඕනේ (panel auto-download · Termux: `pkg install ffmpeg`) |
 | `.ai <ප්‍රශ්නය>` | AI එකෙන් උත්තර |
 | `.download <link>` | Direct / MediaFire / Google Drive / MEGA / eporner ... file එක WhatsApp එකට |
-| `.setkey gemini <key>` / `.setkey groq <key>` | AI keys |
+| `.setkey gemini/groq/zai <key>` | AI keys (zai = Z.ai GLM — alias z.ai/glm) |
 | `.net <link>` | Download fail නම් හේතුව (DNS block / IP block) |
 | `.setproxy <url\|off>` | Block වෙන sites වලට proxy |
 | `.proxies` | Free proxy pool status (`check` / `on` / `off`) — block වුණාම auto fallback; alive අඩු නම් free lists වලින් auto-refresh (v2.17) |

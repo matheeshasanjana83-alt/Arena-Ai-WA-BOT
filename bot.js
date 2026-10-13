@@ -334,7 +334,7 @@ async function onMessages({ messages, type }, send, del = async () => { }) {
                 if (c === '.setproxy') { await handleProxy(send, del, jid, msg, rest.join(' ').trim()); continue; }
                 if (c === '.proxies' || c === '.proxypool') { await handleProxies(send, jid, msg, (rest[0] || '').toLowerCase()); continue; }
                 if (c === '.setcookies') { await handleCookies(send, del, jid, msg, rest.join(' ').trim()); continue; }
-                if (c === '.keys') { const k = ai.getKeys(); await send(jid, { text: `🔑 *API keys*\nGemini: ${k.gemini ? '✅ ' + mask(k.gemini) : '❌ නෑ'}\nGroq: ${k.groq ? '✅ ' + mask(k.groq) : '❌ නෑ'}` }, { quoted: msg }); continue; }
+                if (c === '.keys') { const k = ai.getKeys(); await send(jid, { text: `🔑 *API keys*\nGemini: ${k.gemini ? '✅ ' + mask(k.gemini) : '❌ නෑ'}\nGroq: ${k.groq ? '✅ ' + mask(k.groq) : '❌ නෑ'}\nZ.ai (GLM): ${k.zai ? '✅ ' + mask(k.zai) : '❌ නෑ'}` }, { quoted: msg }); continue; }
                 if (c === '.restart') { await send(jid, { text: '🔄 Restart වෙනවා... තත්පර 10 කින් *.ping*' }, { quoted: msg }); setTimeout(() => process.exit(process.env.ARENA_LAUNCHER ? 100 : 0), 1500); continue; }
                 if (await runJob(() => tools.handle(c, { send, jid, msg, rest, sock: SOCK, me: ME, react }))) continue;
                 if (await runJob(() => features.handle(c, { send, jid, msg, rest, sock: SOCK, me: ME, download, react }))) continue;
@@ -402,7 +402,7 @@ const CATS = [
     ['🛠️', 'Tools', `*🛠️ TOOLS*\n\n✦ *.tr <භාෂාව> <text>* — translate\n✦ *.tts <text>* — voice (සිංහල OK)\n✦ *.weather <නගරය>* — කාලගුණය · දින 3\n✦ *.lyrics <සින්දුව>* — lyrics\n✦ *.imagine <විස්තරය>* — AI image\n✦ *.toimg* — sticker → photo\n✦ *.tourl* — media → 🔗 link\n✦ *.ss <site>* · *.qr* · *.short* · *.calc*\n✦ *.github <user>* · *.del* · *.setpp*`],
     ['🎉', 'Fun', `*🎉 FUN*\n\n✦ *.joke* · *.fact* · *.quote*\n✦ *.8ball <ප්‍රශ්නය>* — 🎱`],
     ['👥', 'Group', `*👥 GROUP* — group එකේ ඔයා ගහන්න\n\n✦ *.groupinfo* · *.grouplink* · *.jid*\n✦ *.tagall [msg]* — විනාඩි 10 කට 1\n✦ *.kick @user* · *.promote* · *.demote*\n✦ *.mute* · *.unmute* · *.tagadmins* · *.resetlink*\n\n> @mention නැත්නම් message එකකට reply කරන්න`],
-    ['🤖', 'AI', `*🤖 AI*\n\n✦ *.ai <ප්‍රශ්නය>* — සිංහල OK\n✦ message එකකට reply + *.ai* — ඒක ගැනම\n✦ *.ai reset* — අලුත් කතාවක්\n✦ *.setkey gemini/groq <KEY>* · *.keys*`],
+    ['🤖', 'AI', `*🤖 AI*\n\n✦ *.ai <ප්‍රශ්නය>* — සිංහල OK\n✦ message එකකට reply + *.ai* — ඒක ගැනම\n✦ *.ai reset* — අලුත් කතාවක්\n✦ *.setkey gemini/groq/zai <KEY>* · *.keys*`],
     ['🔧', 'Network', `*🔧 NETWORK*\n\n✦ *.net <link>* — fail වුණොත් හේතුව\n✦ *.setproxy <url|off>* — block sites වලට\n✦ *.proxies* — free pool status · *.proxies check*\n✦ *.setcookies* — YouTube bot-check fix`],
     ['⚙️', 'Settings', `*⚙️ SETTINGS*\n\n✦ *.setlogo* / *.dellogo* — menu logo\n✦ *.react on|off* — auto react\n✦ *.maxmb <MB>* — download limit\n✦ *.mode self|all* — වැඩ කරන chats\n✦ *.autoupdate on|off* — GitHub එකෙන් auto update (default on)\n✦ *.update* · *.restart* · *.version*`],
     ['🛡️', 'Security', `*🛡️ SECURITY*\n\n✦ commands — ඔයාට විතරයි (owner-only)\n✦ anti-ban — rate limit · human delay · backoff\n✦ *.antibug* — bug → delete + 🚀 auto report ×30 → ඉවර උනාම ⛔ block (bug ගහපු එකාට විතරයි)\n✦ *.antibug report on|off* · *.antibug count <1-100>*\n✦ *.antibug scan|test* — caught bugs · self-test\n✦ *.block <නම්බර්|reply>* · *.unblock* · *.blocklist*\n✦ *.antispam on|off|<N>* · *.spamlog* — flood guard`],
@@ -587,11 +587,16 @@ const KEY_HELP = `🔑 *Free API key එකක් ගන්න:*
 2. *Create API Key* → copy
 3. *.setkey groq ඔයාගේ_key*
 
-(දෙකම දැම්මොත් හොඳයි — එකක් fail වුණොත් අනිත් එක auto පාවිච්චි කරනවා)`;
+*Z.ai (GLM):*
+1. https://z.ai → API console → *API Keys* → key එක copy කරන්න
+2. *.setkey zai ඔයාගේ_key*  (alias: *.setkey z.ai / glm*)
+
+(එකක් fail වුණොත් අනිත් එක auto පාවිච්චි කරනවා — key දාලා තියෙන හැම provider එකක්ම try වෙනවා)`;
 
 async function handleKey(send, del, jid, msg, c, rest) {
-    const provider = (rest[0] || '').toLowerCase();
-    if (!['gemini', 'groq'].includes(provider)) return send(jid, { text: KEY_HELP }, { quoted: msg });
+    const raw = (rest[0] || '').toLowerCase();
+    const provider = (raw === 'z.ai' || raw === 'glm' || raw === 'z') ? 'zai' : raw; // Z.ai aliases
+    if (!['gemini', 'groq', 'zai'].includes(provider)) return send(jid, { text: KEY_HELP }, { quoted: msg });
     if (c === '.delkey') { ai.setKey(provider, ''); return send(jid, { text: `🗑️ ${provider} key එක මැකුවා` }); }
     const key = (rest[1] || '').trim();
     if (key.length < 20) return send(jid, { text: KEY_HELP }, { quoted: msg });

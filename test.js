@@ -20,7 +20,7 @@ const mk = (text, fromMe = true, jid = ME) => ({ key: { id: 'IN' + (++n), remote
     const doc = r.find(x => x.document);
     t('.download GitHub → document එවනවා', !!doc && doc.fileName === 'Joystick-Layout-NoCLEO-v1.zip' && doc.size === 3127);
     t('progress/status edit message', r.some(x => x.edit && /ඉවරයි/.test(x.text)));
-    t('temp file එක delete වෙනවා', await new Promise(res => setTimeout(() => res(!fs.existsSync(doc.document.url)), 300)));
+    t('temp file එක delete වෙනවා', await new Promise(res => setTimeout(() => res(!doc || !fs.existsSync(doc.document.url)), 300))); // null-safe: external link 404 වුණත් crash නෑ
     r = await run(mk('.dl https://raw.githubusercontent.com/matheeshasanjana83-alt/abc/main/downloads/Joystick-Layout-NoCLEO-v1.zip https://github.com/matheeshasanjana83-alt/abc/blob/main/downloads/SmokeBoy.zip'));
     t('.dl links 2ක් → documents 2ක්', r.filter(x => x.document).length === 2);
     r = await run(mk('.download https://www.google.com/')); t('web page link → පැහැදිලි error', r.some(x => x.edit && /web page/.test(x.text)) && !r.some(x => x.document));

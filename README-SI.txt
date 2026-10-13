@@ -7,7 +7,8 @@ Commands ("Message yourself" chat එකේ ගහන්න):
   .download <link>           file එක download කරලා document එකක් විදියට එවනවා (.dl / .dn)
   .setkey gemini <KEY>       Gemini free key දාන්න   (key message එක auto මැකෙනවා)
   .setkey groq <KEY>         Groq free key දාන්න
-  .keys                      keys තියෙනවද බලන්න      .delkey gemini|groq  → key මකන්න
+  .setkey zai <KEY>          Z.ai (GLM) key දාන්න  (alias: z.ai / glm)
+  .keys                      keys තියෙනවද බලන්න      .delkey gemini|groq|zai  → key මකන්න
   .ping / .help
 
 AI ගැන ඇත්ත: උත්තර දෙන්නේ Google Gemini / Groq free models (KAVIZ agent එක නෙවෙයි).
