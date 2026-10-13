@@ -12,7 +12,7 @@
  *    reply අංකය (number reply) → next step — every interactive card registers a "ui"
  *                                ({key, kind, n, rowNo}); bot.js bridges bare numbers via
  *                                bridgeReply(jid, quotedId, digits) → .moviedex … grammar.
- *    .moviedex <n> (movie)     → info card + quality list (1080/720/480 + sizes)
+ *    .moviedex <n> (movie)     → info card + quality list (1080/720/480/360p + sizes)
  *    .moviedex <n> (series)    → info card + Episodes List (📦 season rows + Season N Episode M)
  *    .moviedex <n> <row#>      → season → 🧳 quality options · episode → 🎬 quality list
  *    .moviedex <n> <row#> <q#> → 🧳 SEASON PACK = files, one per message (cap 50/run + next)
@@ -26,6 +26,14 @@
  *    → fMP4 init + chunk segments (chunk-stream<rep>-<NNNNN>.m4s) downloaded with own
  *    concurrent engine → ffmpeg -c copy mux (video+audio) → WhatsApp document.
  *    stream.url alone is a shared 824 KB notice stub — the signCookie DASH is the real file.
+ *
+ *  v2.30: ① 360p row — MovieBox DASH ladders stop at 480p (verified 2026-10 across titles),
+ *             so "360p" downloads the 480p track and re-encodes locally (x264 veryfast,
+ *             audio copy → live progress bar). ② quality menus merge ALL play-info streams
+ *             (not just streams[0]) + dedupe duplicate MPD entries. ③ honest progress:
+ *             real downloaded bytes, byte-based % in drain mode (no instant fake 99%),
+ *             CDN-stall watchdog. ④ WhatsApp upload timeout — one hung 200MB document used
+ *             to deadlock the pacer chain and silence the whole bot (the stuck-99% bug).
  */
 const crypto = require('crypto');
 const fs = require('fs');
@@ -205,12 +213,20 @@ async function mbSeasons(sid, tries = 4) {
         .filter(s => s.maxEp > 0).sort((a, b) => a.se - b.se);
 }
 
-/** play-info streams for a movie (se/ep empty) or one episode · tries: 8 downloads / 2-3 menus (v2.27 fast-fail) */
+/** play-info streams for a movie (se/ep empty) or one episode · tries: 8 downloads / 2-3 menus (v2.27 fast-fail)
+ *  v2.30: duplicate stream entries pointing at the SAME index.mpd (seen on multi-entry titles) collapse to one */
 async function mbPlay(sid, se, ep, tries = 8) {
     const q = se && ep ? `&se=${se}&ep=${ep}` : '';
     const j = await mbApi(`/wefeed-mobile-bff/subject-api/play-info/v2?subjectId=${sid}${q}`, undefined, tries);
     const streams = (j.data || {}).streams || [];
-    return streams.filter(s => s.signCookie && (s.url || '').startsWith('http'));
+    const out = [], seen = new Set();
+    for (const s of streams.filter(s => s.signCookie && (s.url || '').startsWith('http'))) {
+        const d = dashFrom(s.signCookie);
+        if (d && seen.has(d.mpd)) continue;
+        if (d) seen.add(d.mpd);
+        out.push(s);
+    }
+    return out;
 }
 
 /* ───────────────── 2. DASH engine (own downloader + ffmpeg mux) ───────────────── */
@@ -297,13 +313,19 @@ async function segFetch(url, cookie, tries = 3) {
     return null;
 }
 
-/** DASH → single file: init+chunks per track (ordered append) → ffmpeg -c copy mux.  maxSegs = safety cap (drain mode / corrupt manifest) */
-async function dashDownload({ mpd, cookie, height, outPath, onProgress, wantSize, maxSegs = 4000 }) {
-    const r = await smartFetch(mpd, { headers: dashHeaders(cookie), signal: AbortSignal.timeout(30000) });
-    if (!r.ok) { try { await r.body?.cancel(); } catch { } throw new Error('DASH manifest HTTP ' + r.status); }
-    const txt = await r.text();
-    try { await r.body?.cancel(); } catch { }
-    const man = parseMpd(txt);
+/** DASH → single file: init+chunks per track (ordered append) → ffmpeg -c copy mux.  maxSegs = safety cap (drain mode / corrupt manifest)
+ *  v2.30: man/mpdTxt cached from the menu probe → no second CDN fetch · onProgress(pct, realBytes) ·
+ *  honest % (segments when counted, bytes when duration unknown — no instant fake 99%) ·
+ *  watchdog: 2 min with zero successful segments → abort with a clear error (was: silent forever). */
+async function dashDownload({ mpd, cookie, height, outPath, onProgress, wantSize, maxSegs = 4000, man: manIn, mpdTxt: txtIn }) {
+    let txt = txtIn || '', man = manIn || null;
+    if (!man || !txt) {
+        const r = await smartFetch(mpd, { headers: dashHeaders(cookie), signal: AbortSignal.timeout(30000) });
+        if (!r.ok) { try { await r.body?.cancel(); } catch { } throw new Error('DASH manifest HTTP ' + r.status); }
+        txt = await r.text();
+        try { await r.body?.cancel(); } catch { }
+        man = parseMpd(txt);
+    }
     const rep = height ? (man.video.find(v => v.h === height) || man.video.find(v => v.h <= height) || man.video[0]) : man.video[0];
     if (!rep) throw new Error('manifest එකේ video tracks නෑ');
     const audio = man.audio;
@@ -316,37 +338,49 @@ async function dashDownload({ mpd, cookie, height, outPath, onProgress, wantSize
     const counts = { v: chunkCount(rep.seg, man.durSec), a: audio ? chunkCount(audio.seg, man.durSec) : 0 };
     const estBytes = ((rep.bw + (audio ? audio.bw : 0)) * man.durSec) / 8 || wantSize || 0;
 
-    let done = { v: 0, a: 0 }, stop = false;
-    const totalSegs = counts.v + counts.a || 1;
+    let done = { v: 0, a: 0 }, bytes = { v: 0, a: 0 }, stop = false, stalled = false, drainOver = false;
+    let lastSegAt = Date.now();
+    const totalSegs = counts.v + counts.a || 0;
+    const pctNow = () => {
+        const t = done.v + done.a;
+        if (totalSegs > 0) return Math.min(95, Math.floor(t * 100 / totalSegs));   // counted → segments; cap 95 (99 = post-download only)
+        const got = bytes.v + bytes.a;                                             // drain (duration unknown) → real bytes vs estimate
+        if (estBytes > 0 && got > 1048576) return Math.min(95, Math.floor(got * 100 / estBytes));
+        return 0;
+    };
+    const wd = setInterval(() => { if (Date.now() - lastSegAt > 120e3) { stalled = true; stop = true; } }, 15000);
     const grab = async (kind, seg, repId, count, file) => {
         const fd = fs.openSync(file, 'a');
         try {
             const init = await segFetch(base + expandTpl(seg.init || 'init-stream$RepresentationID$.m4s', repId, 0), cookie);
             if (!init) throw new Error('init segment fail');
             fs.writeSync(fd, init);
+            bytes[kind] += init.length;
             const cap = Math.min(count || maxSegs, maxSegs);
             const queue = Array.from({ length: cap }, (_, i) => seg.start + i);
             const results = new Map();
             let nextToWrite = seg.start, cursor = 0, got404 = 0;
             const workers = Array.from({ length: 4 }, async () => {
                 while (!stop) {
+                    if (count === 0 && estBytes > 0 && bytes.v + bytes.a > estBytes * 3) { drainOver = true; stop = true; return; }   // v2.30 runaway guard
                     const idx = cursor < queue.length ? queue[cursor++] : null;
                     if (idx == null) return;
                     const buf = await segFetch(base + expandTpl(seg.media, repId, idx), cookie);
                     if (buf == null) { got404++; results.set(idx, null); continue; }   // missing chunk → skip (drain tolerated)
                     results.set(idx, buf);
+                    lastSegAt = Date.now();
                     // ordered flush
                     while (results.has(nextToWrite)) {
                         const b = results.get(nextToWrite);
                         results.delete(nextToWrite);
-                        if (b) fs.writeSync(fd, b);
+                        if (b) { fs.writeSync(fd, b); bytes[kind] += b.length; }
                         done[kind]++;
                         nextToWrite++;
                     }
                     if (count === 0 && got404 > 2 && results.size === 0 && nextToWrite > seg.start) return;   // drain end
                     if (onProgress) {
                         const t = done.v + done.a;
-                        if (t % 3 === 0) onProgress(Math.min(99, Math.floor(t * 100 / totalSegs)), estBytes);
+                        if (t % 3 === 0) onProgress(pctNow(), bytes.v + bytes.a);
                     }
                 }
             });
@@ -358,7 +392,10 @@ async function dashDownload({ mpd, cookie, height, outPath, onProgress, wantSize
     try {
         await grab('v', rep.seg, rep.id, counts.v, vFile);
         if (audio) await grab('a', audio.seg, audio.id, counts.a, aFile);
-        if (onProgress) onProgress(99, estBytes);
+        clearInterval(wd);
+        if (stalled) throw new Error('CDN stall — තත්පර 120ක් segment එකක්වත් ආවේ නෑ');
+        if (drainOver) throw new Error('manifest size mismatch — download 3× ලොකු වෙලා, abort');
+        if (onProgress) onProgress(99, bytes.v + bytes.a);
         // mux — hevc → mkv (players ok), h264 → mp4
         const ffmpeg = await require('./media').getBin('ffmpeg').catch(() => null);
         if (!ffmpeg) throw new Error('ffmpeg නෑ — Termux: pkg install ffmpeg · panel: restart (auto download)');
@@ -378,8 +415,66 @@ async function dashDownload({ mpd, cookie, height, outPath, onProgress, wantSize
         if (onProgress) onProgress(100, fs.statSync(out).size);
         return { path: out, bytes: fs.statSync(out).size, hevc };
     } finally {
+        clearInterval(wd);
         try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { }
     }
+}
+
+/** v2.30 — 360p re-encode (source ladders stop at 480p): x264 veryfast, audio copy when the
+ *  stream is mp4-friendly, one AAC fallback. -progress pipe:1 → live % via onProgress. */
+async function transcode360(inp, outPath, { durSec = 0, onProgress, edit } = {}) {
+    const ffmpeg = await require('./media').getBin('ffmpeg').catch(() => null);
+    if (!ffmpeg) throw new Error('ffmpeg නෑ — 360p re-encode කරන්න බෑ. Termux: pkg install ffmpeg · panel: restart (auto download)');
+    const { spawn } = require('child_process');
+    const run = (aEnc) => new Promise((res, rej) => {
+        const args = ['-y', '-hide_banner', '-loglevel', 'error', '-nostats', '-progress', 'pipe:1', '-i', inp,
+            '-vf', 'scale=-2:360', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '27', '-maxrate', '450k', '-bufsize', '900k',
+            '-c:a', aEnc, ...(aEnc === 'aac' ? ['-b:a', '128k'] : []), '-movflags', '+faststart', outPath];
+        const p = spawn(ffmpeg, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+        let buf = '', err = '';
+        p.stdout.on('data', (d) => {
+            buf = (buf + d).slice(-512);
+            const m = buf.match(/out_time_us=(\d+)/) || buf.match(/out_time_ms=(\d+)/);   // ffmpeg: both µs (quirk)
+            if (m) {
+                buf = '';
+                if (durSec > 0 && onProgress) onProgress(Math.min(99, Math.floor((+m[1] / 1e6) * 100 / durSec)));
+            }
+        });
+        p.stderr.on('data', (d) => { err = (err + d).slice(-2000); });
+        const killT = setTimeout(() => { try { p.kill('SIGKILL'); } catch { } }, 45 * 60e3);
+        p.on('close', (code) => {
+            clearTimeout(killT);
+            const ok = code === 0 && fs.existsSync(outPath) && fs.statSync(outPath).size > 100 * 1024;
+            if (ok) return res(fs.statSync(outPath).size);
+            rej(new Error('360p re-encode fail' + (err.trim() ? ': ' + err.trim().split('\n').pop().slice(0, 80) : ` (exit ${code})`)));
+        });
+        p.on('error', (e) => { clearTimeout(killT); rej(new Error('ffmpeg spawn fail: ' + e.message)); });
+    });
+    try {
+        return await run('copy');
+    } catch (e) {
+        try { fs.rmSync(outPath, { force: true }); } catch { }
+        if (edit) { try { await edit('⚙️ 360p re-encode · audio AAC…'); } catch { } }
+        return await run('aac');   // audio codec not mp4-friendly → re-encode audio once
+    }
+}
+
+/** v2.30 — one quality row → final file. Shared by movie/episode/season flows:
+ *  DASH download (cached manifest) [+ 360p re-encode when row.transcode]. Files live in a
+ *  per-run tmpDir so the WhatsApp filename stays CLEAN (the old flow appended -<timestamp>). */
+async function downloadDash(row, { tmpDir, finalName, onProgress, edit }) {
+    fs.mkdirSync(tmpDir, { recursive: true });
+    const rawPath = row.transcode ? path.join(tmpDir, 'src-' + Date.now() + '.mkv') : path.join(tmpDir, finalName);
+    const res = await dashDownload({
+        mpd: row.dash.mpd, cookie: row.dash.cookie, height: row.transcode ? row.srcH : row.h,
+        outPath: rawPath, onProgress, wantSize: (row.sizeMB || 0) * 1048576,
+        man: row.man || null, mpdTxt: row.mpdTxt || null,
+    });
+    if (!row.transcode) return res;
+    const finalPath = path.join(tmpDir, finalName);
+    const bytes = await transcode360(res.path, finalPath, { durSec: row.man?.durSec || 0, onProgress, edit });
+    try { fs.rmSync(res.path, { force: true }); } catch { }
+    return { path: finalPath, bytes, hevc: false };
 }
 
 /* ───────────────── 3. sessions + message builders ───────────────── */
@@ -412,7 +507,8 @@ function repRows(man, durSec) {
     });
 }
 
-/** quality rows for a stream (play-info → mpd; falls back to resolutions string + scaled sizes) */
+/** quality rows for a stream (play-info → mpd; falls back to resolutions string + scaled sizes)
+ *  v2.30: returns txt (raw mpd) too — rows cached downstream, dashDownload never re-fetches */
 async function streamQualities(st) {
     const d = dashFrom(st.signCookie);
     if (!d) return null;
@@ -424,14 +520,50 @@ async function streamQualities(st) {
         const man = parseMpd(txt);
         const rows = repRows(man, man.durSec);
         if (!rows.length) return null;
-        return { dash: d, man, rows };
+        return { dash: d, man, rows, txt };
     } catch {
         // mpd unreachable → honest list from the resolutions string, sizes scaled from stream.size
         const top = Math.max(...String(st.resolutions || '720').split(',').map(x => +x || 0));
         const rows = String(st.resolutions || '').split(',').map(x => +x).filter(Boolean).sort((a, b) => b - a)
             .map(h => ({ h, bw: 0, label: `${h}p`, sizeMB: st.size ? Math.round((Number(st.size) * Math.pow(h / top, 1.6)) / 1048576) : null }));
-        return rows.length ? { dash: d, man: null, rows } : null;
+        return rows.length ? { dash: d, man: null, rows, txt: null } : null;
     }
+}
+
+/** v2.30 — quality rows across ALL play-info streams (not just streams[0]): MPD-dedupe, best
+ *  bandwidth per height, then a synthetic "360p" re-encode row appended (MovieBox DASH ladders
+ *  stop at 480p — verified 2026-10; the app's player shows its own ABR, no 360 file exists).
+ *  Every row carries { dash, man, mpdTxt } so the actual download skips the second MPD fetch. */
+async function mergedQualities(streams) {
+    const picks = [];
+    const seen = new Set();
+    for (const st of (streams || []).slice(0, 4)) {
+        const d = dashFrom(st?.signCookie);
+        if (!d || seen.has(d.mpd)) continue;
+        seen.add(d.mpd);
+        picks.push(st);
+    }
+    const byH = new Map();
+    await Promise.all(picks.map(async (st) => {
+        const q = await streamQualities(st).catch(() => null);
+        if (!q) return;
+        for (const r of q.rows) {
+            const cur = byH.get(r.h);
+            if (!cur || (r.bw || 0) > (cur.bw || 0)) byH.set(r.h, { ...r, dash: q.dash, man: q.man || null, mpdTxt: q.txt || null });
+        }
+    }));
+    const rows = [...byH.values()].sort((a, b) => b.h - a.h || (b.bw || 0) - (a.bw || 0));
+    if (rows.length && !byH.has(360)) {
+        const cands = rows.filter(r => r.h <= 720);
+        const src = cands[cands.length - 1];   // lowest real rep ≤ 720 (usually the 480p)
+        if (src) {
+            let estMB = 0;
+            if (src.man?.durSec && src.bw) estMB = Math.round(((src.bw * 0.6 + (src.man.audio?.bw || 128000)) * src.man.durSec / 8) / 1048576);
+            if (!estMB || !Number.isFinite(estMB)) estMB = Math.round((src.sizeMB || 0) * 0.7);
+            rows.push({ h: 360, bw: 0, label: '360p', sizeMB: Math.max(1, estMB), transcode: true, srcH: src.h, dash: src.dash, man: src.man, mpdTxt: src.mpdTxt });
+        }
+    }
+    return rows;
 }
 
 function listText(q, list) {
@@ -531,32 +663,38 @@ function packStat(show, season, ok, fail, at, total, note) {
 
 /* ───────────────── 4. delivery (file / mirror link) ───────────────── */
 
-/** one DASH stream → WhatsApp document (or mirror link) */
-async function deliverStream(send, jid, msg, { st, height, fname, capTitle, capMeta, linkMode, react, status, edit, show, season, ep }) {
-    const q = await streamQualities(st);
-    if (!q) { react?.('❌'); await edit('❌ streams decode කරන්න බැරි වුණා — ටිකකින් ආයෙත් try'); return; }
-    const row = height ? (q.rows.find(r => r.h === height) || q.rows.find(r => r.h <= height) || q.rows[q.rows.length - 1]) : q.rows[0];
-    const mb = row?.sizeMB || null;
+/** one quality row → WhatsApp document (or mirror link) — v2.30: row carries { dash, man, mpdTxt,
+ *  transcode? } resolved by mergedQualities → no re-probe, real-byte progress, clean filename,
+ *  360p rows re-encode locally. st (optional) only as a defensive fallback. */
+async function deliverStream(send, jid, msg, { st, qrow, fname, capTitle, capMeta, linkMode, react, status, edit, show, season, ep }) {
+    if ((!qrow || !qrow.dash) && st) {
+        const q = await streamQualities(st).catch(() => null);
+        if (q?.rows?.length) qrow = { ...q.rows[0], dash: q.dash, man: q.man || null, mpdTxt: q.txt || null };
+    }
+    if (!qrow || !qrow.dash) { react?.('❌'); await edit('❌ streams decode කරන්න බැරි වුණා — ටිකකින් ආයෙත් try'); return; }
+    const row = qrow;
+    const mb = row.sizeMB || null;
     if (mb && mb > maxMB()) {
         await edit(`📦 ~${human(mb * 1048576)} — limit එක ${human(maxMB() * 1048576)}\n> අඩු quality එකක් try කරන්න හෝ *.maxmb* වෙනස් කරන්න`);
         return;
     }
-    const hevcGuess = true;   // aoneroom DASH = hevc (mkv out; verified in manifest)
     const isEp = season && ep;
     const est = mb ? mb * 1048576 : 0;
-    const dlName = isEp ? epFileName(show, season, ep, row.h, hevcGuess) : (fname || 'movie.mkv');
+    const finalName = isEp ? epFileName(show, season, ep, row.h, !row.transcode)
+        : (fname || `MovieDex [${row.label}].${row.transcode ? 'mp4' : 'mkv'}`);
     let last = 0;
-    const onProgress = (pct, bytes) => {
+    const onProgress = (pct, realBytes) => {
         const now = Date.now();
         if (now - last < 8000) return;
         last = now;
-        edit(`⬇️ ${row.label}\n${bar(pct)} ${pct}%\n${human(est * pct / 100 || 0)}${est ? ' / ~' + human(est) : ''}`);
+        const shown = realBytes || Math.round(est * pct / 100);
+        edit(`⬇️ ${row.transcode ? row.srcH + 'p → ' : ''}${row.label}\n${bar(pct)} ${pct}%\n${human(shown)}${est ? ' / ~' + human(est) : ''}`);
     };
     try {
         await edit(`⬇️ ${row.label} · ${est ? '~' + human(est) + ' · ' : ''}download…`);
-        const out = path.join(process.env.DL_TMP || os.tmpdir(), dlName.replace(/\.[a-z0-9]+$/i, '') + '-' + Date.now() + '.mkv');
-        const res = await dashDownload({ mpd: q.dash.mpd, cookie: q.dash.cookie, height: row.h, outPath: out, onProgress, wantSize: est });
-        const f = { path: res.path, name: path.basename(res.path), size: res.bytes };
+        const tmpDir = path.join(process.env.DL_TMP || os.tmpdir(), 'mdx-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6));
+        const res = await downloadDash(row, { tmpDir, finalName, onProgress, edit });
+        const f = { path: res.path, name: finalName, size: res.bytes };
         if (linkMode) {
             await edit(`🪞 upload… (${human(f.size)})`);
             const rel = await require('./mirror').uploadFile(f.path, f.name);
@@ -565,44 +703,52 @@ async function deliverStream(send, jid, msg, { st, height, fname, capTitle, capM
         } else {
             await edit(`📤 WhatsApp… (${human(f.size)})`);
             await send(jid, {
-                document: { url: f.path }, fileName: f.name, mimetype: res.hevc ? 'video/x-matroska' : 'video/mp4',
+                document: { url: f.path }, fileName: f.name,
+                mimetype: f.name.endsWith('.mp4') ? 'video/mp4' : 'video/x-matroska',
                 caption: isEp ? epCaption(show, season, ep, row.h, 1, 1, 0) : `${capTitle}\n${foot(capMeta || human(f.size))}`,
             }, { quoted: msg });
         }
-        try { fs.rmSync(f.path, { force: true }); } catch { }
+        try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { }
         if (!linkMode) { try { await send(jid, { delete: status.key }); } catch { } react?.('✅'); }
     } catch (e) {
         react?.('❌');
-        await edit(`❌ ${cut(String(e.message || ''), 150)}\n> අඩු quality එකක් හෝ වෙන title එකක් try`);
+        await edit(`❌ ${cut(String(e.message || ''), 150)}\n> ආයෙත් try · වෙන quality එකක් · නැත්නම් *.moviedex <n> <q#> link*`);
     }
 }
 
-/** .moviedex <n> <q#> [link] → movie file */
-async function movieFileCmd(send, jid, msg, m, qi, st, linkMode, react) {
+/** .moviedex <n> <q#> [link] → movie file — v2.30: card-time merged rows + fresh re-resolve */
+async function movieFileCmd(send, jid, msg, m, qi, cardRows, streams, linkMode, react) {
     const status = await send(jid, { text: `🎯 quality ${qi} · resolve…` }, { quoted: msg });
     const edit = async (t) => { try { await send(jid, { text: t, edit: status.key }); } catch { } };
-    const heights = await streamQualities(st);
-    if (!heights || !heights.rows.length) { react?.('❌'); return edit('❌ quality list එක හදන්න බැරි වුණා'); }
-    const row = heights.rows[qi - 1];
-    if (!row) return edit(`❌ ${qi} — quality නෑ (1-${heights.rows.length})`);
+    const cardRow = (cardRows || [])[qi - 1];
+    if (!cardRow) return edit(`❌ ${qi} — quality නෑ (1-${(cardRows || []).length || '?'})`);
+    let qrow = cardRow;   // fresh dash beats cached; card row is the fallback
+    try {
+        const fresh = streams?.length ? await mergedQualities(streams) : [];
+        qrow = fresh.find(r => r.h === cardRow.h) || cardRow;
+    } catch { }
     await deliverStream(send, jid, msg, {
-        st, height: row.h, linkMode, react, status, edit,
-        fname: `${String(m.name).replace(/[\\/:*?"<>|.]/g, '').slice(0, 60)} [${row.h}p].mkv`,
+        qrow, linkMode, react, status, edit,
+        fname: `${String(m.name).replace(/[\\/:*?"<>|.]/g, '').slice(0, 60)} [${qrow.label}].${qrow.transcode ? 'mp4' : 'mkv'}`,
         capTitle: `🎬 *${cut(m.name, 90)}*${m.year ? ` (${m.year})` : ''}`,
-        capMeta: `${row.sizeMB ? '~' + human(row.sizeMB * 1048576) + ' · ' : ''}${row.label} · ⭐ ${m.rating || '—'}`,
+        capMeta: `${qrow.sizeMB ? '~' + human(qrow.sizeMB * 1048576) + ' · ' : ''}${qrow.label} · ⭐ ${m.rating || '—'}`,
         show: m.name,
     });
 }
 
-/** .moviedex <n> <row#> <q#> [link] → single episode file (qRows = the quality list shown on the card) */
+/** .moviedex <n> <row#> <q#> [link] → single episode file (qRows = the quality list shown on the card)
+ *  v2.30: fresh play-info + merged rows at send time; chosen row (with its dash) goes straight in */
 async function episodeFileCmd(send, jid, msg, m, row, qi, qRows, linkMode, react) {
     const status = await send(jid, { text: `🎯 ${epLabel(row)} · resolve…` }, { quoted: msg });
     const edit = async (t) => { try { await send(jid, { text: t, edit: status.key }); } catch { } };
+    const chosen = (qRows || [])[qi - 1];
+    if (!chosen) return edit(`❌ ${qi} — quality නෑ (1-${(qRows || []).length || '?'})`);
     try {
         const streams = await mbPlay(m.sid, row.season, row.ep);
         if (!streams.length) { react?.('❌'); return edit(`❌ ${epLabel(row)} — streams නෑ\n> වෙන episode එකක් try`); }
-        const chosen = (qRows || [])[qi - 1];
-        await deliverStream(send, jid, msg, { st: streams[0], height: chosen?.h || null, linkMode, react, status, edit, show: m.name, season: row.season, ep: row.ep });
+        const fresh = await mergedQualities(streams).catch(() => []);
+        const qrow = fresh.find(r => r.h === chosen.h) || chosen;
+        await deliverStream(send, jid, msg, { qrow, linkMode, react, status, edit, show: m.name, season: row.season, ep: row.ep });
     } catch (e) {
         react?.('❌');
         await edit(`❌ ${cut(String(e.message || ''), 140)}`);
@@ -623,38 +769,38 @@ async function seasonFilesCmd(send, jid, msg, m, season, maxEp, qNo, height, fro
     let ok = 0, fail = 0, lastEdit = 0;
     for (let ep = from + 1; ep <= end; ep++) {
         const tag = `S${season}E${ep}`;
+        const tmpDir = path.join(process.env.DL_TMP || os.tmpdir(), 'mdx-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6));
         try {
             const streams = await mbPlay(m.sid, season, ep);
             if (!streams.length) throw new Error('streams නෑ');
-            const st = streams[0];
             const per = async (pct, bytes) => {
                 const now = Date.now();
                 if (now - lastEdit < 9000) return;
                 lastEdit = now;
                 edit(`⬇️ ${tag} · ${bar(pct)} ${pct}%\n✅ ${ok}  ⚠️ ${fail}  ·  ${ep}/${total}`);
             };
-            const q = await streamQualities(st);
-            if (!q || !q.rows.length) throw new Error('qualities නෑ');
-            const row = height ? (q.rows.find(r => r.h === height) || q.rows.find(r => r.h <= height) || q.rows[q.rows.length - 1]) : q.rows[0];
+            const rows = await mergedQualities(streams).catch(() => []);
+            if (!rows.length) throw new Error('qualities නෑ');
+            const row = height ? (rows.find(r => r.h === height) || rows.find(r => r.h <= height && !r.transcode) || rows[rows.length - 1]) : rows[0];
             if (row.sizeMB && row.sizeMB > maxMB()) {
                 fail++;
                 await send(jid, { text: `⚠️ ${tag} — ~${human(row.sizeMB * 1048576)} limit එකට වඩා ලොකුයි (*.maxmb*)` }, { quoted: msg });
                 continue;
             }
-            const out = path.join(process.env.DL_TMP || os.tmpdir(), epFileName(m.name, season, ep, row.h, true));
-            const res = await dashDownload({ mpd: q.dash.mpd, cookie: q.dash.cookie, height: row.h, outPath: out, onProgress: per, wantSize: (row.sizeMB || 0) * 1048576 });
-            const fpath = res.path;
+            const finalName = epFileName(m.name, season, ep, row.h, !row.transcode);
+            const res = await downloadDash(row, { tmpDir, finalName, onProgress: per, edit });
             await send(jid, {
-                document: { url: fpath }, fileName: path.basename(fpath), mimetype: res.hevc ? 'video/x-matroska' : 'video/mp4',
+                document: { url: res.path }, fileName: finalName,
+                mimetype: finalName.endsWith('.mp4') ? 'video/mp4' : 'video/x-matroska',
                 caption: epCaption(m.name, season, ep, row.h, ok + 1, total, fail),
             }, { quoted: msg });
-            try { fs.rmSync(fpath, { force: true }); } catch { }
             ok++;
         } catch (err) {
             fail++;
             console.log('[moviedex] ' + tag + ' fail: ' + cut(String(err.message || ''), 160));
             await send(jid, { text: `⚠️ ${tag} — ${cut(String(err.message || ''), 90)}\n> මේ එක skip කළා` }, { quoted: msg });
         }
+        try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { }
         await edit(packStat(show, season, ok, fail, ep, total));
         if (ep < end) await sleepMs(EP_SEND_GAP);
     }
@@ -783,7 +929,7 @@ async function handle(c, ctx) {
                         let qRows = [];
                         try {
                             const streams = await mbPlay(full.sid, row.season, 1, 2);   // v2.27: probe fast-fails — menu එක seconds වලින්
-                            if (streams.length) qRows = (await streamQualities(streams[0]))?.rows || [];
+                            if (streams.length) qRows = await mergedQualities(streams).catch(() => []);   // v2.30: merged (incl. 360p)
                         } catch { }
                         try { await send(jid, { delete: st.key }); } catch { }
                         if (!qRows.length) return edit(`❌ Season ${row.season} — streams නෑ (MovieBox free tier එකේ මේ season එක cover කරලා නෑ)`);
@@ -806,7 +952,7 @@ async function handle(c, ctx) {
                 let qRows = [];
                 try {
                     const streams = await mbPlay(full.sid, row.season, row.ep, 2);   // v2.27: probe fast-fails — menu එක seconds වලින්
-                    if (streams.length) qRows = (await streamQualities(streams[0]))?.rows || [];
+                    if (streams.length) qRows = await mergedQualities(streams).catch(() => []);   // v2.30: merged (incl. 360p)
                 } catch { }
                 try { await send(jid, { delete: st.key }); } catch { }
                 if (!qRows.length) return edit(`❌ ${epLabel(row)} — streams නෑ\n> වෙන episode එකක් try`);
@@ -830,7 +976,7 @@ async function handle(c, ctx) {
             if (!mv || !mv.streams?.length) {
                 return send(jid, { text: `⏳ quality list load වෙලා නෑ — මුලින්ම *.moviedex ${n}* ගහන්න` }, { quoted: msg });
             }
-            await movieFileCmd(send, jid, msg, full, +pick[3], mv.streams[0], linkMode, react);
+            await movieFileCmd(send, jid, msg, full, +pick[3], mv.qualities || [], mv.streams, linkMode, react);
             return true;
         }
         if (pick[4] || pick[5]) return send(jid, { text: `🔗 quality අංකය එකත් ඕනෙ — *.moviedex ${n} 1 link*` }, { quoted: msg });
@@ -840,8 +986,8 @@ async function handle(c, ctx) {
         let streams = [];
         try { streams = await mbPlay(full.sid, null, null, 3); } catch { }
         let rows = [];
-        if (streams.length) rows = (await streamQualities(streams[0]))?.rows || [];
-        (s.mv ||= {})[n] = { streams, at: Date.now() };
+        if (streams.length) rows = await mergedQualities(streams).catch(() => []);   // v2.30: merged rows (incl. 360p) carry dash → sends never re-probe
+        (s.mv ||= {})[n] = { streams, qualities: rows, at: Date.now() };
         try { await send(jid, { delete: st.key }); } catch { }
         const sent = await sendCard(send, jid, msg, full, n, rows);
         setUi(s, sent, 'movie', n);
@@ -870,4 +1016,4 @@ async function handle(c, ctx) {
     return true;
 }
 
-module.exports = { handle, bridgeReply, hasSession, setUi, mbSearch, mbDetails, mbSeasons, mbPlay, dashFrom, parseMpd, dashDownload, streamQualities, tvRows, listText, cardText, seriesText, seasonOptText, epFileName, epCaption, packStat, _sessions: sessions, _testSession: (jid, s) => sessions.set(jid, s) };
+module.exports = { handle, bridgeReply, hasSession, setUi, mbSearch, mbDetails, mbSeasons, mbPlay, dashFrom, parseMpd, dashDownload, streamQualities, mergedQualities, downloadDash, transcode360, tvRows, listText, cardText, seriesText, seasonOptText, epFileName, epCaption, packStat, __deliver: deliverStream, _sessions: sessions, _testSession: (jid, s) => sessions.set(jid, s) };

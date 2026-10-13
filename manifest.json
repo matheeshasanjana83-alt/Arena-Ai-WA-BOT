@@ -1,6 +1,6 @@
 {
-  "version": "2.29.0",
-  "notes": "🌐 PAIR SITE — panel console එකේ number ගහන්න යන්න ඕන නෑ! Bot එක run වෙන port එකේම web page එකක් (panel address + port, උදා: http://panel-host:1028/?key=XXXX) — ඒක open කරලා WhatsApp number එක දාන්න, pairing code එක site එකේම පේනවා → WhatsApp → Linked devices → Link with phone number. Security: pair key අනිවාර්යයි (auto-generate වෙලා console එකේ + settings.json), registered session එකක් pair කරන්න බෑ, 10s rate-limit. /status JSON (panel health) එකත් එනවා. No report-flood.",
+  "version": "2.30.0",
+  "notes": "🎬 MovieDex 360p + honest delivery — 360p option එක දැන් හැම quality menu එකකම (source එකේ 360 file නැති නිසා 480p download කරලා ffmpeg වලින් real 360p re-encode — size ~30% අඩුවෙනවා). Quality menus දැන් play-info streams ඔක්කොම merge කරනවා (duplicate MPD entries dedupe). Download progress එක දැන් ඇත්ත bytes පෙන්නනවා — duration නැති videos වල 99% instant-jump bug එක fix. CDN 2min stall වුණොත් clear error එකක් (silent hang නෙවෙයි). WhatsApp upload timeout (7 min) — hung 200MB upload එකක් මුළු bot එකම silent කරන stuck-99% bug එක fix. Episode file names clean (timestamp junk නෑ).",
   "removed": [
     "movies.js",
     "test_v218.js",
@@ -9,7 +9,8 @@
     "test_v224.js",
     "test_v226.js",
     "test_v227.js",
-    "test_v228.js"
+    "test_v228.js",
+    "test_v229.js"
   ],
   "files": [
     "bot.js",
@@ -46,6 +47,6 @@
     "test_v225.js",
     "moviedex.js",
     "pairsite.js",
-    "test_v229.js"
+    "test_v230.js"
   ]
 }

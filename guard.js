@@ -46,14 +46,27 @@ function rateCheck(now = Date.now()) {
 }
 
 // ── human-like pacing for outgoing messages ───────────────
-/** run send jobs one by one, with a minimum gap between them */
+/** run send jobs one by one, with a minimum gap between them.
+ *  timeoutMs (optional, per call) — media uploads can hang forever on a flaky
+ *  socket (Baileys has no upload timeout); without this ONE hung 200 MB document
+ *  deadlocks the whole chain and the bot goes silent (v2.30 fix). On timeout the
+ *  job keeps running in the background — the file may still arrive late. */
 function pacer(minGap = parseInt(process.env.ARENA_SEND_GAP || '1200', 10)) {
     let chain = Promise.resolve(), last = 0;
-    return (fn) => {
+    return (fn, timeoutMs) => {
         const p = chain.then(async () => {
             const w = last + minGap - Date.now();
             if (w > 0) await sleep(w);
-            try { return await fn(); } finally { last = Date.now(); }
+            if (!timeoutMs) {
+                try { return await fn(); } finally { last = Date.now(); }
+            }
+            const bg = fn();
+            bg.catch(() => { });                 // late failure must not hit unhandledRejection
+            let timer;
+            const t = new Promise((_, rej) => {
+                timer = setTimeout(() => rej(new Error('upload timeout — WhatsApp upload එක hang වෙලා (' + Math.round(timeoutMs / 60e3) + ' min)')), timeoutMs);
+            });
+            try { return await Promise.race([bg, t]); } finally { clearTimeout(timer); last = Date.now(); }
         });
         chain = p.catch(() => { });
         return p;

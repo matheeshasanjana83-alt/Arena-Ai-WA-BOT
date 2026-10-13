@@ -177,7 +177,11 @@ async function start() {
     sock.ev.on('creds.update', saveCreds);
 
     const send = async (jid, content, opts) => {
-        const s = await pace(() => sock.sendMessage(jid, content, opts));   // 🛡️ one message at a time, human-like gap
+        // v2.30: media uploads get a hard timeout — one hung 200MB document used to
+        // deadlock the pacer chain and silence the WHOLE bot (stuck "99%" symptom).
+        const isMedia = content && ['document', 'video', 'image', 'audio', 'sticker', 'ptt'].some(k => content[k]);
+        const t = isMedia ? parseInt(process.env.ARENA_MEDIA_TIMEOUT || '420000', 10) : 0;   // 7 min default
+        const s = await pace(() => sock.sendMessage(jid, content, opts), t);   // 🛡️ one message at a time, human-like gap
         if (s?.key?.id) { sentIds.add(s.key.id); if (sentIds.size > 500) sentIds.delete(sentIds.values().next().value); remember(s); }
         return s;
     };
