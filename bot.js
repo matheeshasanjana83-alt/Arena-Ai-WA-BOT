@@ -138,7 +138,7 @@ const HELP = `*◈ KAVIZ MD V1 ◈* — commands
 👥 *.groupinfo* · *.grouplink* · *.tagall* · *.kick* · *.promote* · *.demote* · *.mute* · *.resetlink* · *.jid*
 🤖 *.ai <ප්‍රශ්නය>* (reply කරලත් · *.ai reset*)
 🔧 *.net* · *.setproxy* · *.proxies* · *.setcookies* · *.setkey* · *.keys*
-⚙️ *.mode* · *.react* · *.maxmb* · *.setlogo* · *.autoupdate* · *.update* · *.version* · *.restart*
+⚙️ *.setting* (panel) · *.mode* · *.react* · *.maxmb* · *.setlogo* · *.autoupdate* · *.update* · *.version* · *.restart*
 🛡️ *.antibug* · *.block* · *.unblock* · *.blocklist* · *.antispam* · *.spamlog*
 
 > 📥 direct · GitHub · Drive · MediaFire · MEGA · Dropbox · Pixeldrain…
@@ -270,10 +270,14 @@ async function onMessages({ messages, type }, send, del = async () => { }) {
                 if (type !== 'notify' && ts && ts < STARTED - 60) continue;   // old history — don't re-run old commands
                 seen.add(msg.key.id); if (seen.size > 1000) seen.delete(seen.values().next().value);
                 let text = getText(msg.message);
-                if (/^\d{1,3}$/.test(text)) {                                   // number reply → .menu category / .moviedex step
-                    const st = menuState.get(replyJid(msg.key)), qid = msg.message?.extendedTextMessage?.contextInfo?.stanzaId;
-                    if (st && (qid ? qid === st.id : Date.now() - st.at < 180e3)) text = '.menu ' + text;
-                    else { const b = moviedex.bridgeReply(replyJid(msg.key), qid, text); if (b) text = b; }
+                if (/^\d{1,3}$/.test(text)) {                                   // number reply → .setting panel / .menu category / .moviedex step
+                    const jid0 = replyJid(msg.key), qid = msg.message?.extendedTextMessage?.contextInfo?.stanzaId;
+                    const st = menuState.get(jid0), ss = settingState.get(jid0);
+                    const fresh = (x) => x && (qid ? qid === x.id : Date.now() - x.at < 180e3);
+                    const mS = fresh(st), sS = fresh(ss);
+                    if (sS && (!mS || qid === ss.id || (ss.at || 0) >= (st.at || 0))) text = '.setting ' + text;   // exact quote wins, නැත්නම් අලුත්ම panel එක
+                    else if (mS) text = '.menu ' + text;
+                    else { const b = moviedex.bridgeReply(jid0, qid, text); if (b) text = b; }
                 }
                 if (!text.startsWith('.')) continue;
                 const jid = replyJid(msg.key);
@@ -304,6 +308,7 @@ async function onMessages({ messages, type }, send, del = async () => { }) {
                 if (c === '.mode') { await handleMode(send, jid, msg, (rest[0] || '').toLowerCase()); continue; }
                 if (c === '.ping') { const ms = Math.max(1, Date.now() - Number(msg.messageTimestamp) * 1000); await send(jid, { text: `🏓 *Pong!* ${ms} ms` }, { quoted: msg }); continue; }
                 if (c === '.menu') { await handleMenu(send, jid, msg, rest[0]); continue; }
+                if (c === '.setting' || c === '.settings') { await handleSetting(send, jid, msg, rest[0]); continue; }   // ⚙️ settings panel (අංක reply)
                 if (c === '.help' || c === '.commands') { await send(jid, { text: HELP }, { quoted: msg }); continue; }
                 if (c === '.maxmb' || c === '.setmax' || c === '.limit') { await handleMaxMB(send, jid, msg, (rest[0] || '').toLowerCase()); continue; }
                 if (c === '.antibug') { await send(jid, { text: await antibug.command(rest[0], rest[1]) }, { quoted: msg }); continue; }
@@ -362,6 +367,7 @@ function dlQueue(fn) { const p = dlChain.then(fn, fn); dlChain = p.catch(() => {
 
 // ───────── .menu (photo + info box + categories) ─────────
 const menuState = new Map();   // jid → { id, at } of the last menu (for number replies)
+const settingState = new Map();   // jid → { id, at } of the last .setting panel (number replies)
 const REACTS = ['⚡', '🔥', '✨', '💠', '🚀', '😎', '🤖', '💫', '🌟', '🎯', '💎', '🫡', '👌', '🌀', '🍃'];
 const readSettings = () => { try { return JSON.parse(fs.readFileSync(path.join(__dirname, 'settings.json'), 'utf8')); } catch { return {}; } };
 const reactOn = () => !process.env.ARENA_NO_REACT && readSettings().react !== false;
@@ -404,7 +410,8 @@ const CATS = [
     ['👥', 'Group', `*👥 GROUP* — group එකේ ඔයා ගහන්න\n\n✦ *.groupinfo* · *.grouplink* · *.jid*\n✦ *.tagall [msg]* — විනාඩි 10 කට 1\n✦ *.kick @user* · *.promote* · *.demote*\n✦ *.mute* · *.unmute* · *.tagadmins* · *.resetlink*\n\n> @mention නැත්නම් message එකකට reply කරන්න`],
     ['🤖', 'AI', `*🤖 AI*\n\n✦ *.ai <ප්‍රශ්නය>* — සිංහල OK\n✦ message එකකට reply + *.ai* — ඒක ගැනම\n✦ *.ai reset* — අලුත් කතාවක්\n✦ *.setkey gemini/groq/zai <KEY>* · *.keys*`],
     ['🔧', 'Network', `*🔧 NETWORK*\n\n✦ *.net <link>* — fail වුණොත් හේතුව\n✦ *.setproxy <url|off>* — block sites වලට\n✦ *.proxies* — free pool status · *.proxies check*\n✦ *.setcookies* — YouTube bot-check fix`],
-    ['⚙️', 'Settings', `*⚙️ SETTINGS*\n\n✦ *.setlogo* / *.dellogo* — menu logo\n✦ *.react on|off* — auto react\n✦ *.maxmb <MB>* — download limit\n✦ *.mode self|all* — වැඩ කරන chats\n✦ *.autoupdate on|off* — GitHub එකෙන් auto update (default on)\n✦ *.update* · *.restart* · *.version*`],
+    ['⚙️', 'Settings', `*⚙️ SETTINGS*\n\n✦ *.setlogo* / *.dellogo* — menu logo\n✦ *.react on|off* — auto react\n✦ *.maxmb <MB>* — download limit\n✦ *.setting* — ⚙️ settings panel (අංක reply → toggle)
+✦ *.mode self|all* — වැඩ කරන chats\n✦ *.autoupdate on|off* — GitHub එකෙන් auto update (default on)\n✦ *.update* · *.restart* · *.version*`],
     ['🛡️', 'Security', `*🛡️ SECURITY*\n\n✦ commands — ඔයාට විතරයි (owner-only)\n✦ anti-ban — rate limit · human delay · backoff\n✦ *.antibug* — bug → delete + 🚀 auto report ×30 → ඉවර උනාම ⛔ block (bug ගහපු එකාට විතරයි)\n✦ *.antibug report on|off* · *.antibug count <1-100>*\n✦ *.antibug scan|test* — caught bugs · self-test\n✦ *.block <නම්බර්|reply>* · *.unblock* · *.blocklist*\n✦ *.antispam on|off|<N>* · *.spamlog* — flood guard`],
     ['📊', 'Status', null],
 ];
@@ -439,6 +446,78 @@ async function handleMenu(send, jid, msg, arg) {
     const img = fs.existsSync(LOGO) ? LOGO : fs.existsSync(BANNER) ? BANNER : null;
     const sent = await send(jid, img ? { image: fs.readFileSync(img), caption } : { text: caption }, { quoted: msg });
     if (sent?.key?.id) menuState.set(jid, { id: sent.key.id, at: Date.now() });
+}
+
+// ───────── .setting — settings panel (Asitha-style, K A V I Z - V 1 🍁) ─────────
+const MAXMB_STEPS = [100, 200, 300, 500, 1000, 2000];
+const COUNT_STEPS = [10, 20, 30, 50, 100];
+function verStr() { try { return updater.localInfo().version; } catch { return require('./package.json').version; } }
+function settingCaption() {
+    const s = readSettings(), k = ai.getKeys(), a = antibug.cfg();
+    const oo = (v) => (v ? 'on' : 'off');
+    return [
+        '🎀 ≡ *BOT SETTINGS PANEL* ≡ 🍁',
+        '',
+        '🍀 | *BOT NAME:* K A V I Z - V 1 🍁',
+        `🍀 | *VERSION:* v${verStr()}`,
+        `🍀 | *WORK TYPE:* ${guard.chatMode()}`,
+        `🍀 | *AI KEYS:* Gemini ${k.gemini ? '✅' : '❌'} · Groq ${k.groq ? '✅' : '❌'} · Z.ai ${k.zai ? '✅' : '❌'}`,
+        `🍀 | *ANTI-BUG:* ${oo(a.on)}`,
+        `🍀 | *AUTO REPORT:* ${a.report ? 'on ×' + a.reportCount : 'off'}`,
+        `🍀 | *AUTO BLOCK:* ${oo(a.block)}`,
+        `🍀 | *AUTO UPDATE:* ${oo(s.autoUpdate !== false)}`,
+        `🍀 | *MAX FILE:* ${maxMB()} MB`,
+        `🍀 | *AUTO REACT:* ${oo(reactOn())}`,
+        `🍀 | *PROXY:* ${oo(!!s.proxy)}`,
+        '',
+        '⟶ *SELECT OPTION* 🌸',
+        '',
+        '» 🔧 *MAIN SETTINGS* 👇',
+        '1 | Mode: All (Public)',
+        '2 | Mode: Self (Private)',
+        '',
+        '» 🛡️ *ANTI-BUG* 👇',
+        `3 | Anti-Bug: ${a.on ? 'ON' : 'OFF'}`,
+        `4 | Auto Report: ${a.report ? 'ON' : 'OFF'}`,
+        `5 | Report Count: ×${a.reportCount} → next`,
+        `6 | Auto Block: ${a.block ? 'ON' : 'OFF'}`,
+        '',
+        '» ⚙️ *BOT* 👇',
+        `7 | Auto-Update: ${s.autoUpdate !== false ? 'ON' : 'OFF'}`,
+        `8 | Max File: ${maxMB()} MB → next`,
+        `9 | Auto React: ${reactOn() ? 'ON' : 'OFF'}`,
+        '',
+        foot('🔢 option එකේ number එක reply කරන්න'),
+    ].join('\n');
+}
+function applySetting(n) {
+    const cyc = (v, steps) => steps[(steps.indexOf(v) + 1) % steps.length] || steps[0];
+    const save = (d) => { try { fs.writeFileSync(path.join(__dirname, 'settings.json'), JSON.stringify(d, null, 2)); } catch { } };
+    const a = antibug.cfg();
+    switch (n) {
+        case 1: guard.setChatMode('all'); return '🔓 mode: all — ඕනෑම chat එකක commands වැඩ';
+        case 2: guard.setChatMode('self'); return '🔒 mode: self — Message yourself විතරයි';
+        case 3: antibug.setCfg({ on: !a.on }); return `🧬 anti-bug: ${!a.on ? 'ON' : 'OFF'}`;
+        case 4: antibug.setCfg({ report: !a.report }); return `🚀 auto report: ${!a.report ? 'ON' : 'OFF'}`;
+        case 5: { const c = cyc(a.reportCount, COUNT_STEPS); antibug.setCfg({ reportCount: c }); return `🔢 report count: ×${c}`; }
+        case 6: antibug.setCfg({ block: !a.block }); return `⛔ auto block: ${!a.block ? 'ON' : 'OFF'}`;
+        case 7: return autoupdate.command(readSettings().autoUpdate === false ? 'on' : 'off').split('\n')[0];
+        case 8: { const m = cyc(maxMB(), MAXMB_STEPS); const d = readSettings(); d.maxMB = m; save(d); process.env.DL_MAX_MB = String(m); return `📏 max file: ${m} MB`; }
+        case 9: { const nv = !reactOn(); const d = readSettings(); d.react = nv; save(d); return nv ? '✨ auto react ON' : '🚫 auto react OFF'; }
+        default: return null;
+    }
+}
+async function handleSetting(send, jid, msg, arg) {
+    const n = parseInt(arg, 10);
+    if (n) {
+        const done = applySetting(n);
+        if (!done) return send(jid, { text: '❌ 1 – 9 අතර number එකක් reply කරන්න' }, { quoted: msg });
+        await send(jid, { text: '✅ ' + done }, { quoted: msg });   // toggle confirm → පස්සේ panel refresh
+    }
+    const caption = settingCaption();
+    const img = fs.existsSync(LOGO) ? LOGO : fs.existsSync(BANNER) ? BANNER : null;
+    const sent = await send(jid, img ? { image: fs.readFileSync(img), caption } : { text: caption }, { quoted: msg });
+    if (sent?.key?.id) settingState.set(jid, { id: sent.key.id, at: Date.now()});   // number replies → අලුත් panel එකටම
 }
 
 // ───────── online / alive card ─────────

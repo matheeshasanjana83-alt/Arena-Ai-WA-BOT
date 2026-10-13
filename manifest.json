@@ -1,6 +1,6 @@
 {
-  "version": "2.35.0",
-  "notes": "🤖 AI: Z.ai GLM provider අලුතින් — .setkey zai <KEY> (alias z.ai/glm) → glm-4.6 → glm-4.5-air → glm-4.5-flash fallback (balance-dead model මතක තියාගෙන fail-fast), thinking:disabled (WhatsApp speed), reasoning_content reply එකට නොයනවා, Gemini → Groq → Z.ai provider order intact. .keys වල Z.ai line, KEY_HELP + AI menu update. Anti-Bug v4 (v2.34) detectors + v2.33 retaliation unchanged.",
+  "version": "2.36.0",
+  "notes": "⚙️ .setting — BOT SETTINGS PANEL (Asitha-style, K A V I Z - V 1 🍁 branding): banner image + 🍀 status rows (BOT NAME/VERSION/WORK TYPE/AI KEYS Gemini·Groq·Z.ai/ANTI-BUG/AUTO REPORT ×N/AUTO BLOCK/AUTO UPDATE/MAX FILE/AUTO REACT/PROXY) + numbered options 1-9 (mode all/self · anti-bug on/off · auto report on/off · report count cycle 10→20→30→50→100 · auto block · auto-update · max file cycle 100→200→300→500→1000→2000 · auto react) — අංකය reply කරලා toggle → confirm + panel auto-refresh. Number-reply routing now dual-state: quoted stanzaId exact-match wins, නැත්නම් අලුත්ම panel (setting vs menu). HELP + Settings category + READMEs updated. AI Z.ai GLM provider (v2.35) + Anti-Bug v4 + auto retaliation unchanged.",
   "removed": [
     "movies.js",
     "test_v218.js",
@@ -15,7 +15,8 @@
     "test_v231.js",
     "test_v232.js",
     "test_v233.js",
-    "test_v234.js"
+    "test_v234.js",
+    "test_v235.js"
   ],
   "files": [
     "bot.js",
@@ -53,6 +54,6 @@
     "moviedex.js",
     "pairsite.js",
     "autoupdate.js",
-    "test_v235.js"
+    "test_v236.js"
   ]
 }

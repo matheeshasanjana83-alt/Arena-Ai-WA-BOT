@@ -9,6 +9,7 @@ Commands ("Message yourself" chat එකේ ගහන්න):
   .setkey groq <KEY>         Groq free key දාන්න
   .setkey zai <KEY>          Z.ai (GLM) key දාන්න  (alias: z.ai / glm)
   .keys                      keys තියෙනවද බලන්න      .delkey gemini|groq|zai  → key මකන්න
+  .setting                   settings panel — අංකය reply කරලා toggle කරන්න (mode/anti-bug/report/block/update/maxmb/react)
   .ping / .help
 
 AI ගැන ඇත්ත: උත්තර දෙන්නේ Google Gemini / Groq free models (KAVIZ agent එක නෙවෙයි).
