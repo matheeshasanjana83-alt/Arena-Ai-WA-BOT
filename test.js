@@ -2,6 +2,7 @@
 process.env.ARENA_NO_DELAY = '1'; process.env.ARENA_NO_REACT = '1'; process.env.ARENA_RATE_MIN = '1000'; process.env.ARENA_RATE_HOUR = '10000';
 const fs = require('fs');
 const { onMessages, getText } = require('./bot');
+const guard = require('./guard');   // v2.41: mode control in checks
 let n = 0, ok = 0, bad = 0;
 const t = (name, cond) => { cond ? ok++ : bad++; console.log(`  ${cond ? '✅' : '❌'} ${name}`); };
 const ME = '94771234567@s.whatsapp.net';
@@ -12,8 +13,9 @@ const mk = (text, fromMe = true, jid = ME) => ({ key: { id: 'IN' + (++n), remote
     const run = async (msg) => { out.length = 0; await onMessages({ type: 'notify', messages: [msg] }, send); return out; };
 
     let r = await run(mk('.ping')); t('.ping → Pong', r.length === 1 && /Pong/.test(r[0].text));
-    r = await run(mk('.ping', false, '94770000000@s.whatsapp.net')); t('🔒 වෙන කෙනෙක් .ping → ignore', r.length === 0);
-    r = await run(mk('.download https://x0.at/D07z.zip', false, '120363@g.us')); t('🔒 group එකේ වෙන කෙනෙක් .download → ignore', r.length === 0);
+    guard.setChatMode('private');   // v2.41: deterministic start — private = owner only
+    r = await run(mk('.ping', false, '94770000000@s.whatsapp.net')); t('🔒 v2.41 mode private: වෙන කෙනෙක් .ping → ignore', r.length === 0);
+    r = await run(mk('.download https://x0.at/D07z.zip', false, '120363@g.us')); t('🔒 v2.41 mode private: group එකේ වෙන කෙනෙක් .download → ignore', r.length === 0);
     r = await run(mk('hello')); t('සාමාන්‍ය message → ignore', r.length === 0);
     r = await run(mk('.download')); t('.download link නැතුව → help', r.length === 1 && /KAVIZ MD V1/.test(r[0].text));
     r = await run(mk('.download https://raw.githubusercontent.com/matheeshasanjana83-alt/abc/main/downloads/Joystick-Layout-NoCLEO-v1.zip'));
@@ -124,18 +126,20 @@ const mk = (text, fromMe = true, jid = ME) => ({ key: { id: 'IN' + (++n), remote
         const had = fs.existsSync(sp) ? fs.readFileSync(sp) : null;
         try { const d = had ? JSON.parse(had) : {}; delete d.chats; fs.writeFileSync(sp, JSON.stringify(d)); } catch { }
         r = await run(mk('.ping')); t('🔒 mode self: Message yourself .ping → Pong', r.some(x => /Pong/.test(x.text || '')));
-        r = await run(mk('.ping', true, '94770000000@s.whatsapp.net')); t('🔒 mode self: මම යාලුවෙක්ගේ chat එකේ .ping → ignore (එතන reply නෑ)', r.length === 0);
-        r = await run(mk('.ping', true, '120363@g.us')); t('🔒 mode self: group එකේ මගේ .ping → ignore', r.length === 0);
-        r = await run(mk('.mode all')); t('.mode all → confirm', r.some(x => /Mode: all/.test(x.text || '')));
+        r = await run(mk('.ping', true, '94770000000@s.whatsapp.net')); t('🔓 v2.41 mode private: owner ගේ command යාලුවෙක්ගේ chat එකේත් → වැඩ', r.some(x => /Pong/.test(x.text || '')));
+        r = await run(mk('.ping', true, '120363@g.us')); t('🔓 v2.41 mode private: group එකේ මගේ .ping → වැඩ (owner anywhere)', r.some(x => /Pong/.test(x.text || '')));
+        r = await run(mk('.mode all')); t('.mode all → confirm (v2.41: Public)', r.some(x => /🌐 Public/.test(x.text || '')));
         r = await run(mk('.ping', true, '94770000000@s.whatsapp.net')); t('🔓 mode all: මගේ command වෙන chat එකක → වැඩ', r.some(x => /Pong/.test(x.text || '')));
-        r = await run(mk('.ping', false, '94770000000@s.whatsapp.net')); t('🔒 mode all: යාලුවා .ping → තාමත් ignore', r.length === 0);
+        r = await run(mk('.ping', false, '94770000000@s.whatsapp.net')); t('🌐 v2.41 mode public: යාලුවාටත් .ping → වැඩ', r.some(x => /Pong/.test(x.text || '')));
         const spoof = mk('.ping', true, '120363@g.us'); spoof.key.participant = '94779999999@s.whatsapp.net';
-        r = await run(spoof); t('🔒 group: fromMe කියලා ආවත් participant වෙන කෙනෙක් → ignore', r.length === 0);
+        const spoof2 = mk('.setting', true, '120363@g.us'); spoof2.key.participant = '94779999999@s.whatsapp.net';
+        r = await run(spoof2); t('🔐 v2.41 spoof: fromMe + විදෙස් participant → owner නෙමෙ (.setting → 🔒 hint)', r.some(x => /owner ට විතරයි/.test(x.text || '')) && !r.some(x => /SETTINGS PANEL/.test(x.text || x.caption || '')));
         const mineG = mk('.ping', true, '120363@g.us'); mineG.key.participant = '35189220741167:3@lid';
         r = await run(mineG); t('mode all: group එකේ මගේ LID participant → වැඩ', r.some(x => /Pong/.test(x.text || '')));
         r = await run(mk('.ping', true, 'status@broadcast')); t('status@broadcast → ignore', r.length === 0);
-        r = await run(mk('.mode self')); t('.mode self → confirm', r.some(x => /Mode: self/.test(x.text || '')));
-        r = await run(mk('.ping', true, '94770000000@s.whatsapp.net')); t('.mode self ආපහු → වෙන chat ignore', r.length === 0);
+        r = await run(mk('.mode self')); t('.mode self → confirm (v2.41: Private)', r.some(x => /🔒 Private/.test(x.text || '')));
+        r = await run(mk('.ping', true, '94770000000@s.whatsapp.net')); t('🔓 v2.41 mode private: owner ට ඕනෑම chat එකක → වැඩ', r.some(x => /Pong/.test(x.text || '')));
+        r = await run(mk('.ping', false, '94770000000@s.whatsapp.net')); t('🔒 v2.41 mode private: යාලුවාගේ .ping → තාමත් ignore', r.length === 0);
         // rate limit
         process.env.ARENA_RATE_MIN = '3'; guard._hits.length = 0;
         const res = []; for (let i = 0; i < 5; i++) { out.length = 0; await onMessages({ type: 'notify', messages: [mk('.ping')] }, send); res.push(out.map(x => x.text).join('|')); }
@@ -239,7 +243,7 @@ const mk = (text, fromMe = true, jid = ME) => ({ key: { id: 'IN' + (++n), remote
             groupInviteCode: async () => 'ABCDEF', groupParticipantsUpdate: async (j, ids, a) => { calls.push([a, ids]); return ids.map(() => ({ status: '200' })); } };
         bot._setSock(fakeSock);
         r = await run(mk('.groupinfo', true, G)); t('👥 mode self වුණත් group එකේ මගේ .groupinfo → වැඩ', /Test Group/.test(txt()) && /Members: 3/.test(txt()));
-        r = await run(mk('.ping', true, G)); t('mode self: group එකේ .ping → ignore (group tools විතරයි)', r.length === 0);
+        r = await run(mk('.ping', true, G)); t('🔓 v2.41 mode private: group එකේ owner ගේ .ping → වැඩ', r.some(x => /Pong/.test(x.text || '')));
         r = await run(mk('.grouplink', true, G)); t('.grouplink → invite link', /chat\.whatsapp\.com\/ABCDEF/.test(txt()));
         const kk = mk('.kick', true, G); kk.message = { extendedTextMessage: { text: '.kick', contextInfo: { mentionedJid: ['94771111111@s.whatsapp.net'] } } };
         r = await run(kk); t('.kick @user → remove', calls.some(c => c[0] === 'remove' && c[1][0] === '94771111111@s.whatsapp.net') && /1\/1/.test(txt()));
@@ -247,7 +251,10 @@ const mk = (text, fromMe = true, jid = ME) => ({ key: { id: 'IN' + (++n), remote
         r = await run(pr); t('.promote (reply) → admin', calls.some(c => c[0] === 'promote'));
         r = await run(mk('.tagall hi all', true, G)); const ta = r.find(x => x.mentions); t('.tagall → mentions ඔක්කොම', !!ta && ta.mentions.length === 3);
         r = await run(mk('.tagall again', true, G)); t('🛡️ .tagall විනාඩි 10 limit', /විනාඩි 10/.test(txt()));
-        r = await run(mk('.kick', false, G)); t('🔒 group එකේ වෙන කෙනෙක් .kick → ignore', r.length === 0);
+        guard.setChatMode('public');
+        r = await run(mk('.kick', false, G)); t('🔐 v2.41 mode public: group එකේ වෙන කෙනෙක් .kick → 🔒 owner hint', r.length === 1 && /owner ට විතරයි/.test(r[0].text || ''));
+        guard.setChatMode('private');
+        r = await run(mk('.kick', false, G)); t('🔒 v2.41 mode private: group එකේ වෙන කෙනෙක් .kick → silence', r.length === 0);
         bot._setSock(null); me3.pn = null; me3.lid = null;
     }
 
@@ -298,7 +305,7 @@ const mk = (text, fromMe = true, jid = ME) => ({ key: { id: 'IN' + (++n), remote
         r = await run(mk('.unmute', true, G2)); t('.unmute → open', sc.some(x => x[0] === 'set' && x[1] === 'not_announcement'));
         r = await run(mk('.resetlink', true, G2)); t('.resetlink → අලුත් link', /NEWCODE/.test(txt()));
         r = await run(mk('.tagadmins', true, G2)); t('.tagadmins → admins 2', (r.find(x => x.mentions) || {}).mentions?.length === 2);
-        r = await run(mk('.joke', true, G2)); t('mode self: group එකේ .joke → ignore', r.length === 0);
+        r = await run(mk('.joke', true, G2)); t('🔓 v2.41 mode private: group එකේ owner ගේ .joke → වැඩ', r.length >= 1);
         r = await run(mk('.del', false, '94770000000@s.whatsapp.net')); t('🔒 වෙන කෙනෙක් .del → ignore', r.length === 0);
         bot._setSock(null); me4.pn = null; me4.lid = null;
     }

@@ -1,6 +1,6 @@
 {
-  "version": "2.40.0",
-  "notes": "🧹 MovieDex EPISODE PACKS සම්පූර්ණයෙන් අයින් (v2.40.0) — series card එකේ 1.1 / 1.2 pack rows + v2.38 range command දෙකම broken (reply කළාම bot silence). moviedex.js / bot.js / README ඔක්කොම proven v2.37.0 state එකට revert: series card එකේ 📦 season rows + episode numbers විතරයි (pack rows නෑ) — season pack (All Episodes → quality → files 50/run + next) + episode flow විදිහටම වැඩ. ✅ v2.37 SPEED patches intact: video+audio parallel grabs · segment workers 8/6 · async ffmpeg mux.",
+  "version": "2.41.0",
+  "notes": "🛡 MODE PANEL + 🤖 AI CHAT + 🧭 FORWARD (v2.41.0): .mode = numbered panel — BOT MODES 1 Public (හැමොටම) / 2 Private (owner) / 3 Inbox Only / 4 Groups Only (අංක reply → set → panel refresh; legacy all/self → public/private) + අනිත් අයට bot use කරන්න පුළුවන් modes වල (owner-only commands 🔒 locked). AI & TOOLS 5/6 Enable/Disable AI Chat + AI CHAT MODES 11-16 (Inbox Public/Self/Private · Groups Only · All · All Public — groups = mention/reply only, per-chat 4s gap). 🧭 .forward <number|jid> — reply → forward (5 targets, owner-only). Number routing = 3 panels (.setting/.menu/.mode) exact-quote-wins. guard.js botAccess/aiAllowed matrix + test_v241 60+ checks. MovieDex v2.37 speed unchanged.",
   "removed": [
     "movies.js",
     "test_v218.js",
@@ -57,6 +57,7 @@
     "moviedex.js",
     "pairsite.js",
     "autoupdate.js",
-    "test_v237.js"
+    "test_v237.js",
+    "test_v241.js"
   ]
 }

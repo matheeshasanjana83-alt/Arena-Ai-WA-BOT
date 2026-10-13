@@ -10,6 +10,8 @@ Commands ("Message yourself" chat එකේ ගහන්න):
   .setkey zai <KEY>          Z.ai (GLM) key දාන්න  (alias: z.ai / glm)
   .keys                      keys තියෙනවද බලන්න      .delkey gemini|groq|zai  → key මකන්න
   .setting                   settings panel — අංකය reply කරලා toggle කරන්න (mode/anti-bug/report/block/update/maxmb/react)
+  .mode                      🛡 mode panel — 1 Public · 2 Private · 3 Inbox Only · 4 Groups Only · 5/6 AI Chat on/off · 11-16 AI modes
+  .forward <number|jid>      reply කරපු message එක අනිත් chat එකකට forward (targets 5 දක්වා) — .jid එකෙන් jid එක ගන්න
   .ping / .help
 
 AI ගැන ඇත්ත: උත්තර දෙන්නේ Google Gemini / Groq free models (KAVIZ agent එක නෙවෙයි).
@@ -23,6 +25,13 @@ Download support: direct links, GitHub, Google Drive (public), MediaFire, MEGA, 
 litterbox/catbox, x0.at, transfer.archivete.am, filebin, eporner (v2.17). (gofile / LimeWire / folders support නෑ). Max 2 GB.
 
 🔒 Private: ඔයා යවන messages විතරයි. වෙන අය commands යැව්වත් ignore.
+
+v2.41.0 — 🛡 MODE PANEL + 🤖 AI CHAT + 🧭 FORWARD
+  • .mode — numbered panel: 1 Public (හැමොටම inbox+groups) · 2 Private (owner ට විතරයි) · 3 Inbox Only (DM වල විතරයි) · 4 Groups Only (groups වල විතරයි) — අංකය reply → set → panel refresh. Legacy .mode all/self = public/private
+  • Public/Inbox/Groups modes වලදී අනිත් අයටත් bot එක use කරන්න පුළුවන් — owner-only commands (.mode/.setting/.setkey/.block/.update/.forward/group tools...) ඔක්කොම අගුලුලා (🔒 owner ට විතරයි reply)
+  • 🤖 AI CHAT — panel 5/6: Enable/Disable. AI modes 11-16: Inbox Public (everyone) · Inbox Self (owner "Message yourself") · Inbox Private (others only) · Groups Only (@KAVIZ / bot ට reply කරාම) · All (inbox+groups+bot) · All Public (bot chat එකෙන් නෑ). Group වල AI = mention/reply විතරයි (flood නෑ) · per-chat 4s gap · keys නෑනම් silent
+  • 🧭 .forward <number|jid> — message එකකට reply කරලා අනිත් chat එකකට forward (5 targets දක්වා, 07x/+94x/94x numbers + @g.us groups + "me" = self chat). Owner-only (account abuse/Spam වළක්වන්න)
+  • Number routing දැන් 3 panels: .setting / .menu / .mode — exact quote win · නැත්නම් අලුත්ම panel. v2.40 packs removal unchanged (v2.37 speed intact)
 
 v2.29.0 — 🌐 NEW: Pair site — panel එකේම web pairing page
   • Bot එක run වෙන port එකේම web page එකක් (panel: http://<panel-host>:<port>/?key=XXXX — URL එක console එකේ print වෙනවා) — open කරලා WhatsApp number එක දාන්න, pairing code (XXXX-XXXX) site එකේම පේනවා → WhatsApp → Linked devices → Link a device → "Link with phone number instead"

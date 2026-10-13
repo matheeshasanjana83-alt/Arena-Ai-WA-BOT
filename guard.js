@@ -19,8 +19,45 @@ const writeSet = (d) => { try { fs.writeFileSync(SET, JSON.stringify(d, null, 2)
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ── chat mode ─────────────────────────────────────────────
-function chatMode() { return (process.env.ARENA_CHATS || readSet().chats || 'self') === 'all' ? 'all' : 'self'; }
-function setChatMode(m) { const d = readSet(); d.chats = m === 'all' ? 'all' : 'self'; writeSet(d); }
+// v2.41: 4 modes - public / private / inbox / groups (legacy all->public, self->private)
+const CHAT_MODES = ['public', 'private', 'inbox', 'groups'];
+function chatMode() {
+    const v = String(process.env.ARENA_CHATS || readSet().chats || 'private').toLowerCase();
+    if (v === 'all') return 'public';       // v2.40- legacy
+    if (v === 'self') return 'private';     // v2.40- legacy
+    return CHAT_MODES.includes(v) ? v : 'private';
+}
+function setChatMode(m) { const d = readSet(); d.chats = CHAT_MODES.includes(m) ? m : (m === 'all' ? 'public' : 'private'); writeSet(d); }
+
+/** v2.41 access matrix - who can run commands WHERE (owner ALWAYS passes):
+ *  public  -> everyone, DM + groups | private -> owner only | inbox -> everyone in DMs only
+ *  groups  -> everyone in groups only (owner keeps DM for control commands) */
+function botAccess(jid, isOwner) {
+    if (isOwner) return true;
+    const m = chatMode();
+    if (m === 'public') return true;
+    if (m === 'private') return false;
+    const g = !!jid && jid.endsWith('@g.us');
+    return m === 'inbox' ? !g : m === 'groups' ? g : false;
+}
+
+// v2.41 AI chat: auto AI replies - on/off + 6 modes
+const AI_MODES = ['inbox_public', 'inbox_self', 'inbox_private', 'groups_only', 'all', 'all_public'];
+function aiChatOn() { return readSet().aiChat === true; }
+function setAiChat(on) { const d = readSet(); d.aiChat = !!on; writeSet(d); }
+function aiMode() { const m = readSet().aiMode; return AI_MODES.includes(m) ? m : 'all'; }
+function setAiMode(m) { if (!AI_MODES.includes(m)) return false; const d = readSet(); d.aiMode = m; d.aiChat = true; writeSet(d); return true; }   // picking a mode = AI chat ON
+/** who gets an AI auto-reply: jid normalized, selfChat = the bot's own "Message yourself" chat.
+ *  groups need a mention/reply-to-bot check (bot.js passes those in only). */
+function aiAllowed(jid, isOwner, selfChat) {
+    if (!aiChatOn()) return false;
+    if (!jid || ignoredChat(jid)) return false;
+    const m = aiMode();
+    if (jid.endsWith('@g.us')) return m === 'groups_only' || m === 'all' || m === 'all_public';
+    if (selfChat) return m === 'inbox_self' || m === 'all';      // 12 / 15 - the "Bot" chat
+    if (isOwner) return false;                                    // owner's outgoing msgs in other chats - never AI'd
+    return m === 'inbox_public' || m === 'inbox_private' || m === 'all' || m === 'all_public';
+}
 
 /** never react in these chats (status updates, channels, broadcast lists) */
 const ignoredChat = (jid) => !jid || jid === 'status@broadcast' || /@(newsletter|broadcast)$/.test(jid);
@@ -94,4 +131,4 @@ function maskLog(t) {
         .replace(/\b(gsk_\w{4})\w+/g, '$1••••');
 }
 
-module.exports = { chatMode, setChatMode, ignoredChat, rateCheck, pacer, humanDelay, backoff, shouldAnnounce, maskLog, sleep, _hits: hits };
+module.exports = { chatMode, setChatMode, botAccess, aiChatOn, setAiChat, aiMode, setAiMode, aiAllowed, AI_MODES, CHAT_MODES, ignoredChat, rateCheck, pacer, humanDelay, backoff, shouldAnnounce, maskLog, sleep, _hits: hits };

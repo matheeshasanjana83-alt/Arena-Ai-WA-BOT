@@ -261,29 +261,39 @@ async function onMessages({ messages, type }, send, del = async () => { }) {
             try {
                 remember(msg);
                 if (msg.key?.fromMe && !msg.message && msg.messageStubType) log(`⚠️ message එකක් decrypt කරගන්න බැරි වුණා (stub ${msg.messageStubType}) — phone එකෙන් ආයෙත් එවයි`);
-                if (msg.message && msg.key?.fromMe !== true) { await antibug.guard(msg, { sock: SOCK, me: ME, send, log }); antispam.see(msg, { sock: SOCK, me: ME, send, log }).catch(() => { }); continue; }   // 🛡️ anti-bug + 🚫 anti-spam (others' messages are never run as commands)
-                if (!msg.message || msg.key?.fromMe !== true) continue;        // 🔒 PRIVATE: only messages YOU send
+                const fromMe = msg.key?.fromMe === true;
+                const owner = fromMe && isFromOwner(msg.key);                    // 🔒 owner = our own messages (pn/lid check)
+                if (!fromMe && msg.message) {                                    // 🛡️ anti-bug + 🚫 anti-spam watch EVERY outside message
+                    await antibug.guard(msg, { sock: SOCK, me: ME, send, log });
+                    antispam.see(msg, { sock: SOCK, me: ME, send, log }).catch(() => { });
+                }
+                if (!msg.message) continue;
                 if (guard.ignoredChat(msg.key.remoteJid)) continue;              // status / channels / broadcast
-                if (!isFromOwner(msg.key)) continue;                              // 🔒 double check the sender
+                const accessible = guard.botAccess(replyJid(msg.key), owner);   // 🌐 COMMANDS gate — public/private/inbox/groups (AI chat has its OWN 11-16 modes, independent — v2.41)
                 if (sentIds.has(msg.key.id) || seen.has(msg.key.id)) continue; // own replies / already handled
                 const ts = Number(msg.messageTimestamp || 0);
                 if (type !== 'notify' && ts && ts < STARTED - 60) continue;   // old history — don't re-run old commands
                 seen.add(msg.key.id); if (seen.size > 1000) seen.delete(seen.values().next().value);
                 let text = getText(msg.message);
-                if (/^\d{1,3}$/.test(text)) {                                   // number reply → .setting panel / .menu category / .moviedex step
+                if (accessible && /^\d{1,3}$/.test(text)) {                      // number reply → .mode / .setting / .menu panel · .moviedex card (v2.41: 3 panels)
                     const jid0 = replyJid(msg.key), qid = msg.message?.extendedTextMessage?.contextInfo?.stanzaId;
-                    const st = menuState.get(jid0), ss = settingState.get(jid0);
                     const fresh = (x) => x && (qid ? qid === x.id : Date.now() - x.at < 180e3);
-                    const mS = fresh(st), sS = fresh(ss);
-                    if (sS && (!mS || qid === ss.id || (ss.at || 0) >= (st.at || 0))) text = '.setting ' + text;   // exact quote wins, නැත්නම් අලුත්ම panel එක
-                    else if (mS) text = '.menu ' + text;
-                    else { const b = moviedex.bridgeReply(jid0, qid, text); if (b) text = b; }
+                    const panels = [[settingState.get(jid0), '.setting '], [menuState.get(jid0), '.menu '], [modeState.get(jid0), '.mode ']].filter(([x]) => fresh(x));
+                    if (panels.length) {
+                        const exact = qid && panels.find(([x]) => x.id === qid);
+                        text = (exact || panels.sort((a, b) => (b[0].at || 0) - (a[0].at || 0))[0])[1] + text;   // exact quote wins, else the newest panel
+                    }
+else { const b = moviedex.bridgeReply(jid0, qid, text); if (b) text = b; }
                 }
-                if (!text.startsWith('.')) continue;
+                if (!text.startsWith('.')) { maybeAiReply({ msg, jid: replyJid(msg.key), text, owner, send }); continue; }   // 🤖 AI chat (v2.41 — own modes, works even when bot commands are private)
+                if (!accessible) continue;                                       // 🌐 others: bot commands locked by bot mode
                 const jid = replyJid(msg.key);
                 const c0 = text.split(/\s+/)[0].toLowerCase();
-                const groupOk = (jid.endsWith('@g.us') && features.GROUP_CMDS.includes(c0)) || c0 === '.del' || c0 === '.delete';   // group tools work in groups, .del anywhere
-                if (guard.chatMode() === 'self' && ME.pn && jid !== ME.pn && !groupOk) continue;   // 🔒 default: "Message yourself" chat only (.mode all)
+                if (!owner && (OWNER_CMDS.has(c0) || features.GROUP_CMDS.includes(c0))) {   // 🔒 v2.41: owner-only commands hidden from others
+                    await send(jid, { text: '🔒 මේ command එක bot owner ට විතරයි' }, { quoted: msg });
+                    continue;
+                }
+   // 🔒 default: "Message yourself" chat only (.mode all)
                 const rl = guard.rateCheck();
                 if (!rl.ok) {                                                     // 🛡️ anti-ban rate limit
                     log(`⏳ rate limit — command ignore කළා (${rl.wait}s)`);
@@ -339,6 +349,7 @@ async function onMessages({ messages, type }, send, del = async () => { }) {
                 if (c === '.setproxy') { await handleProxy(send, del, jid, msg, rest.join(' ').trim()); continue; }
                 if (c === '.proxies' || c === '.proxypool') { await handleProxies(send, jid, msg, (rest[0] || '').toLowerCase()); continue; }
                 if (c === '.setcookies') { await handleCookies(send, del, jid, msg, rest.join(' ').trim()); continue; }
+                if (c === '.forward') { await runJob(() => handleForward(send, jid, msg, rest.join(' ').trim())); continue; }   // 🧭 owner-only (v2.41)
                 if (c === '.keys') { const k = ai.getKeys(); await send(jid, { text: `🔑 *API keys*\nGemini: ${k.gemini ? '✅ ' + mask(k.gemini) : '❌ නෑ'}\nGroq: ${k.groq ? '✅ ' + mask(k.groq) : '❌ නෑ'}\nZ.ai (GLM): ${k.zai ? '✅ ' + mask(k.zai) : '❌ නෑ'}` }, { quoted: msg }); continue; }
                 if (c === '.restart') { await send(jid, { text: '🔄 Restart වෙනවා... තත්පර 10 කින් *.ping*' }, { quoted: msg }); setTimeout(() => process.exit(process.env.ARENA_LAUNCHER ? 100 : 0), 1500); continue; }
                 if (await runJob(() => tools.handle(c, { send, jid, msg, rest, sock: SOCK, me: ME, react }))) continue;
@@ -368,6 +379,8 @@ function dlQueue(fn) { const p = dlChain.then(fn, fn); dlChain = p.catch(() => {
 // ───────── .menu (photo + info box + categories) ─────────
 const menuState = new Map();   // jid → { id, at } of the last menu (for number replies)
 const settingState = new Map();   // jid → { id, at } of the last .setting panel (number replies)
+const modeState = new Map();   // jid → { id, at } of the last .mode panel (number replies) — v2.41
+const OWNER_CMDS = new Set(['.mode', '.setting', '.settings', '.setkey', '.delkey', '.keys', '.autoupdate', '.update', '.restart', '.block', '.unblock', '.blocklist', '.spamlog', '.antibug', '.antispam', '.maxmb', '.setmax', '.limit', '.setlogo', '.dellogo', '.setproxy', '.proxies', '.proxypool', '.net', '.netcheck', '.setcookies', '.del', '.delete', '.react', '.forward']);   // 🔒 never for others (v2.41)
 const REACTS = ['⚡', '🔥', '✨', '💠', '🚀', '😎', '🤖', '💫', '🌟', '🎯', '💎', '🫡', '👌', '🌀', '🍃'];
 const readSettings = () => { try { return JSON.parse(fs.readFileSync(path.join(__dirname, 'settings.json'), 'utf8')); } catch { return {}; } };
 const reactOn = () => !process.env.ARENA_NO_REACT && readSettings().react !== false;
@@ -408,10 +421,11 @@ const CATS = [
     ['🛠️', 'Tools', `*🛠️ TOOLS*\n\n✦ *.tr <භාෂාව> <text>* — translate\n✦ *.tts <text>* — voice (සිංහල OK)\n✦ *.weather <නගරය>* — කාලගුණය · දින 3\n✦ *.lyrics <සින්දුව>* — lyrics\n✦ *.imagine <විස්තරය>* — AI image\n✦ *.toimg* — sticker → photo\n✦ *.tourl* — media → 🔗 link\n✦ *.ss <site>* · *.qr* · *.short* · *.calc*\n✦ *.github <user>* · *.del* · *.setpp*`],
     ['🎉', 'Fun', `*🎉 FUN*\n\n✦ *.joke* · *.fact* · *.quote*\n✦ *.8ball <ප්‍රශ්නය>* — 🎱`],
     ['👥', 'Group', `*👥 GROUP* — group එකේ ඔයා ගහන්න\n\n✦ *.groupinfo* · *.grouplink* · *.jid*\n✦ *.tagall [msg]* — විනාඩි 10 කට 1\n✦ *.kick @user* · *.promote* · *.demote*\n✦ *.mute* · *.unmute* · *.tagadmins* · *.resetlink*\n\n> @mention නැත්නම් message එකකට reply කරන්න`],
-    ['🤖', 'AI', `*🤖 AI*\n\n✦ *.ai <ප්‍රශ්නය>* — සිංහල OK\n✦ message එකකට reply + *.ai* — ඒක ගැනම\n✦ *.ai reset* — අලුත් කතාවක්\n✦ *.setkey gemini/groq/zai <KEY>* · *.keys*`],
+    ['🤖', 'AI', `*🤖 AI*\n\n✦ *.ai <ප්‍රශ්නය>* — සිංහල OK\n✦ message එකකට reply + *.ai* — ඒක ගැනම\n✦ *.ai reset* — අලුත් කතාවක්\n✦ AI chat auto-reply — *.mode* → 5/6 on·off · 11-16 modes
+✦ *.setkey gemini/groq/zai <KEY>* · *.keys*`],
     ['🔧', 'Network', `*🔧 NETWORK*\n\n✦ *.net <link>* — fail වුණොත් හේතුව\n✦ *.setproxy <url|off>* — block sites වලට\n✦ *.proxies* — free pool status · *.proxies check*\n✦ *.setcookies* — YouTube bot-check fix`],
     ['⚙️', 'Settings', `*⚙️ SETTINGS*\n\n✦ *.setlogo* / *.dellogo* — menu logo\n✦ *.react on|off* — auto react\n✦ *.maxmb <MB>* — download limit\n✦ *.setting* — ⚙️ settings panel (අංක reply → toggle)
-✦ *.mode self|all* — වැඩ කරන chats\n✦ *.autoupdate on|off* — GitHub එකෙන් auto update (default on)\n✦ *.update* · *.restart* · *.version*`],
+✦ *.mode* — 🛡 mode panel (public / private / inbox / groups + AI chat modes)\n✦ *.autoupdate on|off* — GitHub එකෙන් auto update (default on)\n✦ *.update* · *.restart* · *.version*`],
     ['🛡️', 'Security', `*🛡️ SECURITY*\n\n✦ commands — ඔයාට විතරයි (owner-only)\n✦ anti-ban — rate limit · human delay · backoff\n✦ *.antibug* — bug → delete + 🚀 auto report ×30 → ඉවර උනාම ⛔ block (bug ගහපු එකාට විතරයි)\n✦ *.antibug report on|off* · *.antibug count <1-100>*\n✦ *.antibug scan|test* — caught bugs · self-test\n✦ *.block <නම්බර්|reply>* · *.unblock* · *.blocklist*\n✦ *.antispam on|off|<N>* · *.spamlog* — flood guard`],
     ['📊', 'Status', null],
 ];
@@ -569,14 +583,125 @@ async function handleSetLogo(send, jid, msg) {
     }
 }
 
+/** v2.41 — 🛡 BOT MODE panel: numbered bot modes 1-4 · AI chat 5/6 · AI modes 11-16 */
+function modeCaption() {
+    const cur = guard.chatMode(), aiOn = guard.aiChatOn(), aim = guard.aiMode();
+    const mark = (x) => (x ? ' ✅' : '');
+    return [
+        '🛡 ≡ *BOT MODE PANEL* ≡ 🍁',
+        '',
+        `🍀 | *WORK TYPE:* ${cur.toUpperCase()}`,
+        `🍀 | *AI CHAT:* ${aiOn ? 'ON ✅' : 'OFF ❌'} (${aim.replace(/_/g, ' ')})`,
+        '',
+        '⟶ *SELECT OPTION* 🌸',
+        '',
+        '» 🌐 *BOT MODES* 👇',
+        `*1 |* Public Mode${mark(cur === 'public')} — හැමොටම use කරන්න පුළුවන්`,
+        `*2 |* Private Mode${mark(cur === 'private')} — මට විතරයි`,
+        `*3 |* Inbox Only${mark(cur === 'inbox')} — inbox වල විතරයි`,
+        `*4 |* Groups Only${mark(cur === 'groups')} — groups වල විතරයි`,
+        '',
+        '» 🤖 *AI & TOOLS* 👇',
+        `*5 |* Enable AI Chat${mark(aiOn)}`,
+        `*6 |* Disable AI Chat${mark(!aiOn)}`,
+        '',
+        '» 🤖 *AI CHAT MODES* 👇',
+        `*11 |* AI: Inbox Public (Everyone)${mark(aim === 'inbox_public')}`,
+        `*12 |* AI: Inbox Self (Owner Only)${mark(aim === 'inbox_self')}`,
+        `*13 |* AI: Inbox Private (Others Only)${mark(aim === 'inbox_private')}`,
+        `*14 |* AI: Groups Only (Everyone)${mark(aim === 'groups_only')}`,
+        `*15 |* AI: All (Inbox + Group + Bot)${mark(aim === 'all')}`,
+        `*16 |* AI: All Public (No Bot Reply)${mark(aim === 'all_public')}`,
+        '',
+        foot('🔢 option එකේ number එක reply කරන්න'),
+    ].join('\n');
+}
+const MODE_LABELS = { 1: '🌐 Public — හැමොටම (inbox + groups)', 2: '🔒 Private — මට විතරයි', 3: '💬 Inbox Only — inbox වල විතරයි', 4: '👥 Groups Only — groups වල විතරයි' };
 async function handleMode(send, jid, msg, arg) {
-    if (arg === 'all' || arg === 'self') {
+    const n = parseInt(arg, 10);
+    if (n >= 1 && n <= 4) {
+        guard.setChatMode(['public', 'private', 'inbox', 'groups'][n - 1]);
+        await send(jid, { text: '✅ mode: ' + MODE_LABELS[n] }, { quoted: msg });
+    } else if (n === 5 || n === 6) {
+        guard.setAiChat(n === 5);
+        await send(jid, { text: n === 5 ? `✅ 🤖 AI Chat *ON* — mode: ${guard.aiMode().replace(/_/g, ' ')}` : '🚫 🤖 AI Chat *OFF*' }, { quoted: msg });
+    } else if (n >= 11 && n <= 16) {
+        guard.setAiMode(guard.AI_MODES[n - 11]);   // mode pick = AI chat ON
+        await send(jid, { text: `✅ 🤖 AI mode: *${guard.aiMode().replace(/_/g, ' ')}* — AI Chat ON` }, { quoted: msg });
+    } else if (['all', 'public'].includes(arg)) {
+        guard.setChatMode('public');
+        await send(jid, { text: '✅ mode: ' + MODE_LABELS[1] }, { quoted: msg });
+    } else if (['self', 'private'].includes(arg)) {
+        guard.setChatMode('private');
+        await send(jid, { text: '✅ mode: ' + MODE_LABELS[2] }, { quoted: msg });
+    } else if (arg === 'inbox' || arg === 'groups') {
         guard.setChatMode(arg);
-        return send(jid, { text: arg === 'all'
-            ? foot('🔓 mode: all — ඕනෑම chat එකක commands වැඩ · පාවිච්චි කරන්නේ ඔයාට විතරයි')
-            : foot('🔒 mode: self — Message yourself chat එකේ විතරයි') }, { quoted: msg });
+        await send(jid, { text: '✅ mode: ' + MODE_LABELS[arg === 'inbox' ? 3 : 4] }, { quoted: msg });
     }
-    return send(jid, { text: `🔒 *mode: ${guard.chatMode()}*\n> *.mode self* — Message yourself විතරයි (default)\n> *.mode all* — ඕනෑම chat එකක\n> කොහොම වුණත් — ඔයාට විතරයි` }, { quoted: msg });
+    const caption = modeCaption();
+    const img = fs.existsSync(LOGO) ? LOGO : fs.existsSync(BANNER) ? BANNER : null;
+    const sent = await send(jid, img ? { image: fs.readFileSync(img), caption } : { text: caption }, { quoted: msg });
+    if (sent?.key?.id) modeState.set(jid, { id: sent.key.id, at: Date.now() });   // number replies → අලුත් panel එකටම
+}
+
+// ───────── .forward — reply කරපු message එක JID/number එකකට forward (owner-only, v2.41) ─────────
+async function handleForward(send, jid, msg, arg) {
+    const ci = msg.message?.extendedTextMessage?.contextInfo;
+    const quoted = ci?.quotedMessage;
+    if (!quoted) return send(jid, { text: '🧭 *FORWARD*\n\n✦ message එකකට reply කරලා *.forward <number|jid>*\n✦ උදා: *.forward 94771234567* · *.forward 9477…@g.us*\n✦ *.jid* — chat එකේ jid එක බලලා copy කරන්න\n\n> targets 5 දක්වා එකපාර' }, { quoted: msg });
+    if (!arg) return send(jid, { text: '❌ target JID / number එක දෙන්න — උදා: *.forward 94771234567*\n> *.jid* — jid එක බලන්න' }, { quoted: msg });
+    const mine = (j) => !!j && (bareJid(j) === ME.pn || bareJid(j) === ME.lid);
+    const norm = (t) => {
+        t = String(t || '').replace(/^@/, '').trim();
+        if (/^me$/i.test(t)) return ME.pn;
+        if (/@(g\.us|s\.whatsapp\.net|lid)$/.test(t)) return t.endsWith('@g.us') ? t : bareJid(t) + (t.endsWith('@lid') ? '@lid' : '@s.whatsapp.net');
+        if (/^\+?\d{8,15}$/.test(t)) return t.replace(/^\+/, '').replace(/^0/, '94') + '@s.whatsapp.net';
+        return null;
+    };
+    const targets = [...new Set(arg.split(/\s+/).filter(Boolean))].slice(0, 5);
+    const jids = []; const bad = []; const seenT = new Set();
+    for (const t of targets) { const j = norm(t); if (!j) { bad.push(t); continue; } if (seenT.has(j)) continue; seenT.add(j); jids.push(j); }   // dedupe AFTER normalize (9477… = 077… = me)
+    if (!jids.length) return send(jid, { text: '❌ JID / number වලින් දෙන්න — 947XXXXXXXX / xxx@g.us' }, { quoted: msg });
+    const fwd = { key: { remoteJid: jid, fromMe: !ci.participant || mine(ci.participant), id: ci.stanzaId || msg.key.id, participant: ci.participant || undefined }, message: quoted };
+    const ok = jids;
+    const st = await send(jid, { text: `🧭 forward වෙනවා → ${ok.length} target…` }, { quoted: msg });
+    const out = [];
+    for (const t of jids) {
+        try { await SOCK.sendMessage(t, { forward: fwd }); out.push(`✅ ${t}`); }
+        catch (e) { out.push(`❌ ${t} — ${String(e.message).slice(0, 60)}`); }
+        await guard.sleep(600);   // anti-ban pace
+    }
+    if (bad.length) out.push(`⚠️ වලංගු නෑ: ${bad.join(', ')}`);
+    await send(jid, { text: '🧭 *Forward*\n' + out.join('\n'), edit: st.key });
+}
+
+// ───────── 🤖 AI auto-chat (v2.41) — mode panel 5/6 + 11-16 වලින් control වෙනවා ─────────
+const aiLast = new Map();   // chat jid → last AI auto-reply ts (per-chat 4s gap)
+// ───────── .proxies — free proxy pool (stats / check / on / off) ─────────
+function maybeAiReply({ msg, jid, text, owner, send }) {
+    try {
+        if (!text || text.length > 2000) return;
+        const isGroup = jid.endsWith('@g.us');
+        if (isGroup) {   // groups: @mention the bot or reply to a bot message only — any-text flood නෑ
+            const ci = msg.message?.extendedTextMessage?.contextInfo;
+            const mentioned = (ci?.mentionedJid || []).some((j) => bareJid(j) === ME.pn || bareJid(j) === ME.lid);
+            const repliedToMe = ci?.participant && (bareJid(ci.participant) === ME.pn || bareJid(ci.participant) === ME.lid);
+            if (!mentioned && !repliedToMe) return;
+        }
+        const selfChat = jid === ME.pn;
+        if (!guard.aiAllowed(jid, owner, selfChat)) return;
+        const k = ai.getKeys();
+        if (!k.gemini && !k.groq && !k.zai) return;   // key නෑනම් silent — random texts වලට NO_KEY spam නෑ
+        const now = Date.now(), last = aiLast.get(jid) || 0;
+        if (now - last < 4000) return;
+        aiLast.set(jid, now); if (aiLast.size > 200) aiLast.delete(aiLast.keys().next().value);
+        runJob(async () => {
+            const r = await ai.ask(jid, text);
+            const out = (typeof r === 'string' ? r : r?.text || '').trim();
+            if (out) await send(jid, { text: ai.splitLong(out)[0] });
+            log(`🤖 AI chat → ${jid.slice(0, 24)}`);
+        }).catch(() => { });
+    } catch { }
 }
 
 // ───────── .proxies — free proxy pool (stats / check / on / off) ─────────
@@ -785,7 +910,7 @@ async function handleDownload(send, jid, msg, link) {
 
 process.on('unhandledRejection', (e) => log('unhandled: ' + (e?.message || e)));
 process.on('uncaughtException', (e) => log('uncaught: ' + e.message));
-module.exports = { _agentTick: agentTick, AGENT_MSG, handleDownload, getText, onMessages, replyJid, ME, aliveCaption, _setMediaDownloader: (f) => { mediaDownloader = f; }, _setSock: (x) => { SOCK = x; } };
+module.exports = { _agentTick: agentTick, AGENT_MSG, handleDownload, getText, onMessages, replyJid, ME, aliveCaption, OWNER_CMDS, modeCaption, handleForward, maybeAiReply, _aiLast: aiLast, _setMediaDownloader: (f) => { mediaDownloader = f; }, _setSock: (x) => { SOCK = x; } };
 if (require.main === module) {
     console.log('🚀 KAVIZ MD V1 starting...');
     require('./media').checkUpdate(true).catch(() => { });   // yt-dlp fresh → FB "Cannot parse data" / YT format errors fix (max 1 check/hour)

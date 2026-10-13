@@ -9,6 +9,8 @@ Private WhatsApp bot (Baileys v7) — `.ai` (Gemini / Groq), `.moviedex` (movies
 | `.ai <ප්‍රශ්නය>` | AI එකෙන් උත්තර |
 | `.download <link>` | Direct / MediaFire / Google Drive / MEGA / eporner ... file එක WhatsApp එකට |
 | `.setting` | ⚙️ BOT SETTINGS PANEL — 🍀 status rows + options 1-9 (අංකය reply → toggle → panel refresh) |
+| `.mode` | 🛡 **BOT MODE PANEL** (v2.41) — numbered reply: *1* Public (හැමොටම) · *2* Private (owner විතරයි) · *3* Inbox Only · *4* Groups Only · *5/6* AI Chat on/off · *11-16* AI chat modes (inbox public/self/private · groups · all · all public) → panel refresh |
+| `.forward <number\|jid>` | 🧭 reply කරපු message එක target JID/number එකට forward (owner-only · targets 5 දක්වා · `.jid` එකෙන් jid එක ගන්න) |
 | `.setkey gemini/groq/zai <key>` | AI keys (zai = Z.ai GLM — alias z.ai/glm) |
 | `.net <link>` | Download fail නම් හේතුව (DNS block / IP block) |
 | `.setproxy <url\|off>` | Block වෙන sites වලට proxy |
