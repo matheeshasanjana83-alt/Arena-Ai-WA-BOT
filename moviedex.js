@@ -1,6 +1,6 @@
 'use strict';
 /**
- * moviedex.js — .moviedex for KAVIZ MD V1 (v2.26)
+ * moviedex.js — .moviedex for KAVIZ MD V1 (v2.28)
  *
  *  Movie + TV-series search & FILE downloads from the MovieBox MOBILE BFF
  *  (the signed wCFeed-mobile-bff API the Android app uses — reverse-engineered from
@@ -34,6 +34,9 @@ const os = require('os');
 const { smartFetch } = require('./net');
 const { human, maxMB } = require('./downloader');
 const { foot, cut, bar } = require('./style');
+
+/** v2.28 brand footer — replaces the old tutorial hint lines (user request) */
+const MV_FOOT = '> ＫＡＶＩＺ Ｖ1 🍁';
 
 /* ───────────────── 1. signed MovieBox mobile-BFF client ───────────────── */
 
@@ -391,9 +394,14 @@ const sessions = new Map();     // jid → { list, at, mv:{n:...}, tv:{n:...}, u
 
 const hasSession = (jid) => { const s = sessions.get(jid); return !!(s && Date.now() - s.at < SESSION_TTL && s.list?.length); };
 
-/** remember the last interactive card (bare-number replies route by this) */
+/** remember interactive cards (bare-number replies route by these) — v2.28: keep the last
+ *  8 cards, not just the newest: the user replies to the SERIES CARD after a quality menu
+ *  replaced s.ui, and the old single-ui bridge fell through to the search-list pick (1-10) error. */
 function setUi(s, sent, kind, n, rowNo) {
-    s.ui = { key: sent?.key?.id || null, kind, n: n ?? null, rowNo: rowNo ?? null, at: Date.now() };
+    const key = sent?.key?.id || (typeof sent?.key === 'string' ? sent.key : null);
+    s.ui = { key, kind, n: n ?? null, rowNo: rowNo ?? null, at: Date.now() };
+    if (key) s.cards = [{ key, kind, n: s.ui.n, rowNo: s.ui.rowNo, at: s.ui.at },
+        ...(s.cards || []).filter((c) => c.key !== key)].slice(0, 8);
 }
 
 /** mpd-derived quality rows: [{ h, bw, label, sizeMB }] */
@@ -429,7 +437,7 @@ async function streamQualities(st) {
 function listText(q, list) {
     return `🎬 *MovieDex — "${cut(q, 40)}"*\n\n` + list.map((m, i) =>
         `*${i + 1}.* ${m.type === 'series' ? '📺 ' : ''}${cut(m.name, 58)}${m.year ? ' (' + m.year + ')' : ''}${m.rating ? '  ⭐' + m.rating : ''}`).join('\n')
-        + `\n${foot('*.moviedex <අංකය>* — අංකය විතරක් reply කරන්නත් වැඩ')}`;
+        + `\n${MV_FOOT}`;
 }
 
 function cardText(m, n, rows) {
@@ -441,7 +449,7 @@ function cardText(m, n, rows) {
     if (rows && rows.length) {
         out.push('', '» Download Options 🎬');
         rows.forEach((r, i) => out.push(`*${i + 1}* | 🎥 ${r.label}${r.sizeMB ? ' · ~' + human(r.sizeMB * 1048576) : ''}`));
-        out.push('', `> අංකය reply කරන්න — 🍿 movie file එකම එනවා`);
+        out.push('', MV_FOOT);
     } else {
         out.push('', '⚠️ මේ title එකට download streams නෑ');
     }
@@ -486,9 +494,8 @@ function seriesText(m, n, rows, pageIdx) {
             : `*${no}* | ${epLabel(r)}`);
     });
     const more = start + EP_PAGE_ROWS < rows.length;
-    out.push('', `> අංකය reply කරන්න — season → 🧳 pack options · episode → 🎬 quality`);
-    if (more) out.push(`> *.moviedex ${n} next* — ඊළඟ page එක (${Math.ceil(rows.length / EP_PAGE_ROWS)} pages)`);
-    else if (page.length > 12) out.push(`> ✦ *full menu* — seasons + episodes ${rows.length} ම මේ message එකේම`);
+    out.push('', MV_FOOT);
+    if (more) out.push(`> *.moviedex ${n} next* — ඊළඟ page`);
     return out.filter(Boolean).join('\n');
 }
 
@@ -505,7 +512,7 @@ async function sendSeriesCard(send, jid, msg, m, n, rows, pageIdx = 0) {
 function seasonOptText(m, n, rowNo, season, rows) {
     const out = [`🧳 *SELECT DOWNLOAD OPTION FOR SEASON ${season}*`, `🍀 ${cut(m.name, 46)}`, '', '» Video Qualities (All Episodes) 👇'];
     rows.forEach((r, i) => out.push(`*${i + 1}* | 🎥 ${r.label}${r.sizeMB ? ' · ~' + human(r.sizeMB * 1048576) + '/ep' : ''}`));
-    out.push('', `> අංකය reply කරන්න — Season ${season} episodes ඔක්කොම 🧳 files විදිහට එනවා`);
+    out.push('', MV_FOOT);
     return out.join('\n');
 }
 
@@ -672,17 +679,19 @@ function bridgeReply(jid, qid, digits) {
         if (Date.now() - (s.at || 0) > SESSION_TTL + 30 * 60e3) return null;
         return `.moviedex ${d}`;
     }
-    const ui = s.ui;
-    if (ui && ui.kind && Date.now() - ui.at < UI_TTL) {
-        const quotedOurs = !!(qid && ui.key && String(qid) === String(ui.key));
-        if (quotedOurs || !qid) {
-            if (ui.kind === 'movie') return `.moviedex ${ui.n} ${d}`;
-            if (ui.kind === 'tv') return `.moviedex ${ui.n} ${d}`;
-            if (ui.kind === 'season') return `.moviedex ${ui.n} ${ui.rowNo} ${d}`;
-            if (ui.kind === 'ep') return `.moviedex ${ui.n} ${ui.rowNo} ${d}`;
-            return `.moviedex ${d}`;   // list → search-list pick
-        }
+    const route = (c) => {
+        if (!c || !c.kind) return `.moviedex ${d}`;
+        if (c.kind === 'movie') return `.moviedex ${c.n} ${d}`;
+        if (c.kind === 'tv') return `.moviedex ${c.n} ${d}`;   // row number — same numbering the menu prints (WYSIWYG)
+        if (c.kind === 'season') return `.moviedex ${c.n} ${c.rowNo} ${d}`;
+        if (c.kind === 'ep') return `.moviedex ${c.n} ${c.rowNo} ${d}`;
+        return `.moviedex ${d}`;   // list → search-list pick
+    };
+    if (qid) {   // v2.28: match ANY of the recent cards (series card, quality menus…), not just the newest
+        const hit = (s.cards || []).find((c) => c.key && String(c.key) === String(qid) && Date.now() - c.at < SESSION_TTL);
+        if (hit) return route(hit);
     }
+    if (!qid && s.ui?.kind && Date.now() - s.ui.at < UI_TTL) return route(s.ui);   // bare number, no quote → newest card
     return `.moviedex ${d}`;   // fallback: search-list pick
 }
 
@@ -803,8 +812,7 @@ async function handle(c, ctx) {
                 if (!qRows.length) return edit(`❌ ${epLabel(row)} — streams නෑ\n> වෙන episode එකක් try`);
                 const optRows = [`🎬 *SELECT DOWNLOAD OPTION* — ${epLabel(row)}`, `📺 ${cut(full.name, 50)}`, '', '» Video Qualities 👇'];
                 qRows.forEach((r, i) => optRows.push(`*${i + 1}* | 🎥 ${r.label}${r.sizeMB ? ' · ~' + human(r.sizeMB * 1048576) : ''}`));
-                optRows.push('', `> අංකය reply කරන්න — episode file එකම එනවා`,
-                    `> 🔗 links — *.moviedex ${n} ${rowNo} <q#> link*`);
+                optRows.push('', MV_FOOT);
                 const sentOpt = await send(jid, { text: optRows.join('\n') }, { quoted: msg });
                 (s.tv[n].epQualities ||= {})[rowNo] = qRows;
                 setUi(s, sentOpt, 'ep', n, rowNo);
@@ -862,4 +870,4 @@ async function handle(c, ctx) {
     return true;
 }
 
-module.exports = { handle, bridgeReply, hasSession, mbSearch, mbDetails, mbSeasons, mbPlay, dashFrom, parseMpd, dashDownload, streamQualities, tvRows, listText, cardText, seriesText, seasonOptText, epFileName, epCaption, packStat, _sessions: sessions, _testSession: (jid, s) => sessions.set(jid, s) };
+module.exports = { handle, bridgeReply, hasSession, setUi, mbSearch, mbDetails, mbSeasons, mbPlay, dashFrom, parseMpd, dashDownload, streamQualities, tvRows, listText, cardText, seriesText, seasonOptText, epFileName, epCaption, packStat, _sessions: sessions, _testSession: (jid, s) => sessions.set(jid, s) };

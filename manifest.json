@@ -1,13 +1,14 @@
 {
-  "version": "2.27.0",
-  "notes": "MovieDex FIX — full menu + fast replies. 1) Series FULL MENU: seasons + episodes ඔක්කොම එක message එකෙම (කලින් 60/page → දැන් 200 rows/page — Black Clover වගේ 174-episode shows pages නැතුව එක පාරම). Mega series (200+ rows) විතරයි paginate වෙන්නේ. 2) Reply fast-fail: quality menu probes දැන් 2 tries විතරයි (කලින් 8) — API flake වුණොත් මිනිත්තු ගානක් hang වෙන්නේ නෑ, seconds වලින් menu/error එනවා. 3) Session expire වුණොත් reply numbers ට silence වෙනුනේ නෑ — \".moviedex <name> ආයෙත්\" hint එක එනවා. No report-flood.",
+  "version": "2.28.0",
+  "notes": "MovieDex FIX — reply bridge + clean cards. 1) MULTI-CARD bridge: කලින් card එකකට reply කරන්න බැරි වුණේ අන්තිම card එක විතරක් මතක තිබුණ නිසා — quality menu එකක් ආපුවම series card එකට reply කළ අංක (උදා: 66/67) search-list pick එකට වැටිලා \"result නෑ (1-10)\" වෙනවා. දැන් අන්තිම cards 8ම මතක තියෙනවා — ඕනෑම card එකකට reply කළාත් හරි step එකට යනවා. 2) Tutorial hint lines ඔක්කොම අයින් — \"අංකය reply කරන්න…\", \"✦ full menu…\", \"🔗 links…\" වෙනුවට හැම card එකේම \n> ＫＡＶＩＺ Ｖ1 🍁 footer. No report-flood.",
   "removed": [
     "movies.js",
     "test_v218.js",
     "test_v219.js",
     "test_v223.js",
     "test_v224.js",
-    "test_v226.js"
+    "test_v226.js",
+    "test_v227.js"
   ],
   "files": [
     "bot.js",
@@ -43,6 +44,6 @@
     "test_v222.js",
     "test_v225.js",
     "moviedex.js",
-    "test_v227.js"
+    "test_v228.js"
   ]
 }

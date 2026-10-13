@@ -22,6 +22,10 @@ litterbox/catbox, x0.at, transfer.archivete.am, filebin, eporner (v2.17). (gofil
 
 🔒 Private: ඔයා යවන messages විතරයි. වෙන අය commands යැව්වත් ignore.
 
+v2.28.0 — 🍿 MovieDex FIX: reply bridge + clean cards
+  • Reply bridge FIX: කලින් අන්තිම card එක විතරක් මතක තිබුණා — quality menu එකක් ආපුවම series card එකට reply කළ අංක (66/67 වගේ) "result නෑ (1-10)" වෙනවා. දැන් අන්තිම cards 8ම මතකයි — series card / quality menu / search list ඕනෑම එකකට reply කළාත් හරි step එකට යනවා
+  • Cards clean: "අංකය reply කරන්න…", "✦ full menu…", "🔗 links…" hint lines ඔක්කොම අයින් — හැම card එකේම "> ＫＡＶＩＺ Ｖ1 🍁" footer විතරයි
+
 v2.27.0 — 🍿 MovieDex FIX: FULL menu + fast replies
   • Series FULL MENU: seasons + episodes ඔක්කොම එක message එකේම — කලින් 60/page (Black Clover = 3 pages) → දැන් 200 rows/page, 174-episode shows එක පාරම (mega series 200+ rows විතරයි pages වෙන්නේ)
   • Reply fast-fail: quality menu probes 8 tries → 2 — API flake වුණොත් මිනිත්තු ගානක් hang වෙන්නේ නෑ, seconds වලින් menu/error
