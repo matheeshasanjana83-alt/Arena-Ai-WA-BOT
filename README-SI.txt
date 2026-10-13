@@ -22,6 +22,12 @@ litterbox/catbox, x0.at, transfer.archivete.am, filebin, eporner (v2.17). (gofil
 
 🔒 Private: ඔයා යවන messages විතරයි. වෙන අය commands යැව්වත් ignore.
 
+v2.29.0 — 🌐 NEW: Pair site — panel එකේම web pairing page
+  • Bot එක run වෙන port එකේම web page එකක් (panel: http://<panel-host>:<port>/?key=XXXX — URL එක console එකේ print වෙනවා) — open කරලා WhatsApp number එක දාන්න, pairing code (XXXX-XXXX) site එකේම පේනවා → WhatsApp → Linked devices → Link a device → "Link with phone number instead"
+  • Panel console එකේ number ගහන්න / Termux readline එක ගැන හිතන්න ඕන නෑ — phone/browser එකෙන්ම pair
+  • Security: pair key අනිවාර්යයි (env PAIR_KEY හෝ settings.json pairKey — නැත්නම් auto-generate වෙලා console එකේ print වෙනවා) · registered session එකක් pair කරන්න බෑ · IP එකකට 10s rate-limit · noindex
+  • Page එකේම live bot status (starting/connecting/online) — පරණ /status JSON endpoint එකත් එහෙමම (panel health check)
+
 v2.28.0 — 🍿 MovieDex FIX: reply bridge + clean cards
   • Reply bridge FIX: කලින් අන්තිම card එක විතරක් මතක තිබුණා — quality menu එකක් ආපුවම series card එකට reply කළ අංක (66/67 වගේ) "result නෑ (1-10)" වෙනවා. දැන් අන්තිම cards 8ම මතකයි — series card / quality menu / search list ඕනෑම එකකට reply කළාත් හරි step එකට යනවා
   • Cards clean: "අංකය reply කරන්න…", "✦ full menu…", "🔗 links…" hint lines ඔක්කොම අයින් — හැම card එකේම "> ＫＡＶＩＺ Ｖ1 🍁" footer විතරයි

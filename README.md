@@ -15,6 +15,7 @@ Private WhatsApp bot (Baileys v7) — `.ai` (Gemini / Groq), `.moviedex` (movies
 | `.block <නම්බර්\|reply>` | Spammer block (server-side — ඒ number එකෙන් ආයෙ messages එන්නෙම නෑ) · `.unblock` · `.blocklist` · `.spamlog` (v2.20) |
 | `.antispam on\|off\|<N>` | DM flood guard — මිනිත්තුවකට N (default 10) ට වැඩි messages → auto block + notice (v2.20) |
 | `.mirror <link>` | URL → download → **direct share link** (qu.ax දින 30 → transfer දින 7) — අනිත් bots වල `/dl` link UX එක · `.link` alias · `.tourl` fixed (v2.21) |
+| 🌐 *Pair site (v2.29)* | bot port එකේම web page — number එක දාලා pairing code එක site එකෙන් ගන්න (key-protected, registered session block, 10s rate-limit) |
 | *UX flow (v2.22)* | heavy commands react **⏳ → ✅/❌**, progress bubbles auto-delete, captions = title + `> ⚡ ᴋᴀᴠɪᴢ ᴍᴅ ᴠ1` footer, compact ✦ menu, `.ping` ms, AI replies brand-signed (model name hidden) |
 | `.keys` · `.menu` · `.ping` | |
 | `.version` | දැන් version එක + update තියෙනවද |
@@ -29,8 +30,8 @@ Private WhatsApp bot (Baileys v7) — `.ai` (Gemini / Groq), `.moviedex` (movies
 > v2.12 command ideas: [Knightbot-MD](https://github.com/mruniquehacker/Knightbot-MD) by mruniquehacker (MIT) — code rewritten for KAVIZ MD V1.
 
 ## Install
-- **Panel (Pterodactyl):** [`downloads/KAVIZ-MD-V1-panel.zip`](downloads/KAVIZ-MD-V1-panel.zip) upload → Unarchive → Main file `index.js` → Start → console එකේ number එක ගහලා pair කරන්න.
-- **Termux:** [`downloads/KAVIZ-MD-V1.zip`](downloads/KAVIZ-MD-V1.zip) → `cd KAVIZ-MD-V1 && npm install && npm start`
+- **Panel (Pterodactyl):** [`downloads/KAVIZ-MD-V1-panel.zip`](downloads/KAVIZ-MD-V1-panel.zip) upload → Unarchive → Main file `index.js` → Start → console එකේ print වෙන **Pair site URL** එක browser එකෙන් open කරලා number එක දාලා pair කරන්න (v2.29: `http://<panel-host>:<port>/?key=XXXX` — code එක site එකේම පේනවා). Console එකේ ගහන එකත් වැඩ.
+- **Termux:** [`downloads/KAVIZ-MD-V1.zip`](downloads/KAVIZ-MD-V1.zip) → `cd KAVIZ-MD-V1 && npm install && npm start` (pair site: `http://localhost:3000/?key=…` — console එකේ print වෙනවා)
 
 ## Update යවන හැටි (developer)
 1. Files edit කරන්න (repo root).

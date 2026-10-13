@@ -145,12 +145,14 @@ const HELP = `*◈ KAVIZ MD V1 ◈* — commands
 ${foot('*.menu* — categories වලින්')}`;
 
 let botStatus = 'starting';
-if (process.env.SERVER_PORT || process.env.ARENA_ON_PANEL) {
-    try {
-        require('http').createServer((q, r) => { r.writeHead(200, { 'Content-Type': 'application/json' }); r.end(JSON.stringify({ bot: 'KAVIZ MD V1', status: botStatus, uptime: Math.floor(process.uptime()) })); })
-            .on('error', () => { }).listen(parseInt(process.env.SERVER_PORT || '3000', 10), '0.0.0.0');
-    } catch { }
-}
+// 🌐 v2.29: pair site — panel port එකේම web page එකක් (number එක දාලා pairing code ගන්න) + /status JSON (පරණ behavior)
+try {
+    require('./pairsite').start({
+        status: () => ({ bot: 'KAVIZ MD V1', status: botStatus, uptime: Math.floor(process.uptime()) }),
+        getSock: () => SOCK,
+        log,
+    });
+} catch (e) { log && console.log('pairsite: ' + e.message); }
 const pace = guard.pacer();
 let reconnects = 0, replaced = 0;
 async function start() {

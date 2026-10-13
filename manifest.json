@@ -1,6 +1,6 @@
 {
-  "version": "2.28.0",
-  "notes": "MovieDex FIX — reply bridge + clean cards. 1) MULTI-CARD bridge: කලින් card එකකට reply කරන්න බැරි වුණේ අන්තිම card එක විතරක් මතක තිබුණ නිසා — quality menu එකක් ආපුවම series card එකට reply කළ අංක (උදා: 66/67) search-list pick එකට වැටිලා \"result නෑ (1-10)\" වෙනවා. දැන් අන්තිම cards 8ම මතක තියෙනවා — ඕනෑම card එකකට reply කළාත් හරි step එකට යනවා. 2) Tutorial hint lines ඔක්කොම අයින් — \"අංකය reply කරන්න…\", \"✦ full menu…\", \"🔗 links…\" වෙනුවට හැම card එකේම \n> ＫＡＶＩＺ Ｖ1 🍁 footer. No report-flood.",
+  "version": "2.29.0",
+  "notes": "🌐 PAIR SITE — panel console එකේ number ගහන්න යන්න ඕන නෑ! Bot එක run වෙන port එකේම web page එකක් (panel address + port, උදා: http://panel-host:1028/?key=XXXX) — ඒක open කරලා WhatsApp number එක දාන්න, pairing code එක site එකේම පේනවා → WhatsApp → Linked devices → Link with phone number. Security: pair key අනිවාර්යයි (auto-generate වෙලා console එකේ + settings.json), registered session එකක් pair කරන්න බෑ, 10s rate-limit. /status JSON (panel health) එකත් එනවා. No report-flood.",
   "removed": [
     "movies.js",
     "test_v218.js",
@@ -8,7 +8,8 @@
     "test_v223.js",
     "test_v224.js",
     "test_v226.js",
-    "test_v227.js"
+    "test_v227.js",
+    "test_v228.js"
   ],
   "files": [
     "bot.js",
@@ -44,6 +45,7 @@
     "test_v222.js",
     "test_v225.js",
     "moviedex.js",
-    "test_v228.js"
+    "pairsite.js",
+    "test_v229.js"
   ]
 }
