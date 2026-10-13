@@ -1,11 +1,13 @@
 /**
- * antibug.js — KAVIZ MD V1 🛡️ Anti-Bug (v2.33.0 — auto report ×30 → block retaliation)
+ * antibug.js — KAVIZ MD V1 🛡️ Anti-Bug (v2.34.0 — real crasher-toolkit analysis: 10 leaked tools)
  *
- * "Bug" messages = messages built to freeze/crash WhatsApp. Covers EVERY class the
- * MishuCrasher-style bug-panel APKs offer (virama/sign storms, combining-mark storms,
- * invisible floods, RTL/control/filler storms, media dimension bombs, location coordinate
- * bugs, giant waveform arrays, mention/contact/option bombs, deep nesting, giant texts,
- * vCard bombs, message floods) — plus the original generic size/structure detectors.
+ * "Bug" messages = messages built to freeze/crash WhatsApp. v2.32 covered the MishuCrasher-panel
+ * classes; v2.34 added every class found by DISSECTING 10 real leaked bug tools (AmbaCrash v14,
+ * HADES, SKYVIEN, XLOID INVICTUS, DELVIN CRASH, SATANIC DEVIL, CFC V30, Shiroxyx 4.0, HARVEST
+ * INFINITY, Neobeast): crashcursor buttonId NUL×850000, @0/@1 mention-run ×300000, Javanese ꦽ/ꦾ
+ * mark storms ×550000, pageCount 3567587327, fileLength 48-nines, totalAmount1000 9.9e16,
+ * trustBannerAction 99999, negative expiration, forwardingScore 999999, "i lose\n"×9999 line
+ * storms, lone-surrogate storms, paramsJson NUL×1000000 — plus the original generic detectors.
  *
  * When one arrives (from SOMEONE ELSE, never your own messages):
  *   1. delete it "for me" → WhatsApp syncs that to your phone, so the chat opens again
@@ -71,6 +73,16 @@ const L = {
     mediaDim: 10000,    // image/video/sticker width|height above this = bitmap OOM bomb
     mediaPix: 40000000, // …or total pixels absurd (4K frame = 8.3M — safe)
     durMax: 604800,     // audio/video duration above 7 days = UI glitch bomb
+    // ── v2.34: real crasher-toolkit classes (WhatsApp Documents.zip: AmbaCrash/HADES/SKYVIEN/
+    //    XLOID/DELVIN/SATANIC DEVIL/CFC/Shiroxyx/HARVEST/Neobeast) ──
+    pageCount: 10000,   // documentMessage.pageCount — real: ≤ thousands; bombs use 3567587327
+    fileLenMax: 1e12,   // documentMessage.fileLength (num/Long/numeric-string) — bombs: 48 nines
+    amountMax: 1e12,    // orderMessage.totalAmount1000 — bomb "98999999999999999"
+    bannerAction: 1000, // contextInfo.trustBannerAction — real 0-2; bomb 99999
+    convDelay: 3600,    // contextInfo.conversionDelaySeconds — bomb 9999 (real ≤ minutes)
+    fwdScore: 1000,     // contextInfo.forwardingScore — real ≤ ~63; bomb 999999
+    lineStorm: 500,     // same non-empty line repeated >500× in one field ("i lose\n"×9999)
+    surrMin: 200,       // lone surrogates / U+FFFD in one string — UTF-16 encoder crashers
 };
 
 // invisible / combining / direction-control characters used by "virtex" bugs.
@@ -80,8 +92,16 @@ const WEIRD = /[\u0300-\u036F\u0483-\u0489\u0591-\u05C7\u0610-\u061A\u064B-\u065
 const MARK_RE = /\p{M}/u;                                              // ANY combining mark (unicode)
 const SINH_RE = /[\u0DCA\u0DCF-\u0DDF\u200D]/;                        // Sinhala signs + ZWJ ("්‍" runs)
 const CTRL_RE = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F\uFFFE\uFFFF]/g;
+const LONE_SURR_RE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;   // unpaired halves
+const NUMSTR_BOMB_KEYS = /^\d{13,}$/;                                  // "9999999999999" / 48-nines
+const BOMB_STR_KEYS = new Set(['fileLength', 'totalAmount1000', 'totalAmount']);
+const maxSameLine = (s) => {                                            // v2.34 line-storm
+    const tally = new Map(); let best = 0;
+    for (const ln of s.split('\n')) { const t = ln.trim(); if (!t) continue; const n = (tally.get(t) || 0) + 1; tally.set(t, n); if (n > best) best = n; }
+    return best;
+};
 const longestRun = (s, re) => { let m = 0, c = 0; for (const ch of s) { if (re.test(ch)) { if (++c > m) m = c; } else c = 0; } return m; };
-const TEXT_KEYS = new Set(['conversation', 'text', 'caption', 'contentText', 'description', 'footerText', 'body', 'title', 'name', 'displayName', 'subject']);
+const TEXT_KEYS = new Set(['conversation', 'text', 'caption', 'contentText', 'description', 'footerText', 'body', 'title', 'name', 'displayName', 'subject', 'accessibilityText', 'buttonParamsJson', 'paramsJson', 'buttonId', 'displayText', 'fileName']);
 
 /** pure check — returns { bug, severe, reasons[] } (no network, safe to unit-test) */
 function detect(message) {
@@ -91,6 +111,7 @@ function detect(message) {
     let total = 0, maxField = 0, maxDepth = 0, weird = 0, textLen = 0, mentions = 0, contacts = 0, options = 0;
     let maxRun = 0, vTel = 0, vLines = 0, longest = '', longestWeird = 0;
     let markRun = 0, sinhRun = 0, ctrlMax = 0, arrBig = 0, medDim = '', badLoc = false, durBig = 0;
+    let numBomb = '', lineBest = 0, surrBest = 0;
     const seen = new Set();
     const walk = (o, d, key) => {
         if (d > maxDepth) maxDepth = d;
@@ -100,6 +121,13 @@ function detect(message) {
                 const lim = key === 'degreesLatitude' ? 90.1 : 180.1;
                 if (!Number.isFinite(o) || Math.abs(o) > lim) badLoc = true;
             } else if (key === 'seconds' && o > L.durMax) durBig = o;
+            // v2.34: crasher numeric field bombs (never occur in real messages)
+            else if (key === 'pageCount' && o > L.pageCount) numBomb = `pageCount ${o}`;
+            else if (key === 'fileLength' && o > L.fileLenMax) numBomb = `fileLength ${o}`;
+            else if (key === 'trustBannerAction' && o > L.bannerAction) numBomb = `trustBannerAction ${o}`;
+            else if (key === 'conversionDelaySeconds' && o > L.convDelay) numBomb = `conversionDelaySeconds ${o}`;
+            else if (key === 'forwardingScore' && o > L.fwdScore) numBomb = `forwardingScore ${o}`;
+            else if (key === 'expiration' && o < 0) numBomb = `expiration ${o}`;
             return;
         }
         if (typeof o === 'string') {
@@ -120,8 +148,14 @@ function detect(message) {
                     if (MARK_RE.test(o)) { const mr = longestRun(o, MARK_RE); if (mr > markRun) markRun = mr; }
                     if (o.includes('\u0DCA') || o.includes('\u200D')) { const sr = longestRun(o, SINH_RE); if (sr > sinhRun) sinhRun = sr; }
                     const cm = o.match(CTRL_RE); if (cm && cm.length > ctrlMax) ctrlMax = cm.length;
+                    const su = o.match(LONE_SURR_RE); const sb = (su ? su.length : 0) + (o.match(/\uFFFD/g) || []).length;   // v2.34
+                    if (sb > surrBest) surrBest = sb;
+                }
+                if (o.length > 2000) {                              // v2.34: line storm ("i lose\n"×9999)
+                    const ls = maxSameLine(o); if (ls > lineBest) lineBest = ls;
                 }
             }
+            if (BOMB_STR_KEYS.has(key) && NUMSTR_BOMB_KEYS.test(o.trim())) numBomb = `${key} "${o.slice(0, 12)}…"`;   // v2.34 numeric-string bombs
             return;
         }
         if (!o || typeof o !== 'object' || seen.has(o)) return;
@@ -139,6 +173,11 @@ function detect(message) {
             const mx = Math.max(o.width, o.height);
             if (mx > L.mediaDim || o.width * o.height > L.mediaPix) medDim = `${o.width}x${o.height}`;
         }
+        if ((key === 'fileLength' || key === 'totalAmount1000' || key === 'totalAmount') &&
+            typeof o.low === 'number' && typeof o.high === 'number') {       // v2.34: protobuf Long bombs
+            const v = o.high * 4294967296 + o.low;
+            if (v > L.fileLenMax) numBomb = `${key} ${v}`;
+        }
         for (const k of Object.keys(o)) walk(o[k], d + 1, k);
     };
     walk(message, 0, '');
@@ -147,6 +186,9 @@ function detect(message) {
     if (ctrlMax > L.ctrl) { reasons.push(`control chars ${ctrlMax}`); severe = true; }
     if (medDim) { reasons.push(`media dimension bomb ${medDim}`); severe = true; }
     if (badLoc) { reasons.push('location coordinates bug'); severe = true; }
+    if (numBomb) { reasons.push(`numeric bomb ${numBomb}`); severe = true; }                    // v2.34
+    if (lineBest > L.lineStorm) { reasons.push(`line storm ×${lineBest}`); severe = true; }     // v2.34
+    if (surrBest > L.surrMin) { reasons.push(`lone surrogate/FFFD storm ${surrBest}`); severe = true; }   // v2.34
     if (arrBig > L.arrLen) reasons.push(`giant array ${arrBig}`);
     if (durBig) reasons.push(`duration ${Math.round(durBig / 3600)}h`);
     if (maxRun > L.run) { reasons.push(`long unbroken run ${maxRun}`); severe = true; }
@@ -341,6 +383,32 @@ function selfTest() {
     push('huge text', { conversation: 'word '.repeat(4000) }, false);   // bug (delete) but NOT block-severe
     push('vCard bomb', { contactMessage: { displayName: 'v', vcard: Array.from({ length: 40 }, (_, i) => `TEL;TYPE=CELL:+94${i}\n`).join('') } }, true);
     push('mention bomb', { conversation: 'hi', extendedTextMessage: { text: 'hi', mentionedJid: Array.from({ length: 300 }, (_, i) => `${i}@s.whatsapp.net`) } }, false);
+    // ── v2.34: real crasher-toolkit classes (WhatsApp Documents.zip: 10 leaked tools) ──
+    push('pageCount bomb', { conversation: 'x', documentMessage: { pageCount: 3567587327, fileLength: 1024 } }, true);
+    push('fileLength string bomb', { conversation: 'x', documentMessage: { fileLength: '9999999999999' } }, true);
+    push('fileLength Long bomb', { conversation: 'x', documentMessage: { fileLength: { low: 101, high: 2328, unsigned: true } } }, true);
+    push('order amount bomb', { conversation: 'x', orderMessage: { totalAmount1000: '98999999999999999', itemCount: 1 } }, true);
+    push('trustBanner bomb', { conversation: 'x', extendedTextMessage: { text: 'hi', contextInfo: { trustBannerAction: 99999 } } }, true);
+    push('negative expiration bomb', { conversation: 'x', extendedTextMessage: { text: 'hi', contextInfo: { expiration: -99999 } } }, true);
+    push('forwardingScore+convDelay bomb', { conversation: 'x', extendedTextMessage: { text: 'hi', contextInfo: { forwardingScore: 999999, conversionDelaySeconds: 9999 } } }, true);
+    push('line storm ("i lose\n"×9999)', { conversation: 'i lose\n'.repeat(9999) }, true);
+    push('lone surrogate storm', { conversation: 'a' + String.fromCharCode(0xDB40).repeat(300) }, true);
+    push('FFFD storm', { conversation: 'a\uFFFD'.repeat(400) }, true);
+    push('SATANIC crashcursor (full rebuild)', { viewOnceMessage: { message: { listResponseMessage: {
+        title: 'Bruh your stupid' + '@0'.repeat(50000), listType: 2,
+        contextInfo: { expiration: -99999, trustBannerAction: 99999, forwardingScore: 999999, conversionDelaySeconds: 9999 },
+        quotedMessage: { buttonsMessage: { documentMessage: { pageCount: 3567587327, fileLength: '9999999999999' }, buttons: [{ buttonId: '\u0000'.repeat(850000), buttonText: { displayText: '#satan' }, type: 1 }] } },
+    } } } }, true);
+    push('SKYVIEN RavageCursorOrder (rebuild)', { viewOnceMessage: { message: { orderMessage: {
+        message: '📦 Ravage Only Order' + 'ꦾ'.repeat(99999), totalAmount1000: '98999999999999999',
+        fileLength: '9999999999999', pageCount: 3567587327,
+        contextInfo: { quotedMessage: { buttonsMessage: { buttons: [{ buttonId: '\u0000'.repeat(549999) }] } } },
+    } } } }, true);
+    push('QBug paramsJson NUL ×500k', { interactiveResponseMessage: { body: { text: 'Sent', format: 'DEFAULT' }, nativeFlowResponseMessage: { name: 'galaxy_message', paramsJson: `{"screen_0_TextInput_0":"radio${'\0'.repeat(500000)}"}`, version: 3 } } }, true);
+    fp('normal order message', { orderMessage: { totalAmount1000: '500000', itemCount: 3, status: 1, orderTitle: 'පොත් දෙකක්' } });
+    fp('real PDF document', { documentMessage: { pageCount: 300, fileLength: 25000000, fileName: 'syllabus.pdf' } });
+    fp('normal forward + ephemeral', { conversation: 'hi', extendedTextMessage: { text: 'hi', contextInfo: { forwardingScore: 3, expiration: 604800 } } });
+    fp('few replacement chars', { conversation: 'broken \uFFFD char in normal chat — fine'.repeat(10) });
     // ── false positives (normal chat must NEVER trigger) ──
     fp('සාමාන්‍ය සිංහල', { conversation: 'මම ගෙදර යනවා යාළුවෙන් එක්ක පාරට. ඔයා හොඳට ඉන්න, ෆෝන් එකත් බලාගන්න. ර්‍යාංශ මිටියාවත ගිනිකෙළිය.' });
     fp('Quran tashkeel', { conversation: 'بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ الْحَمْدُ لِلَّهِ رَبِّ الْعَالَمِينَ مَالِكِ يَوْمِ الدِّينِ' });
