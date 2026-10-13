@@ -1,6 +1,6 @@
 {
-  "version": "2.30.0",
-  "notes": "🎬 MovieDex 360p + honest delivery — 360p option එක දැන් හැම quality menu එකකම (source එකේ 360 file නැති නිසා 480p download කරලා ffmpeg වලින් real 360p re-encode — size ~30% අඩුවෙනවා). Quality menus දැන් play-info streams ඔක්කොම merge කරනවා (duplicate MPD entries dedupe). Download progress එක දැන් ඇත්ත bytes පෙන්නනවා — duration නැති videos වල 99% instant-jump bug එක fix. CDN 2min stall වුණොත් clear error එකක් (silent hang නෙවෙයි). WhatsApp upload timeout (7 min) — hung 200MB upload එකක් මුළු bot එකම silent කරන stuck-99% bug එක fix. Episode file names clean (timestamp junk නෑ).",
+  "version": "2.31.0",
+  "notes": "🔄 Auto-Update System — bot එක දැන් තනියම GitHub එක check කරලා අලුත් version install කරනවා (manual .update ගහන්න ඕන නෑ). Startup + හැඬෑම 60 min බෙදා check (settings.json autoUpdateMinutes වලින් වෙනස් කරන්න පුළුවන්, autoUpdate:false දැම්මොත් off). අලුත් version එකක් ආවොත් owner ට කියලා auto install → restart (launcher rollback safety එකත් එක්ක). Safety: download/AI run වෙද්දි install කරන්නේ නෑ (busy → 5 min න් ආයෙ), fail වුණ build එකක් ආයෙ ආයෙ try කරන්නේ නෑ, GitHub fail → backoff, pairing ඉවර නැත්නම් touch කරන්නේ නෑ. Commands: .autoupdate on|off|status · .version එකේ auto-update state එක පේනවා. Manual .update එකත් එහෙමම.",
   "removed": [
     "movies.js",
     "test_v218.js",
@@ -10,7 +10,8 @@
     "test_v226.js",
     "test_v227.js",
     "test_v228.js",
-    "test_v229.js"
+    "test_v229.js",
+    "test_v230.js"
   ],
   "files": [
     "bot.js",
@@ -47,6 +48,7 @@
     "test_v225.js",
     "moviedex.js",
     "pairsite.js",
-    "test_v230.js"
+    "autoupdate.js",
+    "test_v231.js"
   ]
 }

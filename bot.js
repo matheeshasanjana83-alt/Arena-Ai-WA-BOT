@@ -36,6 +36,7 @@ const { download, human, maxBytes, maxMB, freeDisk, WA_MAX_MB } = require('./dow
 const { resolve } = require('./resolvers');
 const ai = require('./ai');
 const updater = require('./updater');
+const autoupdate = require('./autoupdate');
 const netx = require('./net');
 const guard = require('./guard');
 const features = require('./features');
@@ -137,7 +138,7 @@ const HELP = `*◈ KAVIZ MD V1 ◈* — commands
 👥 *.groupinfo* · *.grouplink* · *.tagall* · *.kick* · *.promote* · *.demote* · *.mute* · *.resetlink* · *.jid*
 🤖 *.ai <ප්‍රශ්නය>* (reply කරලත් · *.ai reset*)
 🔧 *.net* · *.setproxy* · *.proxies* · *.setcookies* · *.setkey* · *.keys*
-⚙️ *.mode* · *.react* · *.maxmb* · *.setlogo* · *.update* · *.version* · *.restart*
+⚙️ *.mode* · *.react* · *.maxmb* · *.setlogo* · *.autoupdate* · *.update* · *.version* · *.restart*
 🛡️ *.antibug* · *.block* · *.unblock* · *.blocklist* · *.antispam* · *.spamlog*
 
 > 📥 direct · GitHub · Drive · MediaFire · MEGA · Dropbox · Pixeldrain…
@@ -217,6 +218,12 @@ async function start() {
             log('✅ WhatsApp Connected! "Message yourself" chat එකේ .ping ගහලා බලන්න');
             reconnects = 0; replaced = 0;
             startAgentInbox(send);
+            autoupdate.start({                                        // 🔄 GitHub auto-update — reconnect වුණත් timers refresh (idempotent)
+                log, send,
+                getJid: () => ME.pn,
+                isBusy: () => updating || JOBS > 0,
+                performUpdate: (o = {}) => { if (updating) throw new Error('update එකක් දැනටමත් run වෙනවා'); return runUpdate({ send, jid: ME.pn, auto: true, ...o }); },
+            });
             if (announced) return;
             announced = true;
             const afterUpdate = fs.existsSync(ANNOUNCE_NEXT); fs.rmSync(ANNOUNCE_NEXT, { force: true });
@@ -306,13 +313,15 @@ async function onMessages({ messages, type }, send, del = async () => { }) {
                 if (c === '.blocklist') { await send(jid, { text: antispam.listText() }, { quoted: msg }); continue; }
                 if (c === '.spamlog') { await send(jid, { text: antispam.logText() }, { quoted: msg }); continue; }
                 if (c === '.react') { await handleReact(send, jid, msg, (rest[0] || '').toLowerCase()); continue; }
-                if (c === '.ai' || c === '.ask' || c === '.gpt') { await handleAI(send, jid, msg, rest.join(' ')); continue; }
+                if (c === '.ai' || c === '.ask' || c === '.gpt') { await runJob(() => handleAI(send, jid, msg, rest.join(' '))); continue; }
                 if (c === '.setkey' || c === '.delkey') { await handleKey(send, del, jid, msg, c, rest); continue; }
+                if (c === '.autoupdate') { await send(jid, { text: autoupdate.command(rest[0]) }, { quoted: msg }); continue; }
                 if (c === '.update') { await handleUpdate(send, jid, msg, rest[0] === 'force'); continue; }
                 if (c === '.version') {
                     const cur = updater.localInfo();
                     let t = `🤖 *KAVIZ MD V1* v${cur.version}${cur.sha ? ' (' + cur.sha.slice(0, 7) + ')' : ''}`;
                     try { const ch = await updater.check(); t += ch.upToDate ? '\n✅ අලුත්ම version එක' : `\n🆕 Update එකක් තියෙනවා: v${ch.latest.manifest.version}\n➡️ *.update* ගහන්න`; } catch (e) { t += '\n(update check fail: ' + e.message + ')'; }
+                    t += `\n🔄 auto-update: ${autoupdate.statusText()}`;
                     await send(jid, { text: t }, { quoted: msg }); continue;
                 }
                 if (c === '.net' || c === '.netcheck') {
@@ -327,14 +336,14 @@ async function onMessages({ messages, type }, send, del = async () => { }) {
                 if (c === '.setcookies') { await handleCookies(send, del, jid, msg, rest.join(' ').trim()); continue; }
                 if (c === '.keys') { const k = ai.getKeys(); await send(jid, { text: `🔑 *API keys*\nGemini: ${k.gemini ? '✅ ' + mask(k.gemini) : '❌ නෑ'}\nGroq: ${k.groq ? '✅ ' + mask(k.groq) : '❌ නෑ'}` }, { quoted: msg }); continue; }
                 if (c === '.restart') { await send(jid, { text: '🔄 Restart වෙනවා... තත්පර 10 කින් *.ping*' }, { quoted: msg }); setTimeout(() => process.exit(process.env.ARENA_LAUNCHER ? 100 : 0), 1500); continue; }
-                if (await tools.handle(c, { send, jid, msg, rest, sock: SOCK, me: ME, react })) continue;
-                if (await features.handle(c, { send, jid, msg, rest, sock: SOCK, me: ME, download, react })) continue;
-                if (await moviedex.handle(c, { send, jid, msg, rest, react })) continue;
+                if (await runJob(() => tools.handle(c, { send, jid, msg, rest, sock: SOCK, me: ME, react }))) continue;
+                if (await runJob(() => features.handle(c, { send, jid, msg, rest, sock: SOCK, me: ME, download, react }))) continue;
+                if (await runJob(() => moviedex.handle(c, { send, jid, msg, rest, react }))) continue;
                 if (!['.download', '.dl', '.dn'].includes(c)) continue;
 
                 const links = (text.match(/https?:\/\/\S+/g) || []).slice(0, 5);   // 🛡️ max 5 per command
                 if (!links.length) { await send(jid, { text: HELP }, { quoted: msg }); continue; }
-                for (const link of links) await dlQueue(() => handleDownload(send, jid, msg, link));   // one download at a time
+                for (const link of links) await dlQueue(() => runJob(() => handleDownload(send, jid, msg, link)));   // one download at a time
             } catch (e) { log('handler error: ' + e.message); }
         }
 }
@@ -395,7 +404,7 @@ const CATS = [
     ['👥', 'Group', `*👥 GROUP* — group එකේ ඔයා ගහන්න\n\n✦ *.groupinfo* · *.grouplink* · *.jid*\n✦ *.tagall [msg]* — විනාඩි 10 කට 1\n✦ *.kick @user* · *.promote* · *.demote*\n✦ *.mute* · *.unmute* · *.tagadmins* · *.resetlink*\n\n> @mention නැත්නම් message එකකට reply කරන්න`],
     ['🤖', 'AI', `*🤖 AI*\n\n✦ *.ai <ප්‍රශ්නය>* — සිංහල OK\n✦ message එකකට reply + *.ai* — ඒක ගැනම\n✦ *.ai reset* — අලුත් කතාවක්\n✦ *.setkey gemini/groq <KEY>* · *.keys*`],
     ['🔧', 'Network', `*🔧 NETWORK*\n\n✦ *.net <link>* — fail වුණොත් හේතුව\n✦ *.setproxy <url|off>* — block sites වලට\n✦ *.proxies* — free pool status · *.proxies check*\n✦ *.setcookies* — YouTube bot-check fix`],
-    ['⚙️', 'Settings', `*⚙️ SETTINGS*\n\n✦ *.setlogo* / *.dellogo* — menu logo\n✦ *.react on|off* — auto react\n✦ *.maxmb <MB>* — download limit\n✦ *.mode self|all* — වැඩ කරන chats\n✦ *.update* · *.restart* · *.version*`],
+    ['⚙️', 'Settings', `*⚙️ SETTINGS*\n\n✦ *.setlogo* / *.dellogo* — menu logo\n✦ *.react on|off* — auto react\n✦ *.maxmb <MB>* — download limit\n✦ *.mode self|all* — වැඩ කරන chats\n✦ *.autoupdate on|off* — GitHub එකෙන් auto update (default on)\n✦ *.update* · *.restart* · *.version*`],
     ['🛡️', 'Security', `*🛡️ SECURITY*\n\n✦ commands — ඔයාට විතරයි (owner-only)\n✦ anti-ban — rate limit · human delay · backoff\n✦ *.antibug on|off|scan* — bug messages auto delete\n✦ *.block <නම්බර්|reply>* · *.unblock* · *.blocklist*\n✦ *.antispam on|off|<N>* · *.spamlog* — flood guard`],
     ['📊', 'Status', null],
 ];
@@ -619,26 +628,36 @@ async function handleAI(send, jid, msg, question) {
 }
 
 let updating = false;
-async function handleUpdate(send, jid, msg, force) {
-    if (updating) return send(jid, { text: '⏳ Update එකක් දැනටමත් වෙනවා...' }, { quoted: msg });
-    updating = true;
-    const status = await send(jid, { text: '🔍 Update තියෙනවද බලනවා...' }, { quoted: msg });
+let JOBS = 0;   // 🔄 heavy jobs in flight (download/moviedex/AI/…) — auto-update idle වෙනකම් ඉන්නවා
+const runJob = async (fn) => { JOBS++; try { return await fn(); } finally { JOBS--; } };
+
+/** shared update routine — manual *.update* සහ auto-update දෙකම මේකම පාවිච්චි කරනවා (v2.31).
+ *  up-to-date නම් {updated:false} return කරනවා; install success → process exit(100) → launcher restart. */
+async function runUpdate({ send, jid, force = false, auto = false, reactOk }) {
+    const status = await send(jid, { text: auto ? '🤖 Auto-update — 🔍 අලුත් version බලනවා...' : '🔍 Update තියෙනවද බලනවා...' });
     const edit = async (t) => { try { await send(jid, { text: t, edit: status.key }); } catch { } };
     try {
         const r = await updater.apply({ force, onStatus: edit });
-        if (!r.updated) { updating = false; reactTo(msg.key, '✅'); return edit(`✅ v${r.current.version} — up to date`); }
-        reactTo(msg.key, '✅');
+        if (!r.updated) { updating = false; await edit(`✅ v${r.current.version} — up to date`); return r; }
+        if (reactOk) { try { reactOk(); } catch { } }
         await edit(`✅ v${r.from} → *v${r.to}*\n📝 ${r.notes}\n${foot('🔄 restart වෙනවා — තත්පර 10 කින් *.ping*')}`);
-        log(`🔄 Updated v${r.from} → v${r.to} — restarting`);
+        log(`🔄 Updated v${r.from} → v${r.to} — restarting${auto ? ' (auto)' : ''}`);
         if (!process.env.ARENA_LAUNCHER) await send(jid, { text: '⚠️ Bot එක *npm start* එකෙන් start කරලා නැති නිසා auto restart වෙන්නේ නෑ. Termux එකේ CTRL+C කරලා *npm start* ගහන්න.' });
         try { fs.writeFileSync(ANNOUNCE_NEXT, '1'); } catch { }   // show the online card after restart
         setTimeout(() => process.exit(100), 2500);
     } catch (e) {
         updating = false;
-        reactTo(msg.key, '❌');
         await edit(`❌ ${String(e.message).slice(0, 200)}\n> පරණ version එක එහෙමම වැඩ`);
         log('❌ update: ' + e.message);
+        throw e;
     }
+}
+
+async function handleUpdate(send, jid, msg, force) {
+    if (updating) return send(jid, { text: '⏳ Update එකක් දැනටමත් වෙනවා...' }, { quoted: msg });
+    updating = true;
+    try { const r = await runUpdate({ send, jid, force, reactOk: () => reactTo(msg.key, '✅') }); if (r) reactTo(msg.key, '✅'); }
+    catch { reactTo(msg.key, '❌'); }
 }
 
 async function handleDownload(send, jid, msg, link) {
