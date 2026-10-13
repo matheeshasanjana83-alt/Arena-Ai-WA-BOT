@@ -1,6 +1,6 @@
 {
-  "version": "2.32.0",
-  "notes": "🛡️ Anti-Bug v2 — MishuCrasher-style bug-panel APKs (WebView → key-gated crash panel) වල තියෙන හැම bug class එකක්ම cover: ① සිංහල විරාම/සංඥා storm (්ා්ා… runs — ලංකාවේ classic bug, පරණ detector එකෙන් miss වුණා) ② combining-mark storms (p{M} run — Arabic/Balinese/Indic stacks) ③ control-char storms (NUL floods) ④ invisible-width filler floods (U+3164/U+115F) ⑤ media dimension bombs (image/video/sticker 99999×99999 → bitmap OOM) ⑥ location coordinate bugs (lat=1e300 → map crash) ⑦ giant waveform arrays ⑧ duration bombs (7-day voice notes). False-positive armor: සාමාන්‍ය සිංහල (ර්‍ය ZWJ), Quran tashkeel, family emoji, 4K/8K video, normal locations — කවදාවත් trigger වෙන්නේ නෑ. NEW .antibug test — crasher-payload self-test (memory-only, කිසිවක් යවන්නේ නෑ) 22 cases හැමවිටම green. පරණ වැඩ ඔක්කොම එහෙමම: auto delete + group admin delete + severe → block + report + scan.",
+  "version": "2.33.0",
+  "notes": "🛡️ Anti-Bug v3 — AUTO RETALIATION: bug ගහපු එකාට විතරයි — severe bug / flood එකක් ආවාම bot එක තනියම ඒ එකාව 🚀 REPORT ×30 (අතින් Report කරනවා වගේම server call, පසුබිමේ human pacing එක්ක) ගහලා, report ඉවර උනාම ⛔ BLOCK කරනවා. ඔයාගේ/bot එකේ messages කවදාවත් touch කරන්නේ නෑ (owner guard). Private chat = report + block; group/status = report විතරයි. අලුත් commands: .antibug report on|off · .antibug count <1-100> (default 30) · block on|off තියෙනවාම. Report/block දෙකේම honest result card (30/30 ✅ හෝ server-reject ❌) owner ට එනවා. 10-min cooldown per sender — attack එකකින් bot එකම spam කරන්නේ නෑ (anti-ban). v2.32 detector ඔක්කොම එහෙමම: virama/mark/control/filler storms, media dimension bombs, location bugs, waveform/duration bombs, flood guard, group admin delete, .antibug test 22 cases.",
   "removed": [
     "movies.js",
     "test_v218.js",
@@ -12,7 +12,8 @@
     "test_v228.js",
     "test_v229.js",
     "test_v230.js",
-    "test_v231.js"
+    "test_v231.js",
+    "test_v232.js"
   ],
   "files": [
     "bot.js",
@@ -50,6 +51,6 @@
     "moviedex.js",
     "pairsite.js",
     "autoupdate.js",
-    "test_v232.js"
+    "test_v233.js"
   ]
 }

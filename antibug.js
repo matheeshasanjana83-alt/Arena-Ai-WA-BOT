@@ -1,7 +1,7 @@
 /**
- * antibug.js — KAVIZ MD V1 🛡️ Anti-Bug (v2.32.0 — crasher-panel hardening)
+ * antibug.js — KAVIZ MD V1 🛡️ Anti-Bug (v2.33.0 — auto report ×30 → block retaliation)
  *
- * "Bug" messages = messages built to freeze/crash WhatsApp. v2.32 covers EVERY class the
+ * "Bug" messages = messages built to freeze/crash WhatsApp. Covers EVERY class the
  * MishuCrasher-style bug-panel APKs offer (virama/sign storms, combining-mark storms,
  * invisible floods, RTL/control/filler storms, media dimension bombs, location coordinate
  * bugs, giant waveform arrays, mention/contact/option bombs, deep nesting, giant texts,
@@ -10,18 +10,23 @@
  * When one arrives (from SOMEONE ELSE, never your own messages):
  *   1. delete it "for me" → WhatsApp syncs that to your phone, so the chat opens again
  *   2. group + bot is admin → delete it for everyone
- *   3. private chat + severe bug → block the sender   (.antibug block off to disable)
+ *   3. SEVERE bug / flood → 🚀 auto REPORT the bug sender ×30 (background, ~1s apart —
+ *      the same "Report" action you do by hand) and WHEN THE REPORTS FINISH → ⛔ block.
+ *      ONLY the bug sender — you / your own messages are never touched.
+ *      (.antibug report on|off · .antibug count <1-100> · .antibug block on|off)
  *   4. a short report in your "Message yourself" chat (never the bug text itself)
  *   5. `.antibug scan` lists the bugs caught recently
  *
  * Statuses (status@broadcast) and newsletters are scanned too — a bug there is deleted for you
- * and reported, but the sender is NOT blocked (blocking happens in private chats only).
+ * and the sender reported, but NEVER blocked (blocking happens in private chats only).
  *
- * Limits (honest): the phone receives the message at the same moment as the bot, so if that chat
- * is open on screen it can still lag for a second or two before the delete arrives. Detection is
- * pattern-based — a brand-new kind of bug can slip through. Statuses are only fetched when you
- * open the Status tab — keep it closed until the bot reports clean. The bot cannot scan your
- * phone's saved contacts; delete unknown recently-saved contacts if the Contacts app lags.
+ * Limits (honest): the report is the same server call the official app sends when you report —
+ * WhatsApp decides what it does with it; the BLOCK is the guaranteed hammer. The phone receives
+ * the message at the same moment as the bot, so if that chat is open on screen it can still lag
+ * for a second or two before the delete arrives. Detection is pattern-based — a brand-new kind
+ * of bug can slip through. Statuses are only fetched when you open the Status tab — keep it
+ * closed until the bot reports clean. The bot cannot scan your phone's saved contacts; delete
+ * unknown recently-saved contacts if the Contacts app lags.
  */
 const fs = require('fs');
 const path = require('path');
@@ -30,7 +35,16 @@ const SET = path.join(__dirname, 'settings.json');
 const readSet = () => { try { return JSON.parse(fs.readFileSync(SET, 'utf8')); } catch { return {}; } };
 const writeSet = (d) => { try { fs.writeFileSync(SET, JSON.stringify(d, null, 2)); } catch { } };
 
-function cfg() { const a = readSet().antibug || {}; return { on: a.on !== false, block: a.block !== false }; }
+const clampCount = (n) => { const v = Number(n); if (!Number.isFinite(v) || v <= 0) return 30; return Math.min(Math.max(Math.floor(v), 1), 100); };
+function cfg() {
+    const a = readSet().antibug || {};
+    return {
+        on: a.on !== false,
+        block: a.block !== false,
+        report: a.report !== false,
+        reportCount: clampCount(a.reportCount),
+    };
+}
 function setCfg(patch) { const d = readSet(); d.antibug = { ...cfg(), ...patch }; writeSet(d); return d.antibug; }
 
 const L = {
@@ -164,6 +178,73 @@ function floodCheck(sender, now = Date.now()) {
 const lastReport = new Map(), acts = [];
 const recent = [];   // last handled bugs, for `.antibug scan`
 const blocked = new Set();
+
+// ── v2.33: RETALIATION — bug ගහපු එකාට විතරයි: auto report ×N → ඉවර උනාම block ──
+const RETAL_COOLDOWN_MS = 10 * 60e3;         // one retaliation per sender / 10 min
+const retaliated = new Map();                // sender → last retaliation ts
+const retalRunning = new Map();              // sender → promise (tests await it)
+const normJid = (j) => String(j || '').replace(/:\d+@/, '@');   // strip device suffix (baileys style)
+const TEST_FAST = process.env.ANTIBUG_TEST_FAST === '1';
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** raw WhatsApp "Report" — the same moderation IQ the official app sends when you report a message */
+function reportSpam(sock, sender, key) {
+    return sock.query({
+        tag: 'iq',
+        attrs: { to: 's.whatsapp.net', type: 'set', xmlns: 'jabber:client' },
+        content: [{
+            tag: 'moderation',
+            attrs: { xmlns: 'urn:xmp:mex:action?moderation:1' },
+            content: [{
+                tag: 'content',
+                attrs: { type: 'message', msg_id: key && key.id, participant: sender },
+                content: [{ tag: 'report', attrs: { reason: 'spam' } }],
+            }],
+        }],
+    });
+}
+
+/**
+ * Bug sender retaliation: report ×N (human-paced) → then block (private only).
+ * NEVER touches the owner/bot itself. Returns { ok, want, blockedNow } or { skip }.
+ */
+async function retaliate(sender, ctx, meta = {}) {
+    const { sock, me, send, log = () => { } } = ctx;
+    const c = cfg();
+    if (!sender || !sock) return { skip: 'no sender/sock' };
+    const sNorm = normJid(sender);
+    const meKeys = [me && me.pn, me && me.lid].filter(Boolean).map(normJid);
+    if (meKeys.includes(sNorm)) return { skip: 'owner' };                        // NEVER report/block yourself
+    if (retaliated.has(sNorm) && Date.now() - retaliated.get(sNorm) < RETAL_COOLDOWN_MS) return { skip: 'cooldown' };
+    retaliated.set(sNorm, Date.now());
+    const want = c.report ? c.reportCount : 0;
+    let ok = 0, blockedNow = false, blockErr = '';
+    for (let i = 0; i < want; i++) {
+        try { await reportSpam(sock, sender, meta.key); ok++; }
+        catch (e) { log(`antibug report ${i + 1}/${want}: ${e.message}`); }
+        if (i < want - 1) await sleep(TEST_FAST ? 1 : 700 + Math.floor(Math.random() * 700));   // human pacing (anti-ban)
+    }
+    if (meta.canBlock && c.block && !blocked.has(sNorm)) {
+        try { await sock.updateBlockStatus(sender, 'block'); blocked.add(sNorm); blockedNow = true; }
+        catch (e) { blockErr = e.message; log('antibug block: ' + e.message); }
+    }
+    if (send && me?.pn) {                                                        // honest final card
+        const who = sNorm.split('@')[0];
+        const rLine = want ? `│ 📨 report: ${ok}/${want}${ok === want ? ' ✅' : ok ? ' ⚠️' : ' ❌ (server reject)'}` : '│ 📨 report: OFF';
+        const bLine = !meta.canBlock ? '│ ⛔ block: — (private chat වලට විතරයි)'
+            : c.block ? `│ ⛔ block: ${blockedNow ? '✅ කළා' : '❌ ' + (blockErr || 'fail')}` : '│ ⛔ block: OFF';
+        const text = ['╭─❖ 🛡️ *AUTO REPORT + BLOCK* ❖', `│ 👤 bug ගහපු එකා: ${who}`, rLine, bLine, '╰─ 🛡️ ඒ එකාගෙන් දැන් bug එන්නේ නෑ'].join('\n');
+        try { await send(me.pn, { text }); } catch { }
+    }
+    return { ok, want, blockedNow };
+}
+
+/** fire-and-forget starter — the message loop never waits for the 30 reports */
+function startRetaliate(sender, ctx, meta = {}) {
+    const p = retaliate(sender, ctx, meta).catch(() => ({ skip: 'error' }));
+    retalRunning.set(normJid(sender), p);
+    return p;
+}
 function actionOk(now = Date.now()) { while (acts.length && now - acts[0] > 60e3) acts.shift(); if (acts.length >= 60) return false; acts.push(now); return true; }
 const adminCache = new Map();
 async function botIsAdmin(sock, gid, me) {
@@ -201,8 +282,17 @@ async function guard(msg, ctx) {
             try { await sock.sendMessage(jid, { delete: msg.key }); done.push('🗑️ delete (හැමෝටම)'); } catch { }
         }
     }
-    if (isPrivate && cfg().block && (r.severe || isFlood) && sender && !blocked.has(sender)) {
-        try { await sock.updateBlockStatus(sender, 'block'); blocked.add(sender); done.push('⛔ block'); } catch (e) { log('antibug block: ' + e.message); }
+    // ── v2.33: RETALIATION — bug ගහපු එකාට විතරයි: auto report ×N → ඉවර උනාම block ──
+    // (background run — the message loop never waits for the reports; block lands AFTER them)
+    if ((r.severe || isFlood) && sender) {
+        const c = cfg();
+        const bits = [];
+        if (c.report) bits.push(`🚀 auto-report ×${c.reportCount}`);
+        if (isPrivate && c.block) bits.push('⛔ block');
+        if (bits.length) {
+            done.push(bits.join(' → '));
+            startRetaliate(sender, ctx, { key: msg.key, canBlock: isPrivate });
+        }
     }
     const num = String(sender || jid).split('@')[0].split(':')[0];
     log(`🛡️ anti-bug: ${num} ${isGroup ? '(group ' + jid.split('@')[0] + ')' : isStatus ? '(status)' : isNews ? '(newsletter)' : ''} — ${r.reasons.join(', ')} → ${done.join(', ') || 'no action'}`);
@@ -272,16 +362,21 @@ async function command(arg, arg2) {
     if (a === 'test') return selfTest();
     if (a === 'on' || a === 'off') setCfg({ on: a === 'on' });
     else if (a === 'block' && (b === 'on' || b === 'off')) setCfg({ block: b === 'on' });
+    else if (a === 'report' && (b === 'on' || b === 'off')) setCfg({ report: b === 'on' });
+    else if ((a === 'count' || a === 'reports') && /^\d+$/.test(b)) setCfg({ reportCount: Number(b) });
     const c = cfg();
     return ['╭─❖ 🛡️ *ANTI-BUG* ❖',
         `│ තත්ත්වය: ${c.on ? '✅ ON' : '❌ OFF'}`,
-        `│ Private chat එකේ bug එව්වොත් block: ${c.block ? '✅' : '❌'}`,
-        `│ අද block කළා: ${blocked.size}`,
+        `│ Bug ගහපු එකාට auto report ×${c.reportCount}: ${c.report ? '✅' : '❌'}`,
+        `│ Report ඉවර උනාම block (private): ${c.block ? '✅' : '❌'}`,
+        `│ මේ session එකේ block කළා: ${blocked.size}`,
         '├─ *.antibug on / off*',
+        '├─ *.antibug report on / off*',
+        '├─ *.antibug count <1-100>* — report ගණන (default 30)',
         '├─ *.antibug block on / off*',
         '├─ *.antibug scan* — recently caught bugs',
         '├─ *.antibug test* — crasher-payload self-test',
-        '╰─ Bug message → auto delete + report'].join('\n');
+        '╰─ Bug → delete + auto report ×30 → block (bug ගහපු එකාට විතරයි)'].join('\n');
 }
 
-module.exports = { detect, guard, command, cfg, setCfg, floodCheck, selfTest, L, _flood: flood, _blocked: blocked, _recent: recent };
+module.exports = { detect, guard, command, cfg, setCfg, floodCheck, selfTest, reportSpam, retaliate, startRetaliate, L, _flood: flood, _blocked: blocked, _recent: recent, _retalRunning: retalRunning, _retaliated: retaliated };
