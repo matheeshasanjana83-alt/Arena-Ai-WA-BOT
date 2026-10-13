@@ -1,9 +1,11 @@
 /**
- * antibug.js — KAVIZ MD V1 🛡️ Anti-Bug (v2.13.1)
+ * antibug.js — KAVIZ MD V1 🛡️ Anti-Bug (v2.32.0 — crasher-panel hardening)
  *
- * "Bug" messages = messages built to freeze/crash WhatsApp: giant texts full of invisible /
- * combining characters, thousands of mentions, huge contact cards, absurdly deep nesting,
- * giant fields inside buttons/lists/polls/locations, or a flood of messages.
+ * "Bug" messages = messages built to freeze/crash WhatsApp. v2.32 covers EVERY class the
+ * MishuCrasher-style bug-panel APKs offer (virama/sign storms, combining-mark storms,
+ * invisible floods, RTL/control/filler storms, media dimension bombs, location coordinate
+ * bugs, giant waveform arrays, mention/contact/option bombs, deep nesting, giant texts,
+ * vCard bombs, message floods) — plus the original generic size/structure detectors.
  *
  * When one arrives (from SOMEONE ELSE, never your own messages):
  *   1. delete it "for me" → WhatsApp syncs that to your phone, so the chat opens again
@@ -47,12 +49,25 @@ const L = {
     invVisible: 50,     // ... but fewer visible characters than this
     vcardTel: 20,       // one contact card with more phone numbers than this
     vcardLines: 200,    // one vCard with more lines than this
+    // ── v2.32: crasher-panel classes (MishuCrasher-style bug tools) ──
+    markRun: 20,        // ≥20 consecutive combining marks (\p{M}) — virama/Arabic/Balinese/Indic storms
+    sinhRun: 15,        // ≥15 consecutive Sinhala signs (් ා ැ … + ZWJ) — the local classic bug
+    ctrl: 200,          // control chars (NUL/ESC…) in one string — normal text has 0
+    arrLen: 2048,       // giant arrays (waveform bombs etc.)
+    mediaDim: 10000,    // image/video/sticker width|height above this = bitmap OOM bomb
+    mediaPix: 40000000, // …or total pixels absurd (4K frame = 8.3M — safe)
+    durMax: 604800,     // audio/video duration above 7 days = UI glitch bomb
 };
 
 // invisible / combining / direction-control characters used by "virtex" bugs.
-// (Sinhala vowel signs U+0D80–0DFF are NOT in here, and a normal emoji ZWJ is far below the limits)
-const WEIRD = /[\u0300-\u036F\u0483-\u0489\u0591-\u05C7\u0610-\u061A\u064B-\u065F\u0E31\u0E34-\u0E3A\u0E47-\u0E4E\u1AB0-\u1AFF\u1DC0-\u1DFF\u200B-\u200F\u202A-\u202E\u2060-\u206F\u20D0-\u20FF\uFE00-\uFE0F\uFE20-\uFE2F\uFEFF]|\uDB40[\uDC00-\uDDEF]|\uD834[\uDD65-\uDD69\uDD6D-\uDD72]/g;
-const TEXT_KEYS = new Set(['conversation', 'text', 'caption', 'contentText', 'description', 'footerText', 'body', 'title', 'name', 'displayName']);
+// (Sinhala vowel signs U+0D80–0DFF are NOT in here — the sinhRun rule below handles their STORMS
+// without flagging normal Sinhala text; a normal emoji ZWJ is far below the limits)
+const WEIRD = /[\u0300-\u036F\u0483-\u0489\u0591-\u05C7\u0610-\u061A\u064B-\u065F\u0E31\u0E34-\u0E3A\u0E47-\u0E4E\u1AB0-\u1AFF\u1DC0-\u1DFF\u200B-\u200F\u202A-\u202E\u2060-\u206F\u20D0-\u20FF\uFE00-\uFE0F\uFE20-\uFE2F\uFEFF\u115F-\u1160\u180B-\u180F\u3164\uFFA0\uFFF9-\uFFFB]|\uDB40[\uDC00-\uDDEF]|\uD834[\uDD65-\uDD69\uDD6D-\uDD72]/g;
+const MARK_RE = /\p{M}/u;                                              // ANY combining mark (unicode)
+const SINH_RE = /[\u0DCA\u0DCF-\u0DDF\u200D]/;                        // Sinhala signs + ZWJ ("්‍" runs)
+const CTRL_RE = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F\uFFFE\uFFFF]/g;
+const longestRun = (s, re) => { let m = 0, c = 0; for (const ch of s) { if (re.test(ch)) { if (++c > m) m = c; } else c = 0; } return m; };
+const TEXT_KEYS = new Set(['conversation', 'text', 'caption', 'contentText', 'description', 'footerText', 'body', 'title', 'name', 'displayName', 'subject']);
 
 /** pure check — returns { bug, severe, reasons[] } (no network, safe to unit-test) */
 function detect(message) {
@@ -61,10 +76,18 @@ function detect(message) {
     if (!message || typeof message !== 'object') return { bug: false, severe, reasons };
     let total = 0, maxField = 0, maxDepth = 0, weird = 0, textLen = 0, mentions = 0, contacts = 0, options = 0;
     let maxRun = 0, vTel = 0, vLines = 0, longest = '', longestWeird = 0;
+    let markRun = 0, sinhRun = 0, ctrlMax = 0, arrBig = 0, medDim = '', badLoc = false, durBig = 0;
     const seen = new Set();
     const walk = (o, d, key) => {
         if (d > maxDepth) maxDepth = d;
         if (d > 64) return;                                     // stop walking absurd depth
+        if (typeof o === 'number') {                            // v2.32: coordinate/duration bombs
+            if (key === 'degreesLatitude' || key === 'degreesLongitude') {
+                const lim = key === 'degreesLatitude' ? 90.1 : 180.1;
+                if (!Number.isFinite(o) || Math.abs(o) > lim) badLoc = true;
+            } else if (key === 'seconds' && o > L.durMax) durBig = o;
+            return;
+        }
         if (typeof o === 'string') {
             total += o.length; if (o.length > maxField) maxField = o.length;
             if (key === 'vcard') {                                   // contact-card bombs
@@ -79,6 +102,11 @@ function detect(message) {
                     let run = 0;
                     for (const ch of o) { if (/\s/.test(ch)) run = 0; else if (++run > maxRun) { maxRun = run; if (maxRun > L.run) break; } }
                 }
+                if (o.length > 300) {                               // v2.32: mark/sign/control storms
+                    if (MARK_RE.test(o)) { const mr = longestRun(o, MARK_RE); if (mr > markRun) markRun = mr; }
+                    if (o.includes('\u0DCA') || o.includes('\u200D')) { const sr = longestRun(o, SINH_RE); if (sr > sinhRun) sinhRun = sr; }
+                    const cm = o.match(CTRL_RE); if (cm && cm.length > ctrlMax) ctrlMax = cm.length;
+                }
             }
             return;
         }
@@ -89,12 +117,24 @@ function detect(message) {
             if (key === 'mentionedJid' || key === 'groupMentions') mentions += o.length;
             else if (key === 'contacts') contacts += o.length;
             else if (/^(options|rows|buttons|sections|cards|pollOptions)$/.test(key || '')) options += o.length;
+            if (o.length > L.arrLen && key !== 'mentionedJid' && key !== 'groupMentions' && key !== 'contacts') arrBig = Math.max(arrBig, o.length);
             for (let i = 0; i < o.length && i < 5000; i++) walk(o[i], d + 1, key);
             return;
+        }
+        if (typeof o.width === 'number' && typeof o.height === 'number') {   // v2.32: media dimension bombs
+            const mx = Math.max(o.width, o.height);
+            if (mx > L.mediaDim || o.width * o.height > L.mediaPix) medDim = `${o.width}x${o.height}`;
         }
         for (const k of Object.keys(o)) walk(o[k], d + 1, k);
     };
     walk(message, 0, '');
+    if (markRun > L.markRun) { reasons.push(`combining-mark storm run ${markRun}`); severe = true; }
+    if (sinhRun > L.sinhRun) { reasons.push(`සිංහල විරාම/සංඥා storm run ${sinhRun}`); severe = true; }
+    if (ctrlMax > L.ctrl) { reasons.push(`control chars ${ctrlMax}`); severe = true; }
+    if (medDim) { reasons.push(`media dimension bomb ${medDim}`); severe = true; }
+    if (badLoc) { reasons.push('location coordinates bug'); severe = true; }
+    if (arrBig > L.arrLen) reasons.push(`giant array ${arrBig}`);
+    if (durBig) reasons.push(`duration ${Math.round(durBig / 3600)}h`);
     if (maxRun > L.run) { reasons.push(`long unbroken run ${maxRun}`); severe = true; }
     if (longest.length >= L.invMin && longest.length - longestWeird < L.invVisible) { reasons.push('pure invisible message'); severe = true; }
     if (vTel > L.vcardTel) { reasons.push(`contact card TEL ${vTel}`); severe = true; }
@@ -184,9 +224,52 @@ function scanText() {
     return ['╭─❖ 🛡️ *ANTI-BUG SCAN* ❖', `│ caught bugs ${recent.length} (last 10)`, ...rows, '╰─ report eke bug text penne ne'].join('\n');
 }
 
+// ── .antibug test — synthetic crasher-payload self-test (IN-MEMORY ONLY, nothing is ever sent) ──
+function selfTest() {
+    const R = [];
+    const push = (name, msg, expectSevere) => {
+        const r = detect(msg);
+        R.push({ name, ok: r.bug && (!expectSevere || r.severe), bug: r.bug, severe: r.severe, why: r.reasons.join(', ') || '-' });
+    };
+    const fp = (name, msg) => {
+        const r = detect(msg);
+        R.push({ name, ok: !r.bug, bug: r.bug, severe: r.severe, why: r.reasons.join(', ') || '-' });   // normal → NO detection = pass
+    };
+    // ── bug classes (MishuCrasher-panel menu equivalents) ──
+    push('සිංහල විරාම storm', { conversation: '්ා'.repeat(600) }, true);
+    push('combining-mark storm', { conversation: 'ا' + 'ًٌٍَُِّ'.repeat(500) }, true);
+    push('ZWSP flood', { conversation: 'a\u200B'.repeat(2000) }, true);
+    push('pure invisible', { conversation: '\u200B'.repeat(3000) }, true);
+    push('RTL override storm', { conversation: 'a\u202E'.repeat(1200) }, true);
+    push('control-char storm', { conversation: 'a\u0000'.repeat(400) }, true);
+    push('filler flood (U+3164)', { conversation: '\u3164'.repeat(3000) }, true);
+    push('image dimension bomb', { imageMessage: { width: 99999, height: 99999, caption: 'x' } }, true);
+    push('video dimension bomb', { videoMessage: { width: 1, height: 999999, seconds: 10 } }, true);
+    push('location coordinate bug', { locationMessage: { degreesLatitude: 1e300, degreesLongitude: 90 } }, true);
+    push('giant waveform array', { audioMessage: { seconds: 30, waveform: new Array(5000).fill(9) } }, false);
+    push('unbroken run', { conversation: 'X'.repeat(9000) }, true);
+    push('huge text', { conversation: 'word '.repeat(4000) }, false);   // bug (delete) but NOT block-severe
+    push('vCard bomb', { contactMessage: { displayName: 'v', vcard: Array.from({ length: 40 }, (_, i) => `TEL;TYPE=CELL:+94${i}\n`).join('') } }, true);
+    push('mention bomb', { conversation: 'hi', extendedTextMessage: { text: 'hi', mentionedJid: Array.from({ length: 300 }, (_, i) => `${i}@s.whatsapp.net`) } }, false);
+    // ── false positives (normal chat must NEVER trigger) ──
+    fp('සාමාන්‍ය සිංහල', { conversation: 'මම ගෙදර යනවා යාළුවෙන් එක්ක පාරට. ඔයා හොඳට ඉන්න, ෆෝන් එකත් බලාගන්න. ර්‍යාංශ මිටියාවත ගිනිකෙළිය.' });
+    fp('Quran tashkeel', { conversation: 'بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ الْحَمْدُ لِلَّهِ رَبِّ الْعَالَمِينَ مَالِكِ يَوْمِ الدِّينِ' });
+    fp('family emoji ZWJ', { conversation: '👨‍👩‍👧‍👦 ❤️ 🇱🇰 කට්ටිය හැමෝටම ජය! ඔයාගේ photo එක ලස්සනයි 👌' });
+    fp('4K video', { videoMessage: { width: 3840, height: 2160, seconds: 600 } });
+    fp('normal location', { locationMessage: { degreesLatitude: 6.9271, degreesLongitude: 79.8612 } });
+    fp('long normal message', { conversation: 'මේක නිකන් දිග message එකක්. '.repeat(200) });
+    fp('normal voice note', { audioMessage: { seconds: 180, waveform: new Array(64).fill(3) } });
+    const pass = R.filter((r) => r.ok).length;
+    const lines = ['╭─❖ 🛡️ *ANTI-BUG SELF-TEST* ❖'];
+    for (const r of R) lines.push(`│ ${r.ok ? '✅' : '❌'} ${r.name}${r.ok ? '' : ' ← ' + r.why}`);
+    lines.push(`╰─ ${pass}/${R.length} — ${pass === R.length ? 'හැම bug class එකක්ම detect ✅' : 'කැඩුණු cases තියෙනවා ⚠️'} (test = memory only, කිසිවක් යවන්නේ නෑ)`);
+    return lines.join('\n');
+}
+
 async function command(arg, arg2) {
     const a = (arg || '').toLowerCase(), b = (arg2 || '').toLowerCase();
     if (a === 'scan') return scanText();
+    if (a === 'test') return selfTest();
     if (a === 'on' || a === 'off') setCfg({ on: a === 'on' });
     else if (a === 'block' && (b === 'on' || b === 'off')) setCfg({ block: b === 'on' });
     const c = cfg();
@@ -197,7 +280,8 @@ async function command(arg, arg2) {
         '├─ *.antibug on / off*',
         '├─ *.antibug block on / off*',
         '├─ *.antibug scan* — recently caught bugs',
+        '├─ *.antibug test* — crasher-payload self-test',
         '╰─ Bug message → auto delete + report'].join('\n');
 }
 
-module.exports = { detect, guard, command, cfg, setCfg, floodCheck, L, _flood: flood, _blocked: blocked, _recent: recent };
+module.exports = { detect, guard, command, cfg, setCfg, floodCheck, selfTest, L, _flood: flood, _blocked: blocked, _recent: recent };

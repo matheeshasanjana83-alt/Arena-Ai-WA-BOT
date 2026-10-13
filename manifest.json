@@ -1,6 +1,6 @@
 {
-  "version": "2.31.0",
-  "notes": "🔄 Auto-Update System — bot එක දැන් තනියම GitHub එක check කරලා අලුත් version install කරනවා (manual .update ගහන්න ඕන නෑ). Startup + හැඬෑම 60 min බෙදා check (settings.json autoUpdateMinutes වලින් වෙනස් කරන්න පුළුවන්, autoUpdate:false දැම්මොත් off). අලුත් version එකක් ආවොත් owner ට කියලා auto install → restart (launcher rollback safety එකත් එක්ක). Safety: download/AI run වෙද්දි install කරන්නේ නෑ (busy → 5 min න් ආයෙ), fail වුණ build එකක් ආයෙ ආයෙ try කරන්නේ නෑ, GitHub fail → backoff, pairing ඉවර නැත්නම් touch කරන්නේ නෑ. Commands: .autoupdate on|off|status · .version එකේ auto-update state එක පේනවා. Manual .update එකත් එහෙමම.",
+  "version": "2.32.0",
+  "notes": "🛡️ Anti-Bug v2 — MishuCrasher-style bug-panel APKs (WebView → key-gated crash panel) වල තියෙන හැම bug class එකක්ම cover: ① සිංහල විරාම/සංඥා storm (්ා්ා… runs — ලංකාවේ classic bug, පරණ detector එකෙන් miss වුණා) ② combining-mark storms (p{M} run — Arabic/Balinese/Indic stacks) ③ control-char storms (NUL floods) ④ invisible-width filler floods (U+3164/U+115F) ⑤ media dimension bombs (image/video/sticker 99999×99999 → bitmap OOM) ⑥ location coordinate bugs (lat=1e300 → map crash) ⑦ giant waveform arrays ⑧ duration bombs (7-day voice notes). False-positive armor: සාමාන්‍ය සිංහල (ර්‍ය ZWJ), Quran tashkeel, family emoji, 4K/8K video, normal locations — කවදාවත් trigger වෙන්නේ නෑ. NEW .antibug test — crasher-payload self-test (memory-only, කිසිවක් යවන්නේ නෑ) 22 cases හැමවිටම green. පරණ වැඩ ඔක්කොම එහෙමම: auto delete + group admin delete + severe → block + report + scan.",
   "removed": [
     "movies.js",
     "test_v218.js",
@@ -11,7 +11,8 @@
     "test_v227.js",
     "test_v228.js",
     "test_v229.js",
-    "test_v230.js"
+    "test_v230.js",
+    "test_v231.js"
   ],
   "files": [
     "bot.js",
@@ -49,6 +50,6 @@
     "moviedex.js",
     "pairsite.js",
     "autoupdate.js",
-    "test_v231.js"
+    "test_v232.js"
   ]
 }

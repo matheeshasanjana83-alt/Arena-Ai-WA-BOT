@@ -290,3 +290,10 @@ Termux setup:
 ආයෙත් start:  cd ~/KAVIZ-MD-V1 && termux-wake-lock && npm start
 Re-pair:       cd ~/KAVIZ-MD-V1 && rm -rf auth && npm start
 Test:          npm test
+
+v2.32.0 — 🛡️ Anti-Bug v2: MishuCrasher-class bug panels වල හැම attack එකක්ම cover
+  • අලුත් detectors: සිංහල විරාම/සංඥා storms (්ා්ා…), combining-mark storms, control-char storms,
+    invisible filler floods, media dimension bombs (99999×99999 images), location coordinate bugs,
+    giant waveform arrays, duration bombs — සාමාන්‍ය සිංහල/Arabic/emoji/4K video false-positive නෑ
+  • .antibug test — bug-payload self-test (memory-only; ඔයාගේ chat එකට කිසිවක් යවන්නේ නෑ)
+  • පරණ වැඩ ඔක්කොම: auto delete (මට + group admin) · severe bug → sender block · "Message yourself" report · .antibug scan
