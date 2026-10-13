@@ -88,7 +88,8 @@ const SETTINGS_SNAP = read('settings.json');   // pairKey() writes → restore a
 
     const home = await get('/?key=' + key);
     if (home.code !== 200 || !/ＫＡＶＩＺ ＭＤ Ｖ1/.test(home.text) || !/Linked devices/.test(home.text) || !/pair\?number=/.test(home.text)) throw new Error('pair page broken');
-    if (!home.text.includes('value="' + key + '"')) throw new Error('pair page does not pre-fill key from URL');
+    if (!home.text.includes("const SERVER_KEY = '" + key + "'")) throw new Error('pair page does not embed server key for auto-pair');
+    if (/id="key"/.test(home.text)) throw new Error('page still shows manual key field (should be auto)');
     const st = await get('/status');
     const stj = JSON.parse(st.text);
     if (stj.bot !== 'KAVIZ MD V1' || stj.status !== 'connecting' || stj.uptime !== 42) throw new Error('status JSON broken: ' + st.text);

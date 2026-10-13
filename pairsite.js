@@ -89,9 +89,6 @@ function page(key) {
     <label>📱 WhatsApp number</label>
     <input id="num" type="tel" inputmode="tel" placeholder="077 123 4567 / 9477…" autocomplete="tel">
 
-    <label>🔑 Pair key</label>
-    <input id="key" type="text" value="${esc(key)}" autocomplete="off">
-
     <button id="go" onclick="pair()">🔢 Pairing code එක ගන්න</button>
 
     <div id="code"></div>
@@ -108,6 +105,7 @@ function page(key) {
 </div>
 <script>
 const $ = (i) => document.getElementById(i);
+const SERVER_KEY = '${esc(key)}';   // embedded at render — /pair එකට auto යනවා (field එකක් ඕන නෑ)
 let timer = null;
 function dot(k, t) { $('dot').className = 'dot ' + k; $('st').textContent = t; }
 async function poll() {
@@ -119,7 +117,7 @@ async function poll() {
   } catch { dot('err', '🔴 Bot එක ළඟා වෙන්න බෑ'); }
 }
 async function pair() {
-  const num = $('num').value.trim(), key = $('key').value.trim();
+  const num = $('num').value.trim(), key = SERVER_KEY;
   const b = $('go'); b.disabled = true; b.textContent = '⏳ ඉල්ලනවා…';
   $('msg').style.display = 'none'; $('code').style.display = 'none';
   try {
