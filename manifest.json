@@ -1,6 +1,6 @@
 {
-  "version": "2.37.0",
-  "notes": "🍿 MovieDex download SPEED (v2.37.0): ① video + audio tracks download in PARALLEL (audio waited for the whole video before — tail time gone) ② segment workers 4 → 8 (video) / 6 (audio) ③ ffmpeg mux now ASYNC — the old execFileSync froze the WHOLE bot for minutes during mux, so an episode request sent mid-mux sat unanswered and replayed (users saw downloads \"restart from the beginning\"). Bot stays live mid-download. E2E tested against a local CDN fixture (parallel proof + ordered append + progress + async-mux event-loop proof). Settings panel (v2.36) + Z.ai GLM (v2.35) + Anti-Bug v4 unchanged.",
+  "version": "2.38.0",
+  "notes": "🍿 MovieDex EPISODE RANGE (v2.38.0): .moviedex <n> <seasonRow#> <q#> 70-80 → episodes 70..80 as files (best-quality shortcut: <n> <row#> 70-80). Season quality menu gets a range hint. 🐛 REAL BUG FIX: season pack next — tv.pack.from never advanced after the FIRST run → next re-downloaded from episode 1 (the actual \"download restarts from the beginning\" complaint). Now run1 → 1-50, next → 51-100, overflow → pack-done note. Range validation (maxEp, 50-cap, quality#), HOOKS test seam. v2.37 speed (parallel A/V, 8/6 workers, async mux) unchanged.",
   "removed": [
     "movies.js",
     "test_v218.js",
@@ -17,7 +17,8 @@
     "test_v233.js",
     "test_v234.js",
     "test_v235.js",
-    "test_v236.js"
+    "test_v236.js",
+    "test_v237.js"
   ],
   "files": [
     "bot.js",
@@ -55,6 +56,6 @@
     "moviedex.js",
     "pairsite.js",
     "autoupdate.js",
-    "test_v237.js"
+    "test_v238.js"
   ]
 }

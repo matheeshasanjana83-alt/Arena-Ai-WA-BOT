@@ -40,6 +40,12 @@
  *             ASYNC now (was execFileSync → the whole bot froze for minutes during mux, so an
  *             episode request sent mid-mux sat unanswered and replayed — users saw it as
  *             "download restarts from the beginning"). The bot stays live during mux.
+ *   v2.38 — EPISODE RANGE: .moviedex <n> <seasonRow#> <q#> 70-80 downloads episodes 70..80
+ *             as files (best-quality shortcut: <n> <row#> 70-80). Pack/next flows unchanged.
+ *             seasonFilesCmd gained a HOOKS test seam (mbPlay/mergedQualities/downloadDash/gap).
+ *   v2.38 FIX — season pack 'next': tv.pack.from never advanced after the FIRST run, so
+ *             'next' re-downloaded episodes from 1. Now: run1 → from=cap; next → 51..100; etc.
+ *             Overflow guard: next past the last episode → "pack ඉවර්" note instead of re-run.
  */
 const crypto = require('crypto');
 const fs = require('fs');
@@ -501,6 +507,7 @@ const SEASON_FILE_CAP = 50;     // episode files per pack run ('next' continues)
 const EP_SEND_GAP = 5000;       // pause between episode sends
 const PACK_LINK_CAP = 40;       // mirror links per pack message
 const sessions = new Map();     // jid → { list, at, mv:{n:...}, tv:{n:...}, ui }
+let HOOKS = null;               // v2.38 test seam — offline tests inject fake mbPlay/mergedQualities/downloadDash/gap
 
 const hasSession = (jid) => { const s = sessions.get(jid); return !!(s && Date.now() - s.at < SESSION_TTL && s.list?.length); };
 
@@ -659,7 +666,7 @@ async function sendSeriesCard(send, jid, msg, m, n, rows, pageIdx = 0) {
 function seasonOptText(m, n, rowNo, season, rows) {
     const out = [`🧳 *SELECT DOWNLOAD OPTION FOR SEASON ${season}*`, `🍀 ${cut(m.name, 46)}`, '', '» Video Qualities (All Episodes) 👇'];
     rows.forEach((r, i) => out.push(`*${i + 1}* | 🎥 ${r.label}${r.sizeMB ? ' · ~' + human(r.sizeMB * 1048576) + '/ep' : ''}`));
-    out.push('', MV_FOOT);
+    out.push('', '🎯 *Episode range?* — *.moviedex ' + n + ' ' + rowNo + ' <q#> 70-80* (70 ඉඳන් 80 වෙනකම් files)', '', MV_FOOT);
     return out.join('\n');
 }
 
@@ -771,22 +778,29 @@ async function episodeFileCmd(send, jid, msg, m, row, qi, qRows, linkMode, react
 }
 
 /** .moviedex <n> <seasonRow#> <q#> [next] → season pack as FILES, one per message */
-async function seasonFilesCmd(send, jid, msg, m, season, maxEp, qNo, height, from, react) {
+async function seasonFilesCmd(send, jid, msg, m, season, maxEp, qNo, height, from, react, toEp = 0) {
     const total = maxEp;
     if (!total) return send(jid, { text: `❌ Season ${season} — episodes නෑ` }, { quoted: msg });
+    const isRange = toEp > 0;   // v2.38: explicit episode range (from = first-1, toEp = last inclusive)
+    const playFn = (HOOKS && HOOKS.mbPlay) || mbPlay;
+    const mqFn = (HOOKS && HOOKS.mergedQualities) || mergedQualities;
+    const dlFn = (HOOKS && HOOKS.downloadDash) || downloadDash;
+    const gap = (HOOKS && HOOKS.gap) ?? EP_SEND_GAP;
     const show = cut(m.name, 50);
-    const startTxt = from > 0
+    const startTxt = isRange
+        ? `🧳 *${cut(m.name, 50)}* — Season ${season} · Episode Range 🎯\n\nEpisodes: ${from + 1}–${Math.min(total, toEp)} / ${total}\nQuality: ${height || 'best available'}`
+        : from > 0
         ? `🧳 *Continuing Season ${season} Download* — ${cut(m.name, 50)}\n\nEpisodes: ${from + 1}–${Math.min(total, from + SEASON_FILE_CAP)} / ${total}\nQuality: ${height || 'best available'}`
         : `🧳 *Starting Season ${season} Download* for ${cut(m.name, 50)}…\n\nTotal Episodes: ${total}\nQuality: ${height || 'best available'}`;
     const status = await send(jid, { text: startTxt + '\n' + foot('episode එකින් එක එවනවා — stop කරන්න නම් මට කියන්න') }, { quoted: msg });
     const edit = async (t) => { try { await send(jid, { text: t, edit: status.key }); } catch { } };
-    const end = Math.min(total, from + SEASON_FILE_CAP);
+    const end = Math.min(total, isRange ? toEp : from + SEASON_FILE_CAP);   // v2.38: range-aware
     let ok = 0, fail = 0, lastEdit = 0;
     for (let ep = from + 1; ep <= end; ep++) {
         const tag = `S${season}E${ep}`;
         const tmpDir = path.join(process.env.DL_TMP || os.tmpdir(), 'mdx-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6));
         try {
-            const streams = await mbPlay(m.sid, season, ep);
+            const streams = await playFn(m.sid, season, ep);
             if (!streams.length) throw new Error('streams නෑ');
             const per = async (pct, bytes) => {
                 const now = Date.now();
@@ -794,7 +808,7 @@ async function seasonFilesCmd(send, jid, msg, m, season, maxEp, qNo, height, fro
                 lastEdit = now;
                 edit(`⬇️ ${tag} · ${bar(pct)} ${pct}%\n✅ ${ok}  ⚠️ ${fail}  ·  ${ep}/${total}`);
             };
-            const rows = await mergedQualities(streams).catch(() => []);
+            const rows = await mqFn(streams).catch(() => []);
             if (!rows.length) throw new Error('qualities නෑ');
             const row = height ? (rows.find(r => r.h === height) || rows.find(r => r.h <= height && !r.transcode) || rows[rows.length - 1]) : rows[0];
             if (row.sizeMB && row.sizeMB > maxMB()) {
@@ -803,7 +817,7 @@ async function seasonFilesCmd(send, jid, msg, m, season, maxEp, qNo, height, fro
                 continue;
             }
             const finalName = epFileName(m.name, season, ep, row.h, !row.transcode);
-            const res = await downloadDash(row, { tmpDir, finalName, onProgress: per, edit });
+            const res = await dlFn(row, { tmpDir, finalName, onProgress: per, edit });
             await send(jid, {
                 document: { url: res.path }, fileName: finalName,
                 mimetype: finalName.endsWith('.mp4') ? 'video/mp4' : 'video/x-matroska',
@@ -817,10 +831,10 @@ async function seasonFilesCmd(send, jid, msg, m, season, maxEp, qNo, height, fro
         }
         try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { }
         await edit(packStat(show, season, ok, fail, ep, total));
-        if (ep < end) await sleepMs(EP_SEND_GAP);
+        if (ep < end) await sleepMs(gap);
     }
     react?.(ok ? '✅' : '❌');
-    if (end < total) {
+    if (end < total && !isRange) {
         await edit(`⏸ Season ${season} — ${end}/${total} යවලා ඉවර්\n✅ ${ok}  ⚠️ ${fail}\n> ඉතුරු ටිකට — *.moviedex ${season} next* (Season ${season} card එකෙන්)`);
         return;
     }
@@ -860,8 +874,9 @@ async function handle(c, ctx) {
     if (c !== '.moviedex' && c !== '.mdx') return false;
     const { send, jid, msg, rest, react } = ctx;
     const arg = rest.join(' ').trim();
-    const pick = arg.match(/^(\d{1,3})(?:\s+(next|n))?(?:\s+(\d{1,3}))?(?:\s+(\d{1,3}))?(?:\s+(link|l|next|n))?$/i);
+    const pick = arg.match(/^(\d{1,3})(?:\s+(next|n))?(?:\s+(\d{1,3}))?(?:\s+(\d{1,3}|\d{1,4}-\d{1,4}))?(?:\s+(link|l|next|n|\d{1,4}-\d{1,4}))?$/i);   // v2.38: "70-80" range token
     const isNum = (x) => /^\d+$/.test(x || '');
+    const rangeOf = (t) => { const m = String(t || '').match(/^(\d{1,4})-(\d{1,4})$/); return m ? [+m[1], +m[2]] : null; };   // v2.38
 
     if (pick) {
         const s = sessions.get(jid);
@@ -918,10 +933,36 @@ async function handle(c, ctx) {
                 const row = rows[rowNo - 1];
                 if (!row) return send(jid, { text: `❌ ${rowNo} — row එකක් නෑ (1-${rows.length})` }, { quoted: msg });
                 if (row.kind === 'season') {
+                    // v2.38: episode RANGE — .moviedex <n> <row#> <q#> 70-80 (or <row#> 70-80 = best quality)
+                    const rngT = rangeOf(pick[5]) || rangeOf(pick[4]);
+                    if (rngT) {
+                        let [a, b] = rngT[0] <= rngT[1] ? rngT : [rngT[1], rngT[0]];   // "80-70" → 70-80
+                        const qn = pick[4] && isNum(pick[4]) ? +pick[4] : 0;
+                        if (linkMode) return send(jid, { text: '🔗 range download වලට link mode නෑ — files විදිහටම එවනවා' }, { quoted: msg });
+                        let qRows = tv.qualities?.[rowNo];
+                        if (!qRows || !qRows.length) {
+                            const st2 = await send(jid, { text: '📦 Season ' + row.season + ' · qualities…' }, { quoted: msg });
+                            const ed2 = async (t) => { try { await send(jid, { text: t, edit: st2.key }); } catch { } };
+                            try {
+                                const streams = await ((HOOKS && HOOKS.mbPlay) || mbPlay)(full.sid, row.season, 1, 2);   // v2.38: HOOKS-aware probe
+                                qRows = streams.length ? await mergedQualities(streams).catch(() => []) : [];
+                            } catch { qRows = []; }
+                            try { await send(jid, { delete: st2.key }); } catch { }
+                            if (!qRows.length) return ed2('❌ Season ' + row.season + ' — streams නෑ (probe fail)');
+                            (tv.qualities ||= {})[rowNo] = qRows;
+                        }
+                        const chosen = qRows[(qn || 1) - 1];
+                        if (!chosen) return send(jid, { text: '❌ ' + (qn || 1) + ' — quality නෑ (1-' + qRows.length + ')' }, { quoted: msg });
+                        if (a < 1 || b > row.maxEp) return send(jid, { text: '❌ Season ' + row.season + ' එකේ episodes 1-' + row.maxEp + ' විතරයි — range එක ඒ ඇතුළේ දෙන්න' }, { quoted: msg });
+                        if (b - a + 1 > SEASON_FILE_CAP) return send(jid, { text: '❌ එක පාරකට episodes ' + SEASON_FILE_CAP + ' විතරයි — කඩලා යවන්න (උදා: *.moviedex ' + n + ' ' + rowNo + ' ' + (qn || 1) + ' ' + a + '-' + (a + SEASON_FILE_CAP - 1) + '*)' }, { quoted: msg });
+                        await seasonFilesCmd(send, jid, msg, full, row.season, row.maxEp, qn || 1, chosen.h, a - 1, react, b);
+                        return true;
+                    }
                     // pack: continue via next
                     if (pick[5] && /^n/i.test(pick[5])) {
                         const p = tv.pack;
                         if (!p || p.row !== rowNo) return send(jid, { text: `⏳ pack start කරලා නෑ — *.moviedex ${n} ${rowNo} <q#>* ගහන්න` }, { quoted: msg });
+                        if (p.from >= p.maxEp) return send(jid, { text: `✅ Season ${p.season} pack එක ඉවර් (${p.maxEp}/${p.maxEp}) — ආයෙත් ඕනෙ නම් *.moviedex ${n} ${rowNo} <q#>* ආයෙත් ගහන්න` }, { quoted: msg });
                         await seasonFilesCmd(send, jid, msg, full, p.season, p.maxEp, p.qNo, p.height, p.from, react);
                         tv.pack = { ...p, from: Math.min(p.maxEp, p.from + SEASON_FILE_CAP) };
                         return true;
@@ -935,6 +976,7 @@ async function handle(c, ctx) {
                         if (!chosen) return send(jid, { text: `❌ ${qNo} — quality නෑ (1-${qRows.length})` }, { quoted: msg });
                         tv.pack = { row: rowNo, season: row.season, maxEp: row.maxEp, qNo, height: chosen.h, from: 0 };
                         await seasonFilesCmd(send, jid, msg, full, row.season, row.maxEp, qNo, chosen.h, 0, react);
+                        tv.pack.from = Math.min(row.maxEp, SEASON_FILE_CAP);   // v2.38 FIX: from never advanced after the FIRST run → 'next' re-downloaded from ep 1
                         return true;
                     }
                     // quality options (probe S×E1 stream once)
@@ -1011,7 +1053,8 @@ async function handle(c, ctx) {
 
     if (!arg) {
         return send(jid, {
-            text: `🎬 *MovieDex*\n\n*.moviedex <නම>* — search (movies + 📺 series)\nඅංකය reply කරන්න — card → options → files\n*.moviedex <n> <q#>* — 🍿 movie file · 🧳 season files · 🎬 episode file\n*.moviedex <n> <q#> link* — 🔗 share link\n${foot('series = 📺 · උදා: .moviedex breaking bad')}`,
+            text: `🎬 *MovieDex*\n\n*.moviedex <නම>* — search (movies + 📺 series)\nඅංකය reply කරන්න — card → options → files\n*.moviedex <n> <q#>* — 🍿 movie file · 🧳 season files · 🎬 episode file
+*.moviedex <n> <seasonRow#> <q#> 70-80* — 🧳 episode range (70 ඉඳන් 80 වෙනකම්)\n*.moviedex <n> <q#> link* — 🔗 share link\n${foot('series = 📺 · උදා: .moviedex breaking bad')}`,
         }, { quoted: msg });
     }
 
@@ -1031,4 +1074,4 @@ async function handle(c, ctx) {
     return true;
 }
 
-module.exports = { handle, bridgeReply, hasSession, setUi, mbSearch, mbDetails, mbSeasons, mbPlay, dashFrom, parseMpd, dashDownload, chunkCount, expandTpl, streamQualities, mergedQualities, downloadDash, transcode360, tvRows, listText, cardText, seriesText, seasonOptText, epFileName, epCaption, packStat, __deliver: deliverStream, _sessions: sessions, _testSession: (jid, s) => sessions.set(jid, s) };
+module.exports = { __hooks: (h) => { HOOKS = h; }, handle, bridgeReply, hasSession, setUi, mbSearch, mbDetails, mbSeasons, mbPlay, dashFrom, parseMpd, dashDownload, chunkCount, expandTpl, streamQualities, mergedQualities, downloadDash, transcode360, tvRows, listText, cardText, seriesText, seasonOptText, epFileName, epCaption, packStat, __deliver: deliverStream, _sessions: sessions, _testSession: (jid, s) => sessions.set(jid, s) };

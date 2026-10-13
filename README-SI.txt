@@ -24,6 +24,14 @@ litterbox/catbox, x0.at, transfer.archivete.am, filebin, eporner (v2.17). (gofil
 
 🔒 Private: ඔයා යවන messages විතරයි. වෙන අය commands යැව්වත් ignore.
 
+v2.38.0 — 🍿 MovieDex NEW: EPISODE RANGE — "70 ඉඳන් 80 යනකම්" එක command එකකින්
+  • .moviedex <n> <seasonRow#> <q#> 70-80 → Season එකේ 70 ඉඳන් 80 වෙනකම් episodes FILE විදිහට එකින් එක (quality ඔයා තෝරාගෙන)
+  • .moviedex <n> <seasonRow#> 70-80 → ඒකම best quality (480p+ / probe) වලින් — quality අංකය ඕනෙ නෑ
+  • Rules: එක පාරකට 50 episodes විතරයි (කඩලා යවන්න) · range එක season එකේ episode ගානෙන් එළිය ගියොත් real max එක කියලා error
+  • Season quality menu එකේම range hint line එකක් · pack/next/single-episode flows unchanged
+  • v2.37 speed: video+audio parallel + 8/6 workers + async mux (mux වෙද්දිත් bot එක live)
+  • 🐛 FIX: season pack 'next' — පළවෙනි run එකෙන් පස්සේ tv.pack.from advance නොවී තිබුණා → next ගැහුවම episodes 1 ඉඳන්ම ආයෙ download වෙනවා (මේක තමයි "මුල ඉඳන් download වෙනවා" කියන කතාවේ ඇත්ත හේතුව). දැන් run1 → 1-50 · next → 51-100 හරියට යනවා · ඉවර තැන next කළොත් "pack ඉවර්" note
+
 v2.29.0 — 🌐 NEW: Pair site — panel එකේම web pairing page
   • Bot එක run වෙන port එකේම web page එකක් (panel: http://<panel-host>:<port>/?key=XXXX — URL එක console එකේ print වෙනවා) — open කරලා WhatsApp number එක දාන්න, pairing code (XXXX-XXXX) site එකේම පේනවා → WhatsApp → Linked devices → Link a device → "Link with phone number instead"
   • Panel console එකේ number ගහන්න / Termux readline එක ගැන හිතන්න ඕන නෑ — phone/browser එකෙන්ම pair
