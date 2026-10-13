@@ -40,12 +40,18 @@
  *             ASYNC now (was execFileSync → the whole bot froze for minutes during mux, so an
  *             episode request sent mid-mux sat unanswered and replayed — users saw it as
  *             "download restarts from the beginning"). The bot stays live during mux.
- *   v2.38 — EPISODE RANGE: .moviedex <n> <seasonRow#> <q#> 70-80 downloads episodes 70..80
- *             as files (best-quality shortcut: <n> <row#> 70-80). Pack/next flows unchanged.
- *             seasonFilesCmd gained a HOOKS test seam (mbPlay/mergedQualities/downloadDash/gap).
- *   v2.38 FIX — season pack 'next': tv.pack.from never advanced after the FIRST run, so
- *             'next' re-downloaded episodes from 1. Now: run1 → from=cap; next → 51..100; etc.
- *             Overflow guard: next past the last episode → "pack ඉවර්" note instead of re-run.
+ *   v2.39 — EPISODE PACKS (the user's edited-screenshot system for LONG shows like Black
+ *             Clover 170 eps): series card gains 🧳 12-episode pack rows — 1.1 = S01 EP1-EP12,
+ *             1.2 = EP13-EP24 … (seasons with 24+ eps only; short lists stay clean). Reply the
+ *             pack number → quality menu → files, one per episode. Episodes keep their integer
+ *             numbers (pack rows use S.P labels — numbering never shifts). Season row
+ *             ('Download Season (All)') + 'next' 50-cap flow unchanged.
+ *   v2.39 — REMOVED the v2.38 '.moviedex <n> <row#> <q#> 70-80' range command (user: broken —
+ *             the search ate "70-80" as the query). A trailing "70-80" typed at search level is
+ *             now stripped with a hint pointing to the pack rows.
+ *   v2.38 — seasonFilesCmd HOOKS test seam (mbPlay/mergedQualities/downloadDash/gap); season
+ *             pack 'next' continuation fix (tv.pack.from never advanced → restart from ep 1)
+ *             + overflow guard.
  */
 const crypto = require('crypto');
 const fs = require('fs');
@@ -504,6 +510,8 @@ const SESSION_TTL = 15 * 60e3;
 const UI_TTL = 10 * 60e3;
 const EP_PAGE_ROWS = 200;       // rows per message — v2.27: FULL menu (all seasons + episodes) in ONE message for any normal series
 const SEASON_FILE_CAP = 50;     // episode files per pack run ('next' continues)
+const EP_PACK_SIZE = 12;        // v2.39: episodes per pack row (1.1 = EP1-12, 1.2 = EP13-24 …)
+const EP_PACK_MIN = 24;         // v2.39: pack rows only for 24+ ep seasons (short lists stay clean)
 const EP_SEND_GAP = 5000;       // pause between episode sends
 const PACK_LINK_CAP = 40;       // mirror links per pack message
 const sessions = new Map();     // jid → { list, at, mv:{n:...}, tv:{n:...}, ui }
@@ -620,12 +628,20 @@ async function sendCard(send, jid, msg, m, n, rows) {
     }
 }
 
-/** session rows for a series: 📦 season rows interleaved with episode rows */
+/** session rows for a series — v2.39: 📦 season rows + 🧳 12-ep PACK rows (1.1 = EP1-EP12 …,
+ *  only for 24+ ep seasons) interleaved with episode rows. `no` = the printed integer number;
+ *  pack rows take NO integer (S.P labels) so episode numbering NEVER shifts (WYSIWYG). */
 function tvRows(seasons) {
     const rows = [];
+    let no = 0;
     for (const se of seasons) {
-        rows.push({ kind: 'season', season: se.se, maxEp: se.maxEp });
-        for (let e = 1; e <= se.maxEp; e++) rows.push({ kind: 'ep', season: se.se, ep: e });
+        rows.push({ kind: 'season', no: ++no, season: se.se, maxEp: se.maxEp });
+        for (let e = 1; e <= se.maxEp; e++) {
+            if (se.maxEp >= EP_PACK_MIN && (e - 1) % EP_PACK_SIZE === 0) {
+                rows.push({ kind: 'pack', label: se.se + '.' + (Math.floor((e - 1) / EP_PACK_SIZE) + 1), season: se.se, from: e, to: Math.min(se.maxEp, e + EP_PACK_SIZE - 1) });
+            }
+            rows.push({ kind: 'ep', no: ++no, season: se.se, ep: e });
+        }
     }
     return rows;
 }
@@ -641,11 +657,12 @@ function seriesText(m, n, rows, pageIdx) {
     const start = pageIdx * EP_PAGE_ROWS;
     const page = rows.slice(start, start + EP_PAGE_ROWS);
     if (!page.length) out.push('ℹ️ තව episodes නෑ');
-    page.forEach((r, i) => {
-        const no = start + i + 1;
+    page.forEach((r) => {
         out.push(r.kind === 'season'
-            ? `*${no}* | 📦 Download Season ${r.season} (All Episodes)`
-            : `*${no}* | ${epLabel(r)}`);
+            ? `*${r.no}* | 📦 Download Season ${r.season} (All Episodes)`
+            : r.kind === 'pack'
+                ? `*${r.label}* | 🧳 S${String(r.season).padStart(2, '0')} EP${r.from}-EP${r.to} ✅`
+                : `*${r.no}* | ${epLabel(r)}`);
     });
     const more = start + EP_PAGE_ROWS < rows.length;
     out.push('', MV_FOOT);
@@ -663,10 +680,14 @@ async function sendSeriesCard(send, jid, msg, m, n, rows, pageIdx = 0) {
     }
 }
 
-function seasonOptText(m, n, rowNo, season, rows) {
-    const out = [`🧳 *SELECT DOWNLOAD OPTION FOR SEASON ${season}*`, `🍀 ${cut(m.name, 46)}`, '', '» Video Qualities (All Episodes) 👇'];
+function seasonOptText(m, n, rowNo, season, rows, packRange) {
+    const out = [packRange
+        ? `🧳 *SELECT DOWNLOAD OPTION — S${String(season).padStart(2, '0')} ${packRange}*`
+        : `🧳 *SELECT DOWNLOAD OPTION FOR SEASON ${season}*`,
+        `🍀 ${cut(m.name, 46)}`, '',
+        packRange ? '» Video Qualities (Pack Episodes) 👇' : '» Video Qualities (All Episodes) 👇'];
     rows.forEach((r, i) => out.push(`*${i + 1}* | 🎥 ${r.label}${r.sizeMB ? ' · ~' + human(r.sizeMB * 1048576) + '/ep' : ''}`));
-    out.push('', '🎯 *Episode range?* — *.moviedex ' + n + ' ' + rowNo + ' <q#> 70-80* (70 ඉඳන් 80 වෙනකම් files)', '', MV_FOOT);
+    out.push('', `> *.moviedex ${n} ${rowNo} <q#>* — ${packRange ? 'pack එකේ files (එක පාරට)' : 'season files (50 බැගින් · next)'}`, '', MV_FOOT);
     return out.join('\n');
 }
 
@@ -778,17 +799,17 @@ async function episodeFileCmd(send, jid, msg, m, row, qi, qRows, linkMode, react
 }
 
 /** .moviedex <n> <seasonRow#> <q#> [next] → season pack as FILES, one per message */
-async function seasonFilesCmd(send, jid, msg, m, season, maxEp, qNo, height, from, react, toEp = 0) {
+async function seasonFilesCmd(send, jid, msg, m, season, maxEp, qNo, height, from, react, toEp = 0, nextHint = null) {
     const total = maxEp;
     if (!total) return send(jid, { text: `❌ Season ${season} — episodes නෑ` }, { quoted: msg });
-    const isRange = toEp > 0;   // v2.38: explicit episode range (from = first-1, toEp = last inclusive)
+    const isRange = toEp > 0;   // v2.39: bounded pack download (from = first-1, toEp = last inclusive)
     const playFn = (HOOKS && HOOKS.mbPlay) || mbPlay;
     const mqFn = (HOOKS && HOOKS.mergedQualities) || mergedQualities;
     const dlFn = (HOOKS && HOOKS.downloadDash) || downloadDash;
     const gap = (HOOKS && HOOKS.gap) ?? EP_SEND_GAP;
     const show = cut(m.name, 50);
     const startTxt = isRange
-        ? `🧳 *${cut(m.name, 50)}* — Season ${season} · Episode Range 🎯\n\nEpisodes: ${from + 1}–${Math.min(total, toEp)} / ${total}\nQuality: ${height || 'best available'}`
+        ? `🧳 *${cut(m.name, 50)}* — Season ${season} · EP${from + 1}-EP${Math.min(total, toEp)} Pack\n\nEpisodes: ${from + 1}–${Math.min(total, toEp)} / ${total}\nQuality: ${height || 'best available'}`
         : from > 0
         ? `🧳 *Continuing Season ${season} Download* — ${cut(m.name, 50)}\n\nEpisodes: ${from + 1}–${Math.min(total, from + SEASON_FILE_CAP)} / ${total}\nQuality: ${height || 'best available'}`
         : `🧳 *Starting Season ${season} Download* for ${cut(m.name, 50)}…\n\nTotal Episodes: ${total}\nQuality: ${height || 'best available'}`;
@@ -834,8 +855,8 @@ async function seasonFilesCmd(send, jid, msg, m, season, maxEp, qNo, height, fro
         if (ep < end) await sleepMs(gap);
     }
     react?.(ok ? '✅' : '❌');
-    if (end < total && !isRange) {
-        await edit(`⏸ Season ${season} — ${end}/${total} යවලා ඉවර්\n✅ ${ok}  ⚠️ ${fail}\n> ඉතුරු ටිකට — *.moviedex ${season} next* (Season ${season} card එකෙන්)`);
+    if (end < total) {
+        await edit(`⏸ Season ${season} — ${end}/${total} යවලා ඉවර්\n✅ ${ok}  ⚠️ ${fail}${nextHint ? '\n> ඉතුරු ටිකට — ' + nextHint : ''}`);
         return;
     }
     try { await send(jid, { delete: status.key }); } catch { }
@@ -848,7 +869,8 @@ async function seasonFilesCmd(send, jid, msg, m, season, maxEp, qNo, height, fro
 function bridgeReply(jid, qid, digits) {
     const s = sessions.get(jid);
     if (!s || !s.list?.length) return null;
-    const d = parseInt(digits, 10);
+    const raw = String(digits ?? '').trim();   // v2.39: pack tokens ("1.1") ride through raw
+    const d = parseInt(raw, 10);
     if (!Number.isFinite(d)) return null;
     if (!hasSession(jid)) {   // v2.27: recently-expired session (≤30 min) still routes → user gets the "expire" hint, never silence
         if (Date.now() - (s.at || 0) > SESSION_TTL + 30 * 60e3) return null;
@@ -857,7 +879,7 @@ function bridgeReply(jid, qid, digits) {
     const route = (c) => {
         if (!c || !c.kind) return `.moviedex ${d}`;
         if (c.kind === 'movie') return `.moviedex ${c.n} ${d}`;
-        if (c.kind === 'tv') return `.moviedex ${c.n} ${d}`;   // row number — same numbering the menu prints (WYSIWYG)
+       if (c.kind === 'tv') return `.moviedex ${c.n} ${raw}`;   // row token — "14" or pack "1.1" (WYSIWYG)
         if (c.kind === 'season') return `.moviedex ${c.n} ${c.rowNo} ${d}`;
         if (c.kind === 'ep') return `.moviedex ${c.n} ${c.rowNo} ${d}`;
         return `.moviedex ${d}`;   // list → search-list pick
@@ -874,9 +896,8 @@ async function handle(c, ctx) {
     if (c !== '.moviedex' && c !== '.mdx') return false;
     const { send, jid, msg, rest, react } = ctx;
     const arg = rest.join(' ').trim();
-    const pick = arg.match(/^(\d{1,3})(?:\s+(next|n))?(?:\s+(\d{1,3}))?(?:\s+(\d{1,3}|\d{1,4}-\d{1,4}))?(?:\s+(link|l|next|n|\d{1,4}-\d{1,4}))?$/i);   // v2.38: "70-80" range token
+    const pick = arg.match(/^(\d{1,3})(?:\s+(next|n))?(?:\s+(\d{1,3}(?:\.\d{1,3})?))?(?:\s+(\d{1,3}))?(?:\s+(link|l|next|n))?$/i);   // v2.39: row token = "14" | pack "1.1" (range command REMOVED)
     const isNum = (x) => /^\d+$/.test(x || '');
-    const rangeOf = (t) => { const m = String(t || '').match(/^(\d{1,4})-(\d{1,4})$/); return m ? [+m[1], +m[2]] : null; };   // v2.38
 
     if (pick) {
         const s = sessions.get(jid);
@@ -900,7 +921,7 @@ async function handle(c, ctx) {
             if (!s.tv) s.tv = {};
             let tv = s.tv[n];
             if (!tv || Date.now() - tv.at > SESSION_TTL) {
-                if (wantNext || (pick[3] && isNum(pick[3]))) {
+                if (wantNext || pick[3]) {
                     return send(jid, { text: `⏳ episodes load වෙලා නෑ — මුලින්ම *.moviedex ${n}* ගහන්න` }, { quoted: msg });
                 }
                 const st = await send(jid, { text: `🔎 ${cut(full.name, 50)} · seasons…` }, { quoted: msg });
@@ -921,49 +942,24 @@ async function handle(c, ctx) {
                 return true;
             }
             const rows = tvRows(tv.seasons);
-            if (wantNext && !(pick[3] && isNum(pick[3]))) {
+            if (wantNext && !pick[3]) {
                 const maxPage = Math.max(0, Math.ceil(rows.length / EP_PAGE_ROWS) - 1);
                 tv.pageIdx = Math.min((tv.pageIdx || 0) + 1, maxPage);
                 const sentPg = await sendSeriesCard(send, jid, msg, full, n, rows, tv.pageIdx);
                 setUi(s, sentPg, 'tv', n);
                 return true;
             }
-            if (pick[3] && isNum(pick[3])) {
-                const rowNo = +pick[3];
-                const row = rows[rowNo - 1];
-                if (!row) return send(jid, { text: `❌ ${rowNo} — row එකක් නෑ (1-${rows.length})` }, { quoted: msg });
+            if (pick[3]) {
+                const rowNo = pick[3];   // "14" | "1.1"
+                const row = isNum(rowNo) ? rows.find(r => r.no === +rowNo) : rows.find(r => r.kind === 'pack' && r.label === rowNo);
+                if (!row) return send(jid, { text: `❌ ${rowNo} — row එකක් නෑ (card එකේ අංකයක් තෝරන්න)` }, { quoted: msg });
                 if (row.kind === 'season') {
-                    // v2.38: episode RANGE — .moviedex <n> <row#> <q#> 70-80 (or <row#> 70-80 = best quality)
-                    const rngT = rangeOf(pick[5]) || rangeOf(pick[4]);
-                    if (rngT) {
-                        let [a, b] = rngT[0] <= rngT[1] ? rngT : [rngT[1], rngT[0]];   // "80-70" → 70-80
-                        const qn = pick[4] && isNum(pick[4]) ? +pick[4] : 0;
-                        if (linkMode) return send(jid, { text: '🔗 range download වලට link mode නෑ — files විදිහටම එවනවා' }, { quoted: msg });
-                        let qRows = tv.qualities?.[rowNo];
-                        if (!qRows || !qRows.length) {
-                            const st2 = await send(jid, { text: '📦 Season ' + row.season + ' · qualities…' }, { quoted: msg });
-                            const ed2 = async (t) => { try { await send(jid, { text: t, edit: st2.key }); } catch { } };
-                            try {
-                                const streams = await ((HOOKS && HOOKS.mbPlay) || mbPlay)(full.sid, row.season, 1, 2);   // v2.38: HOOKS-aware probe
-                                qRows = streams.length ? await mergedQualities(streams).catch(() => []) : [];
-                            } catch { qRows = []; }
-                            try { await send(jid, { delete: st2.key }); } catch { }
-                            if (!qRows.length) return ed2('❌ Season ' + row.season + ' — streams නෑ (probe fail)');
-                            (tv.qualities ||= {})[rowNo] = qRows;
-                        }
-                        const chosen = qRows[(qn || 1) - 1];
-                        if (!chosen) return send(jid, { text: '❌ ' + (qn || 1) + ' — quality නෑ (1-' + qRows.length + ')' }, { quoted: msg });
-                        if (a < 1 || b > row.maxEp) return send(jid, { text: '❌ Season ' + row.season + ' එකේ episodes 1-' + row.maxEp + ' විතරයි — range එක ඒ ඇතුළේ දෙන්න' }, { quoted: msg });
-                        if (b - a + 1 > SEASON_FILE_CAP) return send(jid, { text: '❌ එක පාරකට episodes ' + SEASON_FILE_CAP + ' විතරයි — කඩලා යවන්න (උදා: *.moviedex ' + n + ' ' + rowNo + ' ' + (qn || 1) + ' ' + a + '-' + (a + SEASON_FILE_CAP - 1) + '*)' }, { quoted: msg });
-                        await seasonFilesCmd(send, jid, msg, full, row.season, row.maxEp, qn || 1, chosen.h, a - 1, react, b);
-                        return true;
-                    }
                     // pack: continue via next
                     if (pick[5] && /^n/i.test(pick[5])) {
                         const p = tv.pack;
                         if (!p || p.row !== rowNo) return send(jid, { text: `⏳ pack start කරලා නෑ — *.moviedex ${n} ${rowNo} <q#>* ගහන්න` }, { quoted: msg });
                         if (p.from >= p.maxEp) return send(jid, { text: `✅ Season ${p.season} pack එක ඉවර් (${p.maxEp}/${p.maxEp}) — ආයෙත් ඕනෙ නම් *.moviedex ${n} ${rowNo} <q#>* ආයෙත් ගහන්න` }, { quoted: msg });
-                        await seasonFilesCmd(send, jid, msg, full, p.season, p.maxEp, p.qNo, p.height, p.from, react);
+                        await seasonFilesCmd(send, jid, msg, full, p.season, p.maxEp, p.qNo, p.height, p.from, react, 0, '*.moviedex ' + n + ' ' + rowNo + ' next*');
                         tv.pack = { ...p, from: Math.min(p.maxEp, p.from + SEASON_FILE_CAP) };
                         return true;
                     }
@@ -975,7 +971,7 @@ async function handle(c, ctx) {
                         const chosen = qRows[qNo - 1];
                         if (!chosen) return send(jid, { text: `❌ ${qNo} — quality නෑ (1-${qRows.length})` }, { quoted: msg });
                         tv.pack = { row: rowNo, season: row.season, maxEp: row.maxEp, qNo, height: chosen.h, from: 0 };
-                        await seasonFilesCmd(send, jid, msg, full, row.season, row.maxEp, qNo, chosen.h, 0, react);
+                        await seasonFilesCmd(send, jid, msg, full, row.season, row.maxEp, qNo, chosen.h, 0, react, 0, '*.moviedex ' + n + ' ' + rowNo + ' next*');
                         tv.pack.from = Math.min(row.maxEp, SEASON_FILE_CAP);   // v2.38 FIX: from never advanced after the FIRST run → 'next' re-downloaded from ep 1
                         return true;
                     }
@@ -985,8 +981,8 @@ async function handle(c, ctx) {
                         const edit = async (t) => { try { await send(jid, { text: t, edit: st.key }); } catch { } };
                         let qRows = [];
                         try {
-                            const streams = await mbPlay(full.sid, row.season, 1, 2);   // v2.27: probe fast-fails — menu එක seconds වලින්
-                            if (streams.length) qRows = await mergedQualities(streams).catch(() => []);   // v2.30: merged (incl. 360p)
+                            const streams = await ((HOOKS && HOOKS.mbPlay) || mbPlay)(full.sid, row.season, 1, 2);   // probe fast-fails — menu එක seconds වලින්
+                            if (streams.length) qRows = await ((HOOKS && HOOKS.mergedQualities) || mergedQualities)(streams).catch(() => []);   // merged (incl. 360p)
                         } catch { }
                         try { await send(jid, { delete: st.key }); } catch { }
                         if (!qRows.length) return edit(`❌ Season ${row.season} — streams නෑ (MovieBox free tier එකේ මේ season එක cover කරලා නෑ)`);
@@ -994,6 +990,37 @@ async function handle(c, ctx) {
                     }
                     const sentOpt = await send(jid, { text: seasonOptText(full, n, rowNo, row.season, tv.qualities[rowNo]) }, { quoted: msg });
                     setUi(s, sentOpt, 'season', n, rowNo);
+                    return true;
+                }
+                // v2.39: 🧳 PACK row — reply 1.1 → quality menu → 12 files (the edited-screenshot system)
+                if (row.kind === 'pack') {
+                    if (linkMode) return send(jid, { text: '🔗 pack download වලට link mode නෑ — files විදිහටම එවනවා' }, { quoted: msg });
+                    const nextPack = rows.find(r => r.kind === 'pack' && r.season === row.season && r.from === row.to + 1);
+                    if (pick[4] && isNum(pick[4])) {
+                        const qNo = +pick[4];
+                        const qRows = tv.qualities?.[rowNo];
+                        if (!qRows || !qRows.length) return send(jid, { text: `⏳ qualities load වෙලා නෑ — *.moviedex ${n} ${rowNo}* මුලින්ම` }, { quoted: msg });
+                        const chosen = qRows[qNo - 1];
+                        if (!chosen) return send(jid, { text: `❌ ${qNo} — quality නෑ (1-${qRows.length})` }, { quoted: msg });
+                        const smax = (tv.seasons.find(x => x.se === row.season) || {}).maxEp || row.to;
+                        await seasonFilesCmd(send, jid, msg, full, row.season, smax, qNo, chosen.h, row.from - 1, react, row.to,
+                            nextPack ? ('*.moviedex ' + n + ' ' + nextPack.label + ' ' + qNo + '*') : null);
+                        return true;
+                    }
+                    if (!tv.qualities?.[rowNo]) {
+                        const st = await send(jid, { text: `🧳 S${String(row.season).padStart(2, '0')} EP${row.from}-EP${row.to} · qualities…` }, { quoted: msg });
+                        const edit = async (t) => { try { await send(jid, { text: t, edit: st.key }); } catch { } };
+                        let qRows = [];
+                        try {
+                            const streams = await ((HOOKS && HOOKS.mbPlay) || mbPlay)(full.sid, row.season, row.from, 2);
+                            if (streams.length) qRows = await ((HOOKS && HOOKS.mergedQualities) || mergedQualities)(streams).catch(() => []);
+                        } catch { }
+                        try { await send(jid, { delete: st.key }); } catch { }
+                        if (!qRows.length) return edit(`❌ S${String(row.season).padStart(2, '0')} EP${row.from}-EP${row.to} — streams නෑ`);
+                        (tv.qualities ||= {})[rowNo] = qRows;
+                    }
+                    const sentPack = await send(jid, { text: seasonOptText(full, n, rowNo, row.season, tv.qualities[rowNo], `EP${row.from}-EP${row.to}`) }, { quoted: msg });
+                    setUi(s, sentPack, 'season', n, rowNo);
                     return true;
                 }
                 // episode row → quality list / file
@@ -1008,8 +1035,8 @@ async function handle(c, ctx) {
                 const edit = async (t) => { try { await send(jid, { text: t, edit: st.key }); } catch { } };
                 let qRows = [];
                 try {
-                    const streams = await mbPlay(full.sid, row.season, row.ep, 2);   // v2.27: probe fast-fails — menu එක seconds වලින්
-                    if (streams.length) qRows = await mergedQualities(streams).catch(() => []);   // v2.30: merged (incl. 360p)
+                    const streams = await ((HOOKS && HOOKS.mbPlay) || mbPlay)(full.sid, row.season, row.ep, 2);   // probe fast-fails — menu එක seconds වලින්
+                    if (streams.length) qRows = await ((HOOKS && HOOKS.mergedQualities) || mergedQualities)(streams).catch(() => []);   // merged (incl. 360p)
                 } catch { }
                 try { await send(jid, { delete: st.key }); } catch { }
                 if (!qRows.length) return edit(`❌ ${epLabel(row)} — streams නෑ\n> වෙන episode එකක් try`);
@@ -1054,18 +1081,21 @@ async function handle(c, ctx) {
     if (!arg) {
         return send(jid, {
             text: `🎬 *MovieDex*\n\n*.moviedex <නම>* — search (movies + 📺 series)\nඅංකය reply කරන්න — card → options → files\n*.moviedex <n> <q#>* — 🍿 movie file · 🧳 season files · 🎬 episode file
-*.moviedex <n> <seasonRow#> <q#> 70-80* — 🧳 episode range (70 ඉඳන් 80 වෙනකම්)\n*.moviedex <n> <q#> link* — 🔗 share link\n${foot('series = 📺 · උදා: .moviedex breaking bad')}`,
+*.moviedex <n> 1.1 <q#>* — 🧳 12-ep pack files (24+ ep seasons)\n*.moviedex <n> <q#> link* — 🔗 share link\n${foot('series = 📺 · උදා: .moviedex breaking bad')}`,
         }, { quoted: msg });
     }
 
-    const st = await send(jid, { text: `🔎 ${cut(arg, 50)}…` }, { quoted: msg });
+    let q = arg, rangeHint = '';
+    const rm = q.match(/^(.*\S)\s+\d{1,4}\s*[-–]\s*\d{1,4}$/);   // v2.39: old range habit → strip + pack hint
+    if (rm) { q = rm[1]; rangeHint = '\n\n🎯 range command එක අයින් කළා — දැන් series card එකේ *1.1 · 1.2* 🧳 pack rows (12 eps බැගින්) reply කරන්න'; }
+    const st = await send(jid, { text: `🔎 ${cut(q, 50)}…` }, { quoted: msg });
     const edit = async (t) => { try { await send(jid, { text: t, edit: st.key }); } catch { } };
     try {
-        const list = await mbSearch(arg);
-        if (!list.length) return edit(`❌ "${cut(arg, 40)}" — results නෑ · නම ටිකක් වෙනස් කරලා try`);
+        const list = await mbSearch(q);
+        if (!list.length) return edit(`❌ "${cut(q, 40)}" — results නෑ · නම ටිකක් වෙනස් කරලා try`);
         sessions.set(jid, { list, at: Date.now(), detail: {}, tv: {}, mv: {} });
         if (sessions.size > 200) sessions.delete(sessions.keys().next().value);
-        edit(listText(arg, list));
+        edit(listText(q, list) + rangeHint);
         const s2 = sessions.get(jid);
         if (s2) setUi(s2, st, 'list');
     } catch (e) {

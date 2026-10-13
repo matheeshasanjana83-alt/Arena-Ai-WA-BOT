@@ -5,7 +5,7 @@ Private WhatsApp bot (Baileys v7) — `.ai` (Gemini / Groq), `.moviedex` (movies
 ## Commands
 | Command | වැඩේ |
 |---|---|
-| `.moviedex <නම>` (`.mdx`) | **Movie + 📺 TV series download** — search → info card (rating/genres/desc + poster) → quality (1080p/720p/480p + sizes) → movie **file** · series **FULL menu** (all seasons + episodes in one message) → season pack (episodes එකින් එක files, 50/run + `next`) · episode file · `link` suffix → 🔗 share link. අංකය reply කරන්න විතරයි (v2.28: අන්තිම cards 8ම routing — series card එකටත් පස්සේ reply වැඩ). ffmpeg ඕනේ (panel auto-download · Termux: `pkg install ffmpeg`) |
+| `.moviedex <නම>` (`.mdx`) | **Movie + 📺 TV series download** — search → info card (rating/genres/desc + poster) → quality (1080p/720p/480p + sizes) → movie **file** · series **FULL menu** (all seasons + episodes in one message) → season pack (episodes එකින් එක files, 50/run + `next`) · 🧳 **12-ep packs** (24+ ep seasons): series card rows `1.1 = EP1-12`, `1.2 = EP13-24` … → pack reply → quality → files (v2.39 — v2.38 range command අයින්) · 🧳 **12-ep packs** (24+ ep seasons): series card rows `1.1 = EP1-12`, `1.2 = EP13-24` … → pack reply → quality → files (v2.39 — v2.38 range command අයින්) · episode file · `link` suffix → 🔗 share link. අංකය reply කරන්න විතරයි (v2.28: අන්තිම cards 8ම routing — series card එකටත් පස්සේ reply වැඩ). ffmpeg ඕනේ (panel auto-download · Termux: `pkg install ffmpeg`) |
 | `.ai <ප්‍රශ්නය>` | AI එකෙන් උත්තර |
 | `.download <link>` | Direct / MediaFire / Google Drive / MEGA / eporner ... file එක WhatsApp එකට |
 | `.setting` | ⚙️ BOT SETTINGS PANEL — 🍀 status rows + options 1-9 (අංකය reply → toggle → panel refresh) |

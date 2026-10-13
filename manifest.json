@@ -1,6 +1,6 @@
 {
-  "version": "2.38.0",
-  "notes": "🍿 MovieDex EPISODE RANGE (v2.38.0): .moviedex <n> <seasonRow#> <q#> 70-80 → episodes 70..80 as files (best-quality shortcut: <n> <row#> 70-80). Season quality menu gets a range hint. 🐛 REAL BUG FIX: season pack next — tv.pack.from never advanced after the FIRST run → next re-downloaded from episode 1 (the actual \"download restarts from the beginning\" complaint). Now run1 → 1-50, next → 51-100, overflow → pack-done note. Range validation (maxEp, 50-cap, quality#), HOOKS test seam. v2.37 speed (parallel A/V, 8/6 workers, async mux) unchanged.",
+  "version": "2.39.0",
+  "notes": "🧳 MovieDex EPISODE PACKS (v2.39.0): series card එකේම 12-episode pack rows — 1.1 = S01 EP1-EP12, 1.2 = EP13-EP24 … (24+ ep seasons) → pack reply → quality menu → files එකින් එක. Episodes වල integer numbering shift වෙන්නේ නෑ (pack rows S.P labels). ❌ REMOVED: v2.38 `.moviedex <n> <row#> <q#> 70-80` range command (broken UX — search \"70-80\" ව query කළා); search-level trailing \"70-80\" දැන් strip කරලා pack hint එකක්. Season row (All Episodes) + next-50 flow + pack-next continuation fix එකත් unchanged.",
   "removed": [
     "movies.js",
     "test_v218.js",
@@ -18,7 +18,8 @@
     "test_v234.js",
     "test_v235.js",
     "test_v236.js",
-    "test_v237.js"
+    "test_v237.js",
+    "test_v238.js"
   ],
   "files": [
     "bot.js",
@@ -56,6 +57,6 @@
     "moviedex.js",
     "pairsite.js",
     "autoupdate.js",
-    "test_v238.js"
+    "test_v239.js"
   ]
 }
