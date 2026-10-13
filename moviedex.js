@@ -34,6 +34,12 @@
  *             real downloaded bytes, byte-based % in drain mode (no instant fake 99%),
  *             CDN-stall watchdog. ④ WhatsApp upload timeout — one hung 200MB document used
  *             to deadlock the pacer chain and silence the whole bot (the stuck-99% bug).
+ *   v2.37 — download SPEED: ① video + audio tracks download in PARALLEL (audio used to wait
+ *             for the whole video — free tail time back). ② segment workers 4 → 8 (video) / 6
+ *             (audio) — segment CDNs happily serve 6-8 connections per client. ③ ffmpeg mux is
+ *             ASYNC now (was execFileSync → the whole bot froze for minutes during mux, so an
+ *             episode request sent mid-mux sat unanswered and replayed — users saw it as
+ *             "download restarts from the beginning"). The bot stays live during mux.
  */
 const crypto = require('crypto');
 const fs = require('fs');
@@ -360,7 +366,7 @@ async function dashDownload({ mpd, cookie, height, outPath, onProgress, wantSize
             const queue = Array.from({ length: cap }, (_, i) => seg.start + i);
             const results = new Map();
             let nextToWrite = seg.start, cursor = 0, got404 = 0;
-            const workers = Array.from({ length: 4 }, async () => {
+            const workers = Array.from({ length: kind === 'v' ? 8 : 6 }, async () => {   // v2.37: was 4
                 while (!stop) {
                     if (count === 0 && estBytes > 0 && bytes.v + bytes.a > estBytes * 3) { drainOver = true; stop = true; return; }   // v2.30 runaway guard
                     const idx = cursor < queue.length ? queue[cursor++] : null;
@@ -390,8 +396,12 @@ async function dashDownload({ mpd, cookie, height, outPath, onProgress, wantSize
     };
 
     try {
-        await grab('v', rep.seg, rep.id, counts.v, vFile);
-        if (audio) await grab('a', audio.seg, audio.id, counts.a, aFile);
+        // v2.37: both tracks at once — audio is ~10% of the bytes but used to cost its
+        // full download time AFTER video finished; parallel = tail time gone.
+        await Promise.all([
+            grab('v', rep.seg, rep.id, counts.v, vFile),
+            audio ? grab('a', audio.seg, audio.id, counts.a, aFile) : Promise.resolve(),
+        ]);
         clearInterval(wd);
         if (stalled) throw new Error('CDN stall — තත්පර 120ක් segment එකක්වත් ආවේ නෑ');
         if (drainOver) throw new Error('manifest size mismatch — download 3× ලොකු වෙලා, abort');
@@ -401,14 +411,19 @@ async function dashDownload({ mpd, cookie, height, outPath, onProgress, wantSize
         if (!ffmpeg) throw new Error('ffmpeg නෑ — Termux: pkg install ffmpeg · panel: restart (auto download)');
         const hevc = /hev1|hvc1|hevc/i.test(txt);
         const out = hevc && !outPath.endsWith('.mkv') ? outPath.replace(/\.[a-z0-9]+$/i, '.mkv') : outPath;
-        const { execFileSync } = require('child_process');
+        // v2.37: execFile (async) — execFileSync blocked the EVENT LOOP for the whole mux
+        // (minutes on a weak CPU): messages queued, sockets idle, parallel episode requests
+        // replayed after unfreeze → "everything restarts from the beginning" feeling.
+        const { execFile } = require('child_process');
+        const runFF = (a) => new Promise((res, rej) => execFile(ffmpeg, a,
+            { timeout: 15 * 60e3, maxBuffer: 8 * 1024 * 1024 }, (er) => (er ? rej(er) : res())));
         const args = ['-y', '-hide_banner', '-loglevel', 'error', '-fflags', '+genpts', '-i', vFile];
         if (audio && fs.statSync(aFile).size > 1024) args.push('-i', aFile);
         args.push('-c', 'copy', '-movflags', '+faststart', out);
-        try { execFileSync(ffmpeg, args, { timeout: 15 * 60e3 }); }
+        try { await runFF(args); }
         catch (e) {
             if (audio) {   // audio track broken → video-only retry
-                execFileSync(ffmpeg, ['-y', '-hide_banner', '-loglevel', 'error', '-i', vFile, '-c', 'copy', '-movflags', '+faststart', out], { timeout: 15 * 60e3 });
+                await runFF(['-y', '-hide_banner', '-loglevel', 'error', '-i', vFile, '-c', 'copy', '-movflags', '+faststart', out]);
             } else throw e;
         }
         if (!fs.existsSync(out) || fs.statSync(out).size < 100 * 1024) throw new Error('mux output එක හිස්');
@@ -1016,4 +1031,4 @@ async function handle(c, ctx) {
     return true;
 }
 
-module.exports = { handle, bridgeReply, hasSession, setUi, mbSearch, mbDetails, mbSeasons, mbPlay, dashFrom, parseMpd, dashDownload, streamQualities, mergedQualities, downloadDash, transcode360, tvRows, listText, cardText, seriesText, seasonOptText, epFileName, epCaption, packStat, __deliver: deliverStream, _sessions: sessions, _testSession: (jid, s) => sessions.set(jid, s) };
+module.exports = { handle, bridgeReply, hasSession, setUi, mbSearch, mbDetails, mbSeasons, mbPlay, dashFrom, parseMpd, dashDownload, chunkCount, expandTpl, streamQualities, mergedQualities, downloadDash, transcode360, tvRows, listText, cardText, seriesText, seasonOptText, epFileName, epCaption, packStat, __deliver: deliverStream, _sessions: sessions, _testSession: (jid, s) => sessions.set(jid, s) };

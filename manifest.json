@@ -1,6 +1,6 @@
 {
-  "version": "2.36.0",
-  "notes": "⚙️ .setting — BOT SETTINGS PANEL (Asitha-style, K A V I Z - V 1 🍁 branding): banner image + 🍀 status rows (BOT NAME/VERSION/WORK TYPE/AI KEYS Gemini·Groq·Z.ai/ANTI-BUG/AUTO REPORT ×N/AUTO BLOCK/AUTO UPDATE/MAX FILE/AUTO REACT/PROXY) + numbered options 1-9 (mode all/self · anti-bug on/off · auto report on/off · report count cycle 10→20→30→50→100 · auto block · auto-update · max file cycle 100→200→300→500→1000→2000 · auto react) — අංකය reply කරලා toggle → confirm + panel auto-refresh. Number-reply routing now dual-state: quoted stanzaId exact-match wins, නැත්නම් අලුත්ම panel (setting vs menu). HELP + Settings category + READMEs updated. AI Z.ai GLM provider (v2.35) + Anti-Bug v4 + auto retaliation unchanged.",
+  "version": "2.37.0",
+  "notes": "🍿 MovieDex download SPEED (v2.37.0): ① video + audio tracks download in PARALLEL (audio waited for the whole video before — tail time gone) ② segment workers 4 → 8 (video) / 6 (audio) ③ ffmpeg mux now ASYNC — the old execFileSync froze the WHOLE bot for minutes during mux, so an episode request sent mid-mux sat unanswered and replayed (users saw downloads \"restart from the beginning\"). Bot stays live mid-download. E2E tested against a local CDN fixture (parallel proof + ordered append + progress + async-mux event-loop proof). Settings panel (v2.36) + Z.ai GLM (v2.35) + Anti-Bug v4 unchanged.",
   "removed": [
     "movies.js",
     "test_v218.js",
@@ -16,7 +16,8 @@
     "test_v232.js",
     "test_v233.js",
     "test_v234.js",
-    "test_v235.js"
+    "test_v235.js",
+    "test_v236.js"
   ],
   "files": [
     "bot.js",
@@ -54,6 +55,6 @@
     "moviedex.js",
     "pairsite.js",
     "autoupdate.js",
-    "test_v236.js"
+    "test_v237.js"
   ]
 }
