@@ -1,6 +1,6 @@
 {
-  "version": "2.39.0",
-  "notes": "🧳 MovieDex EPISODE PACKS (v2.39.0): series card එකේම 12-episode pack rows — 1.1 = S01 EP1-EP12, 1.2 = EP13-EP24 … (24+ ep seasons) → pack reply → quality menu → files එකින් එක. Episodes වල integer numbering shift වෙන්නේ නෑ (pack rows S.P labels). ❌ REMOVED: v2.38 `.moviedex <n> <row#> <q#> 70-80` range command (broken UX — search \"70-80\" ව query කළා); search-level trailing \"70-80\" දැන් strip කරලා pack hint එකක්. Season row (All Episodes) + next-50 flow + pack-next continuation fix එකත් unchanged.",
+  "version": "2.40.0",
+  "notes": "🧹 MovieDex EPISODE PACKS සම්පූර්ණයෙන් අයින් (v2.40.0) — series card එකේ 1.1 / 1.2 pack rows + v2.38 range command දෙකම broken (reply කළාම bot silence). moviedex.js / bot.js / README ඔක්කොම proven v2.37.0 state එකට revert: series card එකේ 📦 season rows + episode numbers විතරයි (pack rows නෑ) — season pack (All Episodes → quality → files 50/run + next) + episode flow විදිහටම වැඩ. ✅ v2.37 SPEED patches intact: video+audio parallel grabs · segment workers 8/6 · async ffmpeg mux.",
   "removed": [
     "movies.js",
     "test_v218.js",
@@ -18,8 +18,8 @@
     "test_v234.js",
     "test_v235.js",
     "test_v236.js",
-    "test_v237.js",
-    "test_v238.js"
+    "test_v238.js",
+    "test_v239.js"
   ],
   "files": [
     "bot.js",
@@ -57,6 +57,6 @@
     "moviedex.js",
     "pairsite.js",
     "autoupdate.js",
-    "test_v239.js"
+    "test_v237.js"
   ]
 }
