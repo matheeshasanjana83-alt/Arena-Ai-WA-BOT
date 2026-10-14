@@ -1,6 +1,6 @@
 {
-  "version": "2.52.0",
-  "notes": "🖼 IMAGE SUPER CHAIN (v2.52.0): .ai photo quality උපර මට්ටමට — Gemini nano-banana (gemini-3.1-flash-image → 2.5 → 3.1-lite, ඔන්නාම key එකෙනෛ, quota ඇතෙනම෍ ChatGPT-මට්ටම + watermark නෑ) → Pollinations flux fallback (reliable). CogView Z.ai ගෙන් අයින් (400 Unknown Model) — probe කරලා අයින් කළා. RICH prompt rule — AI දැන් සම්පූර්ණ scene එකක් ලියනවා (subject/setting/lighting/style/composition) — ඉල්ලපු දේ තමටම එනවා. Group/other chats වලටත෍ වැඩ — bot mode public කළා (panel chats: inbox → public).",
+  "version": "2.53.0",
+  "notes": "v2.53.0: IMAGE CHAIN v3 + OTHER-CHATS FIX — Together AI FLUX.1-schnell-Free first (free tier, 1024px, no watermark, probe: user key 401-invalid → .setkey together <FULL KEY> needed) → Gemini nano-banana (quota days) → Pollinations flux 3-retry (probe: anonymous tier now 402 rate-limited/flaky; Z.ai cogview-4-250304/glm-image exist but no balance); maybeAiReply auto-chat now SENDS photos (was: r.images dropped — the real 'not working in other people's chats' bug) + panel aiMode inbox_self→all (AI now answers other people's private chats too, groups still mention/reply only); .setkey together + .keys + KEY_HELP updated; circuit breaker: 401=key dead till changed, 429=5min cooldown",
   "removed": [
     "movies.js",
     "test_v218.js",
@@ -71,6 +71,7 @@
     "reminders.js",
     "test_v251.js",
     "test_v2511.js",
-    "test_v252.js"
+    "test_v252.js",
+    "test_v253.js"
   ]
 }

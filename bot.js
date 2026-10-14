@@ -374,7 +374,7 @@ else { const b = moviedex.bridgeReply(jid0, qid, text); if (b) text = b; }
                 if (c === '.proxies' || c === '.proxypool') { await handleProxies(send, jid, msg, (rest[0] || '').toLowerCase()); continue; }
                 if (c === '.setcookies') { await handleCookies(send, del, jid, msg, rest.join(' ').trim()); continue; }
                 if (c === '.forward') { await runJob(() => handleForward(send, jid, msg, rest.join(' ').trim())); continue; }   // 🧭 owner-only (v2.41)
-                if (c === '.keys') { const k = ai.getKeys(); await send(jid, { text: `🔑 *API keys*\nGemini: ${k.gemini ? '✅ ' + mask(k.gemini) : '❌ නෑ'}\nGroq: ${k.groq ? '✅ ' + mask(k.groq) : '❌ නෑ'}\nZ.ai (GLM): ${k.zai ? '✅ ' + mask(k.zai) : '❌ නෑ'}` }, { quoted: msg }); continue; }
+                if (c === '.keys') { const k = ai.getKeys(); await send(jid, { text: `🔑 *API keys*\nGemini: ${k.gemini ? '✅ ' + mask(k.gemini) : '❌ නෑ'}\nGroq: ${k.groq ? '✅ ' + mask(k.groq) : '❌ නෑ'}\nZ.ai (GLM): ${k.zai ? '✅ ' + mask(k.zai) : '❌ නෑ'}\nTogether (🖼 image): ${k.together ? '✅ ' + mask(k.together) : '❌ නෑ — .setkey together <KEY>'}` }, { quoted: msg }); continue; }
                 if (c === '.aiprovider') { // 🎛 AI provider selector (v2.49)
                     const arg2 = (rest[0] || '').toLowerCase();
                     if (!arg2 || arg2 === 'auto' || arg2 === 'list' || arg2 === '?') {
@@ -467,7 +467,7 @@ const CATS = [
 ✦ *.remind 10m <note>* — ⏰ මතක් කරන්න
 ✦ *.ai tools* — GLM connector (search/weather/YT)
 ✦ AI provider තෝරන්න — *.aiprovider gemini/groq/zai/auto* · *.setting* → 10\n✦ AI chat auto-reply — *.mode* → 5/6 on·off · 11-16 modes
-✦ *.setkey gemini/groq/zai <KEY>* · *.keys*`],
+✦ *.setkey gemini/groq/zai/together <KEY>* · *.keys*`],
     ['🔧', 'Network', `*🔧 NETWORK*\n\n✦ *.net <link>* — fail වුණොත් හේතුව\n✦ *.setproxy <url|off>* — block sites වලට\n✦ *.proxies* — free pool status · *.proxies check*\n✦ *.setcookies* — YouTube bot-check fix`],
     ['⚙️', 'Settings', `*⚙️ SETTINGS*\n\n✦ *.setlogo* / *.dellogo* — menu logo\n✦ *.react on|off* — auto react\n✦ *.maxmb <MB>* — download limit\n✦ *.setting* — ⚙️ settings panel (අංක reply → toggle)
 ✦ *.mode* — 🛡 mode panel (public / private / inbox / groups + AI chat modes)\n✦ *.autoupdate on|off* — GitHub එකෙන් auto update (default on)\n✦ *.update* · *.restart* · *.version*`],
@@ -779,7 +779,11 @@ function maybeAiReply({ msg, jid, text, owner, send }) {
         runJob(async () => {
             const r = await ai.ask(jid, text);
             const out = (typeof r === 'string' ? r : r?.text || '').trim();
-            if (out) await send(jid, { text: ai.splitLong(out)[0] });
+            const imgs = r && Array.isArray(r.images) ? r.images : [];   // 🖼 v2.53 FIX: auto-chat replies වලටත් photo යනවා (කලින් images drop — අනිත් අයගෙ chat වල photo නොවැඩ කරන හේතුව)
+            if (imgs.length) {
+                await send(jid, { image: imgs[0], caption: out || '🖼 හදලා දුන්නා!' }, { quoted: msg });
+                for (let i = 1; i < Math.min(imgs.length, 3); i++) await send(jid, { image: imgs[i] }, { quoted: msg });
+            } else if (out) await send(jid, { text: ai.splitLong(out)[0] });
             log(`🤖 AI chat → ${jid.slice(0, 24)}`);
         }).catch(() => { });
     } catch { }
@@ -876,12 +880,17 @@ const KEY_HELP = `🔑 *Free API key එකක් ගන්න:*
 1. https://z.ai → API console → *API Keys* → key එක copy කරන්න
 2. *.setkey zai ඔයාගේ_key*  (alias: *.setkey z.ai / glm*)
 
-(එකක් fail වුණොත් අනිත් එක auto පාවිච්චි කරනවා — key දාලා තියෙන හැම provider එකක්ම try වෙනවා)`;
+*Together AI (🖼 image gen — FLUX):*
+1. https://api.together.ai/settings/api-keys open කරන්න (login)
+2. *Create API Key* → copy (key එක සම්පූර්ණයෙන්ම copy වෙනවා ✅)
+3. *.setkey together ඔයාගේ_key*
+
+🖼 image chain: Together FLUX → Gemini → Pollinations (auto fallback — එකක් fail වුණොත් අනිත් එක auto)`;
 
 async function handleKey(send, del, jid, msg, c, rest) {
     const raw = (rest[0] || '').toLowerCase();
     const provider = (raw === 'z.ai' || raw === 'glm' || raw === 'z') ? 'zai' : raw; // Z.ai aliases
-    if (!['gemini', 'groq', 'zai'].includes(provider)) return send(jid, { text: KEY_HELP }, { quoted: msg });
+    if (!['gemini', 'groq', 'zai', 'together'].includes(provider)) return send(jid, { text: KEY_HELP }, { quoted: msg });
     if (c === '.delkey') { ai.setKey(provider, ''); return send(jid, { text: `🗑️ ${provider} key එක මැකුවා` }); }
     const key = (rest[1] || '').trim();
     if (key.length < 20) return send(jid, { text: KEY_HELP }, { quoted: msg });
@@ -1000,7 +1009,7 @@ AI එකට ඕන වෙලාවට ම මේවා පාවිච්චි
 on/off: *.ai tools on* / *.ai tools off*` }, { quoted: msg });
         }
         const on = ai.setTools(tm[1].toLowerCase() === 'on');
-        return send(jid, { text: `🧰 AI tools ${on ? '✅ ON' : '⛔ OFF'} — \n✦ search/weather/YT/reminders — GLM (Z.ai) එකටම\n✦ 🎨 image gen — ඔක්කොමට (auto fallback)` }, { quoted: msg });
+        return send(jid, { text: `🧰 AI tools ${on ? '✅ ON' : '⛔ OFF'} — \n✦ search/weather/YT/reminders — GLM (Z.ai) එකටම\n✦ 🎨 image gen — Together FLUX → Gemini → Pollinations (auto fallback)` }, { quoted: msg });
     }
     if (/^(reset|new|clear)$/i.test(question)) { ai.reset(jid); return send(jid, { text: '🆕 කතාව reset කළා. අලුතෙන් අහන්න!' }, { quoted: msg }); }
     // 👁 v2.51 — photo/PDF එකකට reply කරලා .ai → Gemini vision එකෙන් කියවනවා

@@ -180,8 +180,32 @@ async function ytSearch(q) {
     return vids.map((v, i) => `${i + 1}. ${String(v.title || '').slice(0, 100)}${v.timestamp ? ' [' + v.timestamp + ']' : ''} — ${v.author && v.author.name ? v.author.name : '?'}\n   ${v.url}`).join('\n');
 }
 
-// ── 🖼 generate image (v2.52 SUPER chain) — Gemini nano-banana (ChatGPT-මට්ටම quality, free-tier quota ඇතෙනම්) → Pollinations flux ──
-// probe 2026-10-14: cogview-3-flash 400 Unknown Model (Z.ai ගෙන් අයින්) · cogview-4 paid · gemini image models 429-quota (free tier strict — ඒත් quota තියෙන දවසක ChatGPT-මට්ටුම output!)
+// ── ⚡ Together FLUX.1-schnell-Free (v2.53) — free tier model, 1024px, no watermark, FLUX quality ──
+// probe 2026-10-15: Pollinations anonymous tier එකට දැන් 402 rate-limit (flaky) · Z.ai cogview-4-250304/glm-image balance ඉවරයි ·
+// Gemini image models 429-quota (quota තියෙන දවසක ChatGPT-මට්ටුම output!) → chain: Together → Gemini → Pollinations(retry)
+let tgDeadKey = '';   // 401/403 → මේ key එක process lifetime එකට dead (අලුත් key එකක් දැම්ම ගමන් auto reset)
+let tgCooldown = 0;   // 429 → 5 min cooldown (rate limit එකට)
+async function togetherImage(prompt, key) {
+    if (!key) throw new Error('together key නෑ');
+    if (key === tgDeadKey) throw new Error('together key invalid (401) — .setkey together <අලුත් KEY>');
+    if (Date.now() < tgCooldown) throw new Error('together rate-limited (cooldown)');
+    const r = await ffetch('https://api.together.xyz/v1/images/generations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
+        body: JSON.stringify({ model: 'black-forest-labs/FLUX.1-schnell-Free', prompt: String(prompt || '').slice(0, 1000), width: 1024, height: 1024, steps: 4, n: 1, response_format: 'b64_json' })
+    }, 90e3);
+    if (r.status === 401 || r.status === 403) { tgDeadKey = key; throw new Error('together ' + r.status + ' — key invalid'); }
+    if (r.status === 429) { tgCooldown = Date.now() + 5 * 60e3; throw new Error('together 429 — 5min cooldown'); }
+    if (!r.ok) throw new Error('together http ' + r.status);
+    const j = JSON.parse(await r.text());
+    const d = j?.data?.[0] || {};
+    let buf = null;
+    if (d.b64_json) buf = Buffer.from(d.b64_json, 'base64');
+    else if (d.url) { try { const r2 = await ffetch(d.url, {}, 60e3); if (r2.ok) buf = Buffer.from(await r2.arrayBuffer()); } catch { } }
+    if (!buf || buf.length < 2000) throw new Error('together bad output');
+    return buf;
+}
+
 const GEMINI_IMG_MODELS = ['gemini-3.1-flash-image', 'gemini-2.5-flash-image', 'gemini-3.1-flash-lite-image'];
 async function geminiImage(prompt, key) {
     for (const model of GEMINI_IMG_MODELS) {
@@ -215,16 +239,23 @@ async function generateImage(prompt, keys) {
     if (typeof keys === 'string') keys = { zai: keys };   // v2.51 legacy — string zaiKey එවත් වැඩ කරන්න
     prompt = String(prompt || '').trim().slice(0, 600);
     if (!prompt) throw new Error('empty prompt');
-    if (keys && keys.gemini) {
-        try { return await geminiImage(prompt, keys.gemini); } catch { } // quota/denied → pollinations
+    // 🖼 v2.53 SUPER chain — Together FLUX.1-schnell-Free (free, 1024px) → Gemini nano-banana (quota ඇතෙනවානම්) → Pollinations flux (retries එක්ක)
+    if (keys && keys.together) { try { return await togetherImage(prompt, keys.together); } catch { } }
+    if (keys && keys.gemini) { try { return await geminiImage(prompt, keys.gemini); } catch { } } // quota/denied → pollinations
+    for (let i = 0; i < 3; i++) {   // anonymous tier 402 rate-limit නිසා seed+size මාරු කරලා 3 පාරක්
+        const seed = Math.floor(Math.random() * 1e9);
+        const wh = i === 0 ? '1024' : i === 1 ? '768' : '512';
+        try {
+            const r2 = await ffetch(`https://image.pollinations.ai/prompt/${encodeURIComponent(prompt.slice(0, 400))}?width=${wh}&height=${wh}&nologo=true&safe=true&model=flux&seed=${seed}`, {}, 90e3);
+            if (r2.ok) {
+                const ct = String(r2.headers.get('content-type') || '');
+                const buf2 = Buffer.from(await r2.arrayBuffer());
+                if (ct.startsWith('image/') && buf2.length > 2000) return buf2;
+            }
+        } catch { }
+        await new Promise(res => setTimeout(res, 2000 * (i + 1)));   // 2s/4s backoff
     }
-    const seed = Math.floor(Math.random() * 1e9);
-    const r2 = await ffetch(`https://image.pollinations.ai/prompt/${encodeURIComponent(prompt.slice(0, 400))}?width=1024&height=1024&nologo=true&safe=true&model=flux&seed=${seed}`, {}, 90e3);
-    if (!r2.ok) throw new Error('image gen fail (' + r2.status + ')');
-    const ct = String(r2.headers.get('content-type') || '');
-    const buf2 = Buffer.from(await r2.arrayBuffer());
-    if (!ct.startsWith('image/') || buf2.length < 2000) throw new Error('image gen fail (bad output)');
-    return buf2;
+    throw new Error('image gen fail (all engines)');
 }
 
 // ── 📖 read url — page text කියවලා දෙනවා (Deep Research / document power) ──
@@ -277,7 +308,7 @@ async function runToolEx(name, argsJson, ctx) {
             case 'weather': return { text: await weather(args.location) };
             case 'youtube_search': return { text: await ytSearch(args.query) };
             case 'generate_image': {
-                const buf = await generateImage(args.prompt, { zai: ctx && ctx.zaiKey, gemini: ctx && ctx.geminiKey });
+                const buf = await generateImage(args.prompt, { zai: ctx && ctx.zaiKey, gemini: ctx && ctx.geminiKey, together: ctx && ctx.togetherKey });   // v2.53: together එකත් chain එකට
                 return { text: `Image generated OK — prompt: ${String(args.prompt).slice(0, 150)}`, image: buf, mime: 'image/jpeg' };
             }
             case 'read_url': return { text: await readUrl(args.url) };
@@ -289,4 +320,4 @@ async function runToolEx(name, argsJson, ctx) {
 }
 async function runTool(name, argsJson, ctx) { return (await runToolEx(name, argsJson, ctx)).text; }   // v2.50 compat
 
-module.exports = { TOOLS, runTool, runToolEx, _webSearch: webSearch, _getDateTime: getDateTime, _calc: calc, _weather: weather, _ytSearch: ytSearch, _generateImage: generateImage, _readUrl: readUrl };
+module.exports = { TOOLS, runTool, runToolEx, _webSearch: webSearch, _getDateTime: getDateTime, _calc: calc, _weather: weather, _ytSearch: ytSearch, _generateImage: generateImage, _togetherImage: togetherImage, _readUrl: readUrl, _tgState: () => ({ deadKey: tgDeadKey, cooldown: tgCooldown }) };

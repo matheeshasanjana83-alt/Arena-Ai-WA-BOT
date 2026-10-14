@@ -77,7 +77,8 @@ function getKeys() {
     return {
         gemini: process.env.GEMINI_API_KEY || s.gemini || '',
         groq: process.env.GROQ_API_KEY || s.groq || '',
-        zai: process.env.ZAI_API_KEY || s.zai || ''
+        zai: process.env.ZAI_API_KEY || s.zai || '',
+        together: process.env.TOGETHER_API_KEY || s.together || ''   // 🖼 v2.53 — Together FLUX.1-schnell-Free (image gen)
     };
 }
 
@@ -200,7 +201,7 @@ async function askZai(key, msgs, chatId, allKeys) {
                 for (let i = 0; i < m0.tool_calls.length; i++) {
                     const tc = m0.tool_calls[i];
                     if (!tc?.function?.name) continue;
-                    const ex = await runToolEx(tc.function.name, tc.function.arguments, { chatId, zaiKey: key, geminiKey: allKeys && allKeys.gemini });   // connector → run (v2.52: keys වල ඔක්කොම image chain එකට)
+                    const ex = await runToolEx(tc.function.name, tc.function.arguments, { chatId, zaiKey: key, geminiKey: allKeys && allKeys.gemini, togetherKey: allKeys && allKeys.together });   // connector → run (v2.53: keys වල ඔක්කොම image chain එකට)
                     const out = ex.image ? (ex.text || 'Image generated') + ' — sent to the user as a photo' : ex.text;
                     if (ex.image) images.push(ex.image);
                     messages.push({ role: 'tool', tool_call_id: tc.id || `call_${iter}_${i}`, content: String(out).slice(0, 4000) });
@@ -321,7 +322,7 @@ async function ask(chatId, question) {
             if (!images.length && getTools() && looksLikeImageAsk(question)) {   // 🖼 fallback — provider එක මොකක වුණත් (AUTO/Gemini/Groq) photo එනවා
                 try {
                     const prompt = await imgPromptEn(question, keys);
-                    const buf = await require('./ai_tools')._generateImage(prompt, { gemini: keys.gemini, zai: keys.zai });
+                    const buf = await require('./ai_tools')._generateImage(prompt, { gemini: keys.gemini, zai: keys.zai, together: keys.together });   // v2.53: together FLUX එකත්
                     if (buf && buf.length > 2000) {
                         images = [buf];
                         if (!text || /බෑ|බැහැ|නොහැකි|can\s?['’´`]t|cannot|unable|sorry|සමාව/i.test(text)) text = '🖼 හදලා දුන්නා!';
