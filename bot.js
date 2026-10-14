@@ -136,7 +136,7 @@ const HELP = `*◈ KAVIZ MD V1 ◈* — commands
 🛠️ *.tr* · *.tts* · *.weather* · *.lyrics* · *.imagine* · *.toimg* · *.tourl* · *.ss* · *.qr* · *.short* · *.calc* · *.github* · *.del* · *.setpp*
 🎉 *.joke* · *.fact* · *.quote* · *.8ball*
 👥 *.groupinfo* · *.grouplink* · *.tagall* · *.kick* · *.promote* · *.demote* · *.mute* · *.resetlink* · *.jid*
-🤖 *.ai <ප්‍රශ්නය>* (reply කරලත් · *.ai reset*)
+🤖 *.ai <ප්‍රශ්නය>* (reply කරලත් · *.ai reset* · *.ai memory*)
 🔧 *.net* · *.setproxy* · *.proxies* · *.setcookies* · *.setkey* · *.keys*
 ⚙️ *.setting* (panel) · *.mode* · *.react* · *.maxmb* · *.setlogo* · *.autoupdate* · *.update* · *.version* · *.restart*
 🛡️ *.antibug* · *.block* · *.unblock* · *.blocklist* · *.antispam* · *.spamlog*
@@ -447,7 +447,8 @@ const CATS = [
     ['🛠️', 'Tools', `*🛠️ TOOLS*\n\n✦ *.tr <භාෂාව> <text>* — translate\n✦ *.tts <text>* — voice (සිංහල OK)\n✦ *.weather <නගරය>* — කාලගුණය · දින 3\n✦ *.lyrics <සින්දුව>* — lyrics\n✦ *.imagine <විස්තරය>* — AI image\n✦ *.toimg* — sticker → photo\n✦ *.tourl* — media → 🔗 link\n✦ *.ss <site>* · *.qr* · *.short* · *.calc*\n✦ *.github <user>* · *.del* · *.setpp*`],
     ['🎉', 'Fun', `*🎉 FUN*\n\n✦ *.joke* · *.fact* · *.quote*\n✦ *.8ball <ප්‍රශ්නය>* — 🎱`],
     ['👥', 'Group', `*👥 GROUP* — group එකේ ඔයා ගහන්න\n\n✦ *.groupinfo* · *.grouplink* · *.jid*\n✦ *.tagall [msg]* — විනාඩි 10 කට 1\n✦ *.kick @user* · *.promote* · *.demote*\n✦ *.mute* · *.unmute* · *.tagadmins* · *.resetlink*\n\n> @mention නැත්නම් message එකකට reply කරන්න`],
-    ['🤖', 'AI', `*🤖 AI*\n\n✦ *.ai <ප්‍රශ්නය>* — සිංහල OK\n✦ message එකකට reply + *.ai* — ඒක ගැනම\n✦ *.ai reset* — අලුත් කතාවක්\n✦ AI chat auto-reply — *.mode* → 5/6 on·off · 11-16 modes
+    ['🤖', 'AI', `*🤖 AI*\n\n✦ *.ai <ප්‍රශ්නය>* — සිංහල OK\n✦ message එකකට reply + *.ai* — ඒක ගැනම\n✦ *.ai reset* — අලුත් කතාවක්
+✦ *.ai memory* — මතකය status · save state\n✦ AI chat auto-reply — *.mode* → 5/6 on·off · 11-16 modes
 ✦ *.setkey gemini/groq/zai <KEY>* · *.keys*`],
     ['🔧', 'Network', `*🔧 NETWORK*\n\n✦ *.net <link>* — fail වුණොත් හේතුව\n✦ *.setproxy <url|off>* — block sites වලට\n✦ *.proxies* — free pool status · *.proxies check*\n✦ *.setcookies* — YouTube bot-check fix`],
     ['⚙️', 'Settings', `*⚙️ SETTINGS*\n\n✦ *.setlogo* / *.dellogo* — menu logo\n✦ *.react on|off* — auto react\n✦ *.maxmb <MB>* — download limit\n✦ *.setting* — ⚙️ settings panel (අංක reply → toggle)
@@ -493,7 +494,7 @@ const MAXMB_STEPS = [100, 200, 300, 500, 1000, 2000];
 const COUNT_STEPS = [10, 20, 30, 50, 100];
 function verStr() { try { return updater.localInfo().version; } catch { return require('./package.json').version; } }
 function settingCaption() {
-    const s = readSettings(), k = ai.getKeys(), a = antibug.cfg();
+    const s = readSettings(), k = ai.getKeys(), a = antibug.cfg(), m = ai.stats();
     const oo = (v) => (v ? 'on' : 'off');
     return [
         '🎀 ≡ *BOT SETTINGS PANEL* ≡ 🍁',
@@ -502,6 +503,7 @@ function settingCaption() {
         `🍀 | *VERSION:* v${verStr()}`,
         `🍀 | *WORK TYPE:* ${guard.chatMode()}`,
         `🍀 | *AI KEYS:* Gemini ${k.gemini ? '✅' : '❌'} · Groq ${k.groq ? '✅' : '❌'} · Z.ai ${k.zai ? '✅' : '❌'}`,
+        `🧠 | *AI MEMORY:* ${m.msgs} msgs · ${m.chats} chats · TTL ${m.ttlDays}d`,
         `🍀 | *ANTI-BUG:* ${oo(a.on)}`,
         `🍀 | *AUTO REPORT:* ${a.report ? 'on ×' + a.reportCount : 'off'}`,
         `🍀 | *AUTO BLOCK:* ${oo(a.block)}`,
@@ -867,6 +869,18 @@ function quotedText(msg) {
 
 async function handleAI(send, jid, msg, question) {
     question = question.trim();
+    if (/^(memory|mem)$/i.test(question)) {
+        const st = ai.stats(jid);
+        return send(jid, { text: `🧠 *AI MEMORY*
+
+✦ ඔයාගේ කතාව: *${st.myMsgs}* messages${st.myMsgs ? ` — ${st.myOldestH}h ඉඳන් මතකයේ` : ''}
+✦ Total: ${st.msgs} msgs · chats ${st.chats}ක් · file ${st.fileKB} KB
+✦ Auto-clear: දවස් *${st.ttlDays}*ට පරණ messages මැකෙනවා
+✦ Limit: chat එකක turns *${st.turns}*
+
+💾 Bot restart වුණත් මතකය save වෙලා තියෙනවා
+🆕 *.ai reset* — මතකය clear කරන්න` }, { quoted: msg });
+    }
     if (/^(reset|new|clear)$/i.test(question)) { ai.reset(jid); return send(jid, { text: '🆕 කතාව reset කළා. අලුතෙන් අහන්න!' }, { quoted: msg }); }
     const q = quotedText(msg);
     if (q) question = question ? `${question}\n\n"""${q}"""` : `මේ message එක ගැන පැහැදිලි කරන්න:\n"""${q}"""`;

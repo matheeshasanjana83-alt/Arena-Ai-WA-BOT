@@ -1,6 +1,6 @@
 {
-  "version": "2.46.0",
-  "notes": "🎬 MOVIEDEX FIX (v2.46.0): MovieBox ගේ visitor DASH path එක (signCookie) Oct 10 ඉඳන් stub — quality menus \"0 rows in 0s\" වුණා. අලුත් registered-user path: subject-api/resource → resource-position/v2 → REAL signed MP4 (bcdn.hakunaymatata.com, parallel ranged 4MB chunks ~16MB/s). Identity 50020126 (4.0.02) + okhttp headers + base64 gateway HMAC key + temp-email auto account registration (settings.json moviedexUserToken · bootstrap pool token fallback · 401/406 ආවොත් auto re-register). Menu error messages edit-after-delete silence bug fix. v2.43 timeouts / v2.44 speed / v2.45 pacer fixes untouched. · v2.44 speed patches (per-connection workers + ARENA_SEG_WORKERS_V env) untouched.",
+  "version": "2.47.0",
+  "notes": "🧠 AI MEMORY (v2.47.0): .ai එකේ මතකය දැන් ai_memory.json එකේ save වෙනවා — bot restart/redeploy වුණත් කතාව මතක තියෙනවා. Turns 10→30. දවස් 3ට පරණ messages auto-clear (ARENA_AI_MEMORY_DAYS=3 · ARENA_AI_TURNS=30). අලුත්: .ai memory — status card · .ai reset — clear. Atomic writes + 30min sweep → memory full වෙන්නේ නෑ.",
   "removed": [
     "movies.js",
     "test_v218.js",
@@ -63,6 +63,7 @@
     "test_v243.js",
     "test_v244.js",
     "test_v245.js",
-    "test_v246.js"
+    "test_v246.js",
+    "test_v247.js"
   ]
 }

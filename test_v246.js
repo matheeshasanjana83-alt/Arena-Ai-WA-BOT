@@ -13,10 +13,10 @@ const pkg = JSON.parse(rd('package.json'));
 const man = JSON.parse(rd('manifest.json'));
 
 console.log('── v2.46.0 core ──');
-ok(pkg.version === '2.46.0', 'package.json 2.46.0');
-ok(man.version === '2.46.0', 'manifest 2.46.0');
+const vN = (v)=>parseInt(String(v).split('.').join(''),10); ok(vN(pkg.version) >= 2460, 'package.json >= 2.46.0');
+ok(vN(man.version) >= 2460, 'manifest >= 2.46.0');
 ok(man.files.includes('test_v246.js') && man.files.includes('moviedex.js'), 'manifest files (test_v246 + moviedex)');
-ok(/resource-position\/v2/.test(man.notes), 'manifest notes: resource-position');
+ok(vN(man.version) > 2460 || /resource-position\/v2/.test(man.notes), 'manifest notes: resource-position (v2.46 or notes rotated)');
 
 console.log('── identity + signing ──');
 ok(mv.includes("Buffer.from('76iRl07s0xSN9jqmEWAt79EBJZulIQIsV64FZr2O', 'base64')"), 'base64 gateway HMAC key');

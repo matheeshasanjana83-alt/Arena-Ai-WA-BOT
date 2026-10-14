@@ -20,8 +20,54 @@ const SYSTEM = `You are "KAVIZ MD V1", a helpful assistant inside the user's pri
 - If you don't know or are not sure, say so honestly. Never invent facts.
 - You are powered by free models (Google Gemini / Groq / Z.ai GLM). If asked, say so honestly.`;
 
-const history = new Map(); // chat jid -> [{role:'user'|'assistant', text}]
-const MAX_TURNS = 10;
+// ── 🧠 Persistent memory (v2.47) — ai_memory.json: restart/redeploy වුණත් කතාව මතක තියෙනවා
+const MEM_FILE = process.env.ARENA_AI_MEMORY_FILE || path.join(__dirname, 'ai_memory.json');
+const MAX_TURNS = Math.max(5, parseInt(process.env.ARENA_AI_TURNS || '30', 10));          // chat එකක තියාගන්න turns ගණන
+const MEM_TTL_DAYS = Math.max(1, parseInt(process.env.ARENA_AI_MEMORY_DAYS || '3', 10));  // දවස් 3ට පරණ messages auto-clear (memory full නොවෙන්න)
+const TTL_MS = MEM_TTL_DAYS * 86400e3;
+
+const history = new Map(); // chat jid -> [{role:'user'|'assistant', text, t}]
+
+function loadMemory() {
+    try {
+        const j = JSON.parse(fs.readFileSync(MEM_FILE, 'utf8'));
+        const now = Date.now();
+        for (const [jid, c] of Object.entries(j.chats || {})) {
+            if (!Array.isArray(c.msgs) || !c.msgs.length) continue;
+            const fresh = c.msgs.filter(m => m && m.text && now - (m.t || 0) < TTL_MS).slice(-MAX_TURNS * 2);
+            if (fresh.length) history.set(jid, fresh);
+        }
+    } catch { } // first run / corrupt file → අලුතෙන් පටන් ගන්නවා
+}
+loadMemory();
+
+let saveTimer = null;
+function saveMemoryNow() { // atomic write (tmp + rename) — crash වුණත් file corrupt වෙන්නේ නෑ
+    try {
+        const now = Date.now(), chats = {};
+        for (const [jid, h] of history) {
+            const fresh = h.filter(m => now - (m.t || 0) < TTL_MS);
+            if (fresh.length) chats[jid] = { msgs: fresh.map(m => ({ role: m.role, text: String(m.text).slice(0, 2000), t: m.t || now })), updated: now };
+        }
+        const tmp = MEM_FILE + '.tmp';
+        fs.writeFileSync(tmp, JSON.stringify({ v: 1, savedAt: now, chats }));
+        fs.renameSync(tmp, MEM_FILE);
+    } catch (e) { try { console.error('[ai] 🧠 memory save fail:', e.message); } catch { } }
+}
+function scheduleSave() {
+    if (saveTimer) return;
+    saveTimer = setTimeout(() => { saveTimer = null; saveMemoryNow(); }, 2500);
+    if (saveTimer.unref) saveTimer.unref();
+}
+process.on('exit', () => { if (saveTimer) { try { saveMemoryNow(); } catch { } } }); // pending changes → exit එකේදී sync save
+setInterval(() => { // 🧹 sweep — TTL ඉවර messages + හිස් chats මකනවා
+    const now = Date.now();
+    for (const [jid, h] of history) {
+        const fresh = h.filter(m => now - (m.t || 0) < TTL_MS);
+        if (fresh.length) { if (fresh.length !== h.length) history.set(jid, fresh); } else history.delete(jid);
+    }
+    scheduleSave();
+}, 30 * 60e3).unref();
 
 function getKeys() {
     const s = loadSettings();
@@ -135,7 +181,8 @@ async function ask(chatId, question) {
         e.noKey = true;
         throw e;
     }
-    const h = history.get(chatId) || [];
+    const now = Date.now();
+    const h = (history.get(chatId) || []).filter(m => now - (m.t || now) < TTL_MS); // 🧠 TTL prune
     const msgs = [...h, { role: 'user', text: question }];
     const errors = [];
     for (const [name, fn] of [['gemini', askGemini], ['groq', askGroq], ['zai', askZai]]) {
@@ -143,16 +190,18 @@ async function ask(chatId, question) {
         try {
             const res = await fn(keys[name], msgs);
             const text = toWhatsApp(res.text);
-            h.push({ role: 'user', text: question }, { role: 'assistant', text });
+            const t = Date.now();
+            h.push({ role: 'user', text: question, t }, { role: 'assistant', text, t });
             while (h.length > MAX_TURNS * 2) h.shift();
             history.set(chatId, h);
+            scheduleSave();
             return { text, model: res.model };
         } catch (e) { errors.push(e.message); }
     }
     throw new Error(errors.join('\n'));
 }
 
-function reset(chatId) { history.delete(chatId); }
+function reset(chatId) { history.delete(chatId); scheduleSave(); }
 
 function splitLong(text, size = 3500) {
     const parts = [];
@@ -166,4 +215,18 @@ function splitLong(text, size = 3500) {
     return parts;
 }
 
-module.exports = { ask, reset, setKey, getKeys, splitLong, toWhatsApp, _history: history };
+function stats(chatId) { // 🧠 .ai memory card data
+    const now = Date.now();
+    let msgs = 0, oldest = Infinity;
+    for (const h of history.values()) for (const m of h) { msgs++; if (m.t && m.t < oldest) oldest = m.t; }
+    const mine = (history.get(chatId) || []).filter(m => now - (m.t || now) < TTL_MS);
+    let fileKB = 0; try { fileKB = Math.round(fs.statSync(MEM_FILE).size / 1024 * 10) / 10; } catch { }
+    return {
+        chats: history.size, msgs, myMsgs: mine.length,
+        myOldestH: mine.length ? Math.round((now - mine[0].t) / 36e5 * 10) / 10 : 0,
+        oldestH: isFinite(oldest) ? Math.round((now - oldest) / 36e5 * 10) / 10 : 0,
+        ttlDays: MEM_TTL_DAYS, turns: MAX_TURNS, fileKB
+    };
+}
+
+module.exports = { ask, reset, stats, setKey, getKeys, splitLong, toWhatsApp, _history: history, _memoryFile: MEM_FILE, _flush: saveMemoryNow };

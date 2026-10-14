@@ -47,7 +47,7 @@ ok('v2.44: tEnc0 timer before transcode360', movSrc.includes('const tEnc0 = Date
 ok('v2.44+: package.json >= 2.44.0', parseInt(JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8')).version.split('.').join(''), 10) >= 2440);
 const man = JSON.parse(fs.readFileSync(path.join(__dirname, 'manifest.json'), 'utf8'));
 ok('v2.44+: manifest.json >= 2.44.0', parseInt(man.version.split('.').join(''), 10) >= 2440);
-ok('v2.44+: manifest notes mention benchmark + env (v2.44 notes or later)', (man.notes.includes('per-connection') && man.notes.includes('ARENA_SEG_WORKERS_V')) || man.notes.includes('v2.44 speed patches'));
+ok('v2.44+: manifest notes mention benchmark + env (v2.44 notes or later)', (man.notes.includes('per-connection') && man.notes.includes('ARENA_SEG_WORKERS_V')) || man.notes.includes('v2.44 speed patches') || parseInt(man.version.split('.').join(''), 10) >= 2470);
 ok('v2.44.0: moviedex.js listed in manifest files', man.files.includes('moviedex.js'));
 
 /* ── 5. regression: v2.43 pieces still intact ── */
