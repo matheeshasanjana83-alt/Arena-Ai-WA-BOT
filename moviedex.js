@@ -969,6 +969,8 @@ async function handle(c, ctx) {
                     }
                     // quality options (probe S×E1 stream once)
                     if (!tv.qualities?.[rowNo]) {
+                        const sp0 = Date.now();
+                        console.log(`[moviedex] 🧳 season-menu probe S${row.season}E1…`);
                         const st = await send(jid, { text: `📦 Season ${row.season} · qualities…` }, { quoted: msg });
                         const edit = async (t) => { try { await send(jid, { text: t, edit: st.key }); } catch { } };
                         let qRows = [];
@@ -979,6 +981,7 @@ async function handle(c, ctx) {
                         try { await send(jid, { delete: st.key }); } catch { }
                         if (!qRows.length) return edit(`❌ Season ${row.season} — streams නෑ (MovieBox free tier එකේ මේ season එක cover කරලා නෑ)`);
                         (tv.qualities ||= {})[rowNo] = qRows;
+                        console.log(`[moviedex] 🧳 season-menu probe done: ${qRows.length} rows in ${Math.round((Date.now() - sp0) / 1000)}s`);
                     }
                     const sentOpt = await send(jid, { text: seasonOptText(full, n, rowNo, row.season, tv.qualities[rowNo]) }, { quoted: msg });
                     setUi(s, sentOpt, 'season', n, rowNo);
@@ -992,6 +995,8 @@ async function handle(c, ctx) {
                 if (pick[4] && /^l/i.test(pick[4])) {
                     return send(jid, { text: `🔗 quality අංකය එකත් ඕනෙ — *.moviedex ${n} ${rowNo} 1 link*` }, { quoted: msg });
                 }
+                const p0 = Date.now();
+                console.log(`[moviedex] 🎬 menu probe ${epLabel(row)}…`);
                 const st = await send(jid, { text: `🔎 ${epLabel(row)} · qualities…` }, { quoted: msg });
                 const edit = async (t) => { try { await send(jid, { text: t, edit: st.key }); } catch { } };
                 let qRows = [];
@@ -999,6 +1004,7 @@ async function handle(c, ctx) {
                     const streams = await mbPlay(full.sid, row.season, row.ep, 2);   // v2.27: probe fast-fails — menu එක seconds වලින්
                     if (streams.length) qRows = await mergedQualities(streams).catch(() => []);   // v2.30: merged (incl. 360p)
                 } catch { }
+                console.log(`[moviedex] 🎬 menu probe done: ${qRows.length} rows in ${Math.round((Date.now() - p0) / 1000)}s`);
                 try { await send(jid, { delete: st.key }); } catch { }
                 if (!qRows.length) return edit(`❌ ${epLabel(row)} — streams නෑ\n> වෙන episode එකක් try`);
                 const optRows = [`🎬 *SELECT DOWNLOAD OPTION* — ${epLabel(row)}`, `📺 ${cut(full.name, 50)}`, '', '» Video Qualities 👇'];
@@ -1028,8 +1034,11 @@ async function handle(c, ctx) {
 
         const st = await send(jid, { text: `🔎 ${cut(full.name, 50)}…` }, { quoted: msg });
         const edit = async (t) => { try { await send(jid, { text: t, edit: st.key }); } catch { } };
+        const mp0 = Date.now();
+        console.log(`[moviedex] 📺 movie probe ${cut(full.name, 40)}…`);
         let streams = [];
         try { streams = await mbPlay(full.sid, null, null, 3); } catch { }
+        console.log(`[moviedex] 📺 movie probe done: ${streams.length} streams in ${Math.round((Date.now() - mp0) / 1000)}s`);
         let rows = [];
         if (streams.length) rows = await mergedQualities(streams).catch(() => []);   // v2.30: merged rows (incl. 360p) carry dash → sends never re-probe
         (s.mv ||= {})[n] = { streams, qualities: rows, at: Date.now() };

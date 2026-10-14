@@ -194,14 +194,17 @@ async function start() {
         // v2.30: media uploads get a hard timeout — one hung 200MB document used to
         // deadlock the pacer chain and silence the WHOLE bot (stuck "99%" symptom).
         const isMedia = content && ['document', 'video', 'image', 'audio', 'sticker', 'ptt'].some(k => content[k]);
-        let t = isMedia ? parseInt(process.env.ARENA_MEDIA_TIMEOUT || '420000', 10) : 0;   // 7 min default
+        let t = isMedia ? parseInt(process.env.ARENA_MEDIA_TIMEOUT || '420000', 10) : parseInt(process.env.ARENA_TEXT_TIMEOUT || '60000', 10);   // v2.45: text send එකකුත් hang වෙන්න පුළුවන් — 60s hard cap නැත්නම් pacer chain එක සදාකාලිකව block වෙනවා
         if (isMedia && !process.env.ARENA_MEDIA_TIMEOUT) {   // v2.43: big files need >7 min — size-aware cap (3 min base + 1s/1.5MB ≈ 1.5 MB/s uplink, max 20 min)
             const p = content.document?.url || content.video?.url || content.image?.url || content.audio?.url || content.sticker?.url || content.ptt?.url;
             if (typeof p === 'string' && !p.startsWith('http')) {
                 try { const sz = fs.statSync(p).size; t = Math.min(20 * 60e3, 180e3 + Math.round(sz / 1.5 / 1048576 * 1000)); } catch { }
             }
         }
-        const s = await pace(() => sock.sendMessage(jid, content, opts), t);   // 🛡️ one message at a time, human-like gap
+        const s = await pace(() => sock.sendMessage(jid, content, opts), t).catch((e) => {   // 🛡️ one message at a time, human-like gap
+            log(`📤 send fail (${isMedia ? 'media cap ' + Math.round(t / 60000) + 'min' : 'text cap ' + Math.round(t / 1000) + 's'}): ${e.message}`);
+            throw e;
+        });
         if (s?.key?.id) { sentIds.add(s.key.id); if (sentIds.size > 500) sentIds.delete(sentIds.values().next().value); remember(s); }
         return s;
     };
@@ -379,7 +382,11 @@ else { const b = moviedex.bridgeReply(jid0, qid, text); if (b) text = b; }
                 const links = (text.match(/https?:\/\/\S+/g) || []).slice(0, 5);   // 🛡️ max 5 per command
                 if (!links.length) { await send(jid, { text: HELP }, { quoted: msg }); continue; }
                 for (const link of links) await dlQueue(() => runJob(() => handleDownload(send, jid, msg, link)));   // one download at a time
-            } catch (e) { log('handler error: ' + e.message); }
+            } catch (e) {
+                log('handler error: ' + e.message);
+                try { if (heavy) reactTo(msg.key, '❌'); } catch { }   // v2.45: hang/fail command එකේ ⏳ එක ❌ වෙනවා — silence නෙවෙයි
+                if (/timeout/i.test(String(e.message || ''))) { try { await send(jid, { text: `⏱ WhatsApp send timeout — connection එක stall වෙලා. ආයෙත් try කරන්න.` }, { quoted: msg }); } catch { } }
+            }
         }
 }
 

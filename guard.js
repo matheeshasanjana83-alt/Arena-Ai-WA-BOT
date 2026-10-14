@@ -90,7 +90,9 @@ function rateCheck(now = Date.now()) {
  *  job keeps running in the background — the file may still arrive late. */
 function pacer(minGap = parseInt(process.env.ARENA_SEND_GAP || '1200', 10)) {
     let chain = Promise.resolve(), last = 0;
+    const DEF_T = parseInt(process.env.ARENA_PACE_DEFAULT || '120000', 10);   // v2.45: timeout නැති call එකකුත් chain එක සදාකාලිකව block කරන්නේ නෑ (text-send deadlock fix)
     return (fn, timeoutMs) => {
+        if (!timeoutMs) timeoutMs = DEF_T;
         const p = chain.then(async () => {
             const w = last + minGap - Date.now();
             if (w > 0) await sleep(w);

@@ -44,10 +44,10 @@ ok('v2.44: tChunk0 timer before dashDownload', movSrc.includes('const tChunk0 = 
 ok('v2.44: tEnc0 timer before transcode360', movSrc.includes('const tEnc0 = Date.now();'));
 
 /* ── 4. version ── */
-ok('v2.44.0: package.json', JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8')).version === '2.44.0');
+ok('v2.44+: package.json >= 2.44.0', parseInt(JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8')).version.split('.').join(''), 10) >= 2440);
 const man = JSON.parse(fs.readFileSync(path.join(__dirname, 'manifest.json'), 'utf8'));
-ok('v2.44.0: manifest.json', man.version === '2.44.0');
-ok('v2.44.0: manifest notes mention benchmark + env', man.notes.includes('per-connection') && man.notes.includes('ARENA_SEG_WORKERS_V'));
+ok('v2.44+: manifest.json >= 2.44.0', parseInt(man.version.split('.').join(''), 10) >= 2440);
+ok('v2.44+: manifest notes mention benchmark + env (v2.44 notes or later)', (man.notes.includes('per-connection') && man.notes.includes('ARENA_SEG_WORKERS_V')) || man.notes.includes('v2.44 speed patches'));
 ok('v2.44.0: moviedex.js listed in manifest files', man.files.includes('moviedex.js'));
 
 /* ── 5. regression: v2.43 pieces still intact ── */

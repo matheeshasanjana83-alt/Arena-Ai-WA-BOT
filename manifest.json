@@ -1,6 +1,6 @@
 {
-  "version": "2.44.0",
-  "notes": "🚀 SPEED II (v2.44.0): MovieBox CDN එක per-connection throttle කරනවා (benchmark: conn 1කට ~60-120KB/s, 16-24 conns වෙනකම් scale වෙනවා) — segment workers 8/6 → 16/8 (env: ARENA_SEG_WORKERS_V/A) → download ~1.5-1.9× වේගවත්. 360p re-encode veryfast → ultrafast (2-3× faster, maxrate cap එකෙන් size එක පාලනය). Phase timing logs (chunks / re-encode) — ඊළඟ speed report එකේ slow phase එක හරියටම පේනවා. සාක්ෂිය: WhatsApp upload 53MB → 6s (upload එක bottleneck නෙවෙයි; DASH CDN download එක තමයි). v2.43.1 observability/forward-fix untouched.",
+  "version": "2.45.0",
+  "notes": "🛡️ DEADLOCK FIX (v2.45.0): hung text send එකක් pacer chain එක සදාකාලිකව block කරලා whole bot silence කරන bug එක fix — quality menu එක නොඑන (⏳ විතරයි) ප්‍රශ්නයේ මූලය. Text sends → 60s hard cap (ARENA_TEXT_TIMEOUT) · pacer default timeout 120s (ARENA_PACE_DEFAULT) → deadlock එක දැන් අසාධ්‍ය. Send fail/timeout → console log + handler error එකේදී heavy command ⏳ → ❌ react + user ට timeout notice. Menu probe logs ([moviedex] 🎬/🧳/📺) — ඊළඟ silence එකක් /logs එකෙන් හරියටම trace. v2.44 speed patches untouched.",
   "removed": [
     "movies.js",
     "test_v218.js",
@@ -61,6 +61,7 @@
     "test_v241.js",
     "test_v242.js",
     "test_v243.js",
-    "test_v244.js"
+    "test_v244.js",
+    "test_v245.js"
   ]
 }
