@@ -1,6 +1,6 @@
 {
-  "version": "2.42.0",
-  "notes": "🧭 FORWARD FIX (v2.42.0): .forward REWRITE — 2026 MD-bot proven shape (nova-md pattern) — ① contextInfo WRAPPER UNWRAP (ephemeral/viewOnce/deviceSent/edited replies වලටත් වැඩ — v2.41 ඒවා miss කරා) ② FULL-JID double-suffix fix (9477…@s.whatsapp.net@s.whatsapp.net / @lid@lid → valid jid — .jid output copy-paste වලටත් වැඩ) ③ force:true → Forwarded label හැමවෙලාවෙම ④ targets: +94/07x/dash/space numbers + @g.us + @lid + wa.me links + me, 5 දක්වා (ඉතුරු ℹ️ note) ⑤ per-target ❌/✅ result card + edit-fail fallback ⑥ .jid upgrade — reply context: Chat jid + 👤 sender + 🧾 msg id (unwrap-aware). v2.37 speed patches + v2.40 clean state untouched.",
+  "version": "2.43.0",
+  "notes": "📤 UPLOAD FIX (v2.43.0): moviedex speed-download → WhatsApp send hardening — ① size-aware media timeout (3 min base + 1s/1.5MB ≈ 1.5 MB/s uplink, max 20 min — 500MB-2GB movies 7-min flat timeout එකෙන් ගැලවිලා) ② upload heartbeat — 30s ගානේ \"📤 WhatsApp… (size) · 30s…\" live progress ③ console logs [moviedex] upload start/✅sent/❌fail + [forward] per-target results ④ /logs?key=<pairkey> endpoint — අන්තිම console lines 250ක් remote debug කරන්න ⑤ .forward per-target 30s timeout (503 mid-send hang එකට). v2.37 speed + v2.40-42 states untouched.",
   "removed": [
     "movies.js",
     "test_v218.js",
@@ -59,6 +59,7 @@
     "autoupdate.js",
     "test_v237.js",
     "test_v241.js",
-    "test_v242.js"
+    "test_v242.js",
+    "test_v243.js"
   ]
 }

@@ -145,6 +145,18 @@ const HELP = `*◈ KAVIZ MD V1 ◈* — commands
 > 📏 max ${human(maxBytes())} / file — *.maxmb* වෙනස් කරන්න
 ${foot('*.menu* — categories වලින්')}`;
 
+// 🗒️ v2.43: console ring — last 250 console lines readable via /logs?key=<pairkey> (remote debug via pairsite)
+const LOGS = [];
+{
+    const _fmt = (...a) => a.map((x) => (typeof x === 'string' ? x : require('util').format(x))).join(' ');
+    for (const k of ['log', 'warn', 'error']) {
+        const orig = console[k].bind(console);
+        console[k] = (...a) => {
+            try { const s = _fmt(...a); if (s) { LOGS.push(s); if (LOGS.length > 250) LOGS.shift(); } } catch { }
+            orig(...a);
+        };
+    }
+}
 let botStatus = 'starting';
 // 🌐 v2.29: pair site — panel port එකේම web page එකක් (number එක දාලා pairing code ගන්න) + /status JSON (පරණ behavior)
 try {
@@ -152,6 +164,7 @@ try {
         status: () => ({ bot: 'KAVIZ MD V1', status: botStatus, uptime: Math.floor(process.uptime()) }),
         getSock: () => SOCK,
         log,
+        logs: () => LOGS.join('\n'),
     });
 } catch (e) { log && console.log('pairsite: ' + e.message); }
 const pace = guard.pacer();
@@ -181,7 +194,13 @@ async function start() {
         // v2.30: media uploads get a hard timeout — one hung 200MB document used to
         // deadlock the pacer chain and silence the WHOLE bot (stuck "99%" symptom).
         const isMedia = content && ['document', 'video', 'image', 'audio', 'sticker', 'ptt'].some(k => content[k]);
-        const t = isMedia ? parseInt(process.env.ARENA_MEDIA_TIMEOUT || '420000', 10) : 0;   // 7 min default
+        let t = isMedia ? parseInt(process.env.ARENA_MEDIA_TIMEOUT || '420000', 10) : 0;   // 7 min default
+        if (isMedia && !process.env.ARENA_MEDIA_TIMEOUT) {   // v2.43: big files need >7 min — size-aware cap (3 min base + 1s/1.5MB ≈ 1.5 MB/s uplink, max 20 min)
+            const p = content.document?.url || content.video?.url || content.image?.url || content.audio?.url || content.sticker?.url || content.ptt?.url;
+            if (typeof p === 'string' && !p.startsWith('http')) {
+                try { const sz = fs.statSync(p).size; t = Math.min(20 * 60e3, 180e3 + Math.round(sz / 1.5 / 1048576 * 1000)); } catch { }
+            }
+        }
         const s = await pace(() => sock.sendMessage(jid, content, opts), t);   // 🛡️ one message at a time, human-like gap
         if (s?.key?.id) { sentIds.add(s.key.id); if (sentIds.size > 500) sentIds.delete(sentIds.values().next().value); remember(s); }
         return s;
@@ -682,9 +701,16 @@ async function handleForward(send, jid, msg, arg) {
     const fwd = { key: { remoteJid: jid, id: ci.stanzaId, participant: ci.participant || undefined }, message: quoted };   // stanzaId = quoted msg එකේම real id (fake fallback එක අයින් — v2.42)
     const st = await send(jid, { text: `🧭 forward වෙනවා → ${jids.length} target…` }, { quoted: msg });
     const out = [];
+    const FT = parseInt(process.env.ARENA_FWD_TIMEOUT || '30000', 10);   // v2.43: hang-proof per-target send
     for (const t of jids) {
-        try { await SOCK.sendMessage(t, { forward: fwd, force: true }); out.push(`✅ ${t}`); }   // force → "Forwarded" label එක හැමවෙලාවෙම
-        catch (e) { out.push(`❌ ${t} — ${String(e.message).slice(0, 60)}`); }
+        const t0 = Date.now();
+        let to; const win = new Promise((_, rej) => { to = setTimeout(() => rej(new Error('forward send timeout (' + Math.round(FT / 1000) + 's)')), FT); });
+        try {
+            await Promise.race([SOCK.sendMessage(t, { forward: fwd, force: true }), win]);   // force → "Forwarded" label එක හැමවෙලාවෙම
+            out.push(`✅ ${t}`); console.log('[forward] ✅ ' + t + ' (' + (Date.now() - t0) + 'ms)');
+        } catch (e) {
+            out.push(`❌ ${t} — ${String(e.message).slice(0, 60)}`); console.log('[forward] ❌ ' + t + ' — ' + String(e.message).slice(0, 80));
+        } finally { clearTimeout(to); }
         await guard.sleep(600);   // anti-ban pace
     }
     if (bad.length) out.push(`⚠️ වලංගු නෑ: ${bad.join(', ')}`);

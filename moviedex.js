@@ -716,17 +716,24 @@ async function deliverStream(send, jid, msg, { st, qrow, fname, capTitle, capMet
             react?.('✅');
             await edit(`🔗 *${cut(show || capTitle || 'MovieDex', 80)}*\n${rel.url}\n${foot(`${human(f.size)} · ${row.label} · ${rel.days}d (${rel.host}) · public`)}`);
         } else {
-            await edit(`📤 WhatsApp… (${human(f.size)})`);
-            await send(jid, {
-                document: { url: f.path }, fileName: f.name,
-                mimetype: f.name.endsWith('.mp4') ? 'video/mp4' : 'video/x-matroska',
-                caption: isEp ? epCaption(show, season, ep, row.h, 1, 1, 0) : `${capTitle}\n${foot(capMeta || human(f.size))}`,
-            }, { quoted: msg });
+            console.log(`[moviedex] 📤 upload start: ${f.name} (${human(f.size)}) → ${jid}`);
+            const t0 = Date.now();
+            let alive = true, secs = 0;
+            (async () => { while (alive) { await sleepMs(30000); if (!alive) break; secs += 30; edit(`📤 WhatsApp… (${human(f.size)}) · ${secs}s…`); } })();   // v2.43 upload heartbeat
+            try {
+                await send(jid, {
+                    document: { url: f.path }, fileName: f.name,
+                    mimetype: f.name.endsWith('.mp4') ? 'video/mp4' : 'video/x-matroska',
+                    caption: isEp ? epCaption(show, season, ep, row.h, 1, 1, 0) : `${capTitle}\n${foot(capMeta || human(f.size))}`,
+                }, { quoted: msg });
+            } finally { alive = false; }
+            console.log(`[moviedex] ✅ sent ${f.name} in ${Math.round((Date.now() - t0) / 1000)}s`);
         }
         try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { }
         if (!linkMode) { try { await send(jid, { delete: status.key }); } catch { } react?.('✅'); }
     } catch (e) {
         react?.('❌');
+        console.log('[moviedex] ❌ send fail: ' + cut(String(e.message || ''), 120));
         await edit(`❌ ${cut(String(e.message || ''), 150)}\n> ආයෙත් try · වෙන quality එකක් · නැත්නම් *.moviedex <n> <q#> link*`);
     }
 }
@@ -804,12 +811,15 @@ async function seasonFilesCmd(send, jid, msg, m, season, maxEp, qNo, height, fro
             }
             const finalName = epFileName(m.name, season, ep, row.h, !row.transcode);
             const res = await downloadDash(row, { tmpDir, finalName, onProgress: per, edit });
+            console.log(`[moviedex] 📤 upload start: ${finalName} (${human(res.bytes)})`);
+            const u0 = Date.now();
             await send(jid, {
                 document: { url: res.path }, fileName: finalName,
                 mimetype: finalName.endsWith('.mp4') ? 'video/mp4' : 'video/x-matroska',
                 caption: epCaption(m.name, season, ep, row.h, ok + 1, total, fail),
             }, { quoted: msg });
             ok++;
+            console.log(`[moviedex] ✅ sent ${finalName} in ${Math.round((Date.now() - u0) / 1000)}s`);
         } catch (err) {
             fail++;
             console.log('[moviedex] ' + tag + ' fail: ' + cut(String(err.message || ''), 160));

@@ -170,6 +170,11 @@ function start(deps) {
         try {
             const url = new URL(q.url, 'http://x');
             if (url.pathname === '/status') return json(r, 200, d.status ? d.status() : { bot: 'KAVIZ MD V1', status: 'unknown', uptime: Math.floor(process.uptime()) });
+            if (url.pathname === '/logs') {   // 🗒️ v2.43: recent console output (pair-key gated) — remote debugging
+                if (String(url.searchParams.get('key') || '') !== String(KEY)) return json(r, 403, { ok: false, error: 'wrong key' });
+                r.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+                return r.end((d.logs ? d.logs() : '') || '(empty)');
+            }
             if (url.pathname === '/pair') {
                 const ip = (q.socket?.remoteAddress || '').replace(/^::ffff:/, '');
                 const keyOk = String(url.searchParams.get('key') || '') === String(KEY);
