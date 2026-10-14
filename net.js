@@ -300,4 +300,4 @@ async function diagnose(url) {
     return out.join('\n');
 }
 
-module.exports = { smartFetch, diagnose, dohResolve, getProxy, explain, hasUndici: () => !!undici, _route: route };
+module.exports = { smartFetch, diagnose, dohResolve, getProxy, explain, hasUndici: () => !!undici, viaPool, _route: route };

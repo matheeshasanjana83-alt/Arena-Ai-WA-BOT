@@ -87,6 +87,18 @@ function setKey(provider, key) {
     saveSettings(s);
 }
 
+const PROVIDERS = ['gemini', 'groq', 'zai'];
+function getProvider() { const p = String(loadSettings().aiProvider || '').toLowerCase().trim(); return PROVIDERS.includes(p) ? p : ''; }
+function setProvider(p) { // 🎛 .aiprovider / .setting 10 — user කැමති provider එක (z.ai/glm → zai alias)
+    const s = loadSettings();
+    p = String(p || '').toLowerCase().trim();
+    if (p === 'z.ai' || p === 'glm') p = 'zai';
+    if (!PROVIDERS.includes(p)) p = '';
+    if (p) s.aiProvider = p; else delete s.aiProvider;
+    saveSettings(s);
+    return p;
+}
+
 function apiError(provider, status, body) {
     let msg = '';
     try { const j = JSON.parse(body); msg = j.error?.message || j.message || ''; } catch { msg = String(body).slice(0, 200); }
@@ -99,7 +111,8 @@ function apiError(provider, status, body) {
 async function askGemini(key, msgs) {
     let lastErr;
     for (const model of GEMINI_MODELS) {
-        const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+        const opts = {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
             body: JSON.stringify({
@@ -107,8 +120,12 @@ async function askGemini(key, msgs) {
                 contents: msgs.map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.text }] })),
                 generationConfig: { maxOutputTokens: 2048, temperature: 0.6 }
             })
-        });
-        const body = await r.text();
+        };
+        let r = await fetch(url, opts);
+        let body = await r.text();
+        if (!r.ok && /location is not supported|FAILED_PRECONDITION|forbidden/i.test(body)) {
+            try { const rp = await require('./net').viaPool(url, opts); const pb = await rp.text(); if (rp.ok) { r = rp; body = pb; } } catch { } // 🌍 geo-block → free-proxy pool
+        }
         if (!r.ok) { lastErr = apiError('Gemini', r.status, body); if (lastErr.modelMissing) continue; throw lastErr; }
         const j = JSON.parse(body);
         const text = (j.candidates?.[0]?.content?.parts || []).map(p => p.text || '').join('').trim();
@@ -121,15 +138,20 @@ async function askGemini(key, msgs) {
 async function askGroq(key, msgs) {
     let lastErr;
     for (const model of GROQ_MODELS) {
-        const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        const url = 'https://api.groq.com/openai/v1/chat/completions';
+        const opts = {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
             body: JSON.stringify({
                 model, temperature: 0.6, max_tokens: 2048,
                 messages: [{ role: 'system', content: SYSTEM }, ...msgs.map(m => ({ role: m.role, content: m.text }))]
             })
-        });
-        const body = await r.text();
+        };
+        let r = await fetch(url, opts);
+        let body = await r.text();
+        if (!r.ok && /forbidden/i.test(body)) {
+            try { const rp = await require('./net').viaPool(url, opts); const pb = await rp.text(); if (rp.ok) { r = rp; body = pb; } } catch { } // 🌍 geo-block → free-proxy pool
+        }
         if (!r.ok) { lastErr = apiError('Groq', r.status, body); if (lastErr.modelMissing) continue; throw lastErr; }
         const text = (JSON.parse(body).choices?.[0]?.message?.content || '').trim();
         if (!text) throw new Error('Groq empty answer');
@@ -187,8 +209,12 @@ async function ask(chatId, question) {
     const now = Date.now();
     const h = (history.get(chatId) || []).filter(m => now - (m.t || now) < TTL_MS); // 🧠 TTL prune
     const msgs = [...h, { role: 'user', text: question }];
+    const pref = getProvider(); // 🎛 user ගේ provider එක මුලින්ම — fail වුණොත් ඉතුරු ඒවා පරණ order එකට fallback
+    const FNS = { gemini: askGemini, groq: askGroq, zai: askZai };
+    const order = PROVIDERS.map(p => [p, FNS[p]]);
+    if (pref) order.sort((a, b) => (b[0] === pref) - (a[0] === pref));
     const errors = [];
-    for (const [name, fn] of [['gemini', askGemini], ['groq', askGroq], ['zai', askZai]]) {
+    for (const [name, fn] of order) {
         if (!keys[name]) continue;
         try {
             const res = await fn(keys[name], msgs);
@@ -232,4 +258,4 @@ function stats(chatId) { // 🧠 .ai memory card data
     };
 }
 
-module.exports = { ask, reset, stats, setKey, getKeys, splitLong, toWhatsApp, _history: history, _memoryFile: MEM_FILE, _flush: saveMemoryNow };
+module.exports = { ask, reset, stats, setKey, getKeys, getProvider, setProvider, splitLong, toWhatsApp, _history: history, _memoryFile: MEM_FILE, _flush: saveMemoryNow };

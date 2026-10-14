@@ -373,6 +373,17 @@ else { const b = moviedex.bridgeReply(jid0, qid, text); if (b) text = b; }
                 if (c === '.setcookies') { await handleCookies(send, del, jid, msg, rest.join(' ').trim()); continue; }
                 if (c === '.forward') { await runJob(() => handleForward(send, jid, msg, rest.join(' ').trim())); continue; }   // 🧭 owner-only (v2.41)
                 if (c === '.keys') { const k = ai.getKeys(); await send(jid, { text: `🔑 *API keys*\nGemini: ${k.gemini ? '✅ ' + mask(k.gemini) : '❌ නෑ'}\nGroq: ${k.groq ? '✅ ' + mask(k.groq) : '❌ නෑ'}\nZ.ai (GLM): ${k.zai ? '✅ ' + mask(k.zai) : '❌ නෑ'}` }, { quoted: msg }); continue; }
+                if (c === '.aiprovider') { // 🎛 AI provider selector (v2.49)
+                    const arg2 = (rest[0] || '').toLowerCase();
+                    if (!arg2 || arg2 === 'auto' || arg2 === 'list' || arg2 === '?') {
+                        const cur = ai.getProvider();
+                        return send(jid, { text: `🤖 *AI PROVIDER*\n\n✦ දැන්: *${cur ? cur.toUpperCase() : 'AUTO'}*\n✦ AUTO order: Gemini → Groq → Z.ai\n\nවෙනස් කරන්න: *.aiprovider gemini* / *.aiprovider groq* / *.aiprovider zai* / *.aiprovider auto*\n✦ *.setting* → 10 එකෙනුත් පුළුවන්` }, { quoted: msg });
+                    }
+                    const set2 = ai.setProvider(arg2);
+                    const label2 = { '': 'AUTO (Gemini → Groq → Z.ai)', gemini: 'GEMINI', groq: 'GROQ', zai: 'Z.AI' }[set2];
+                    const hint2 = set2 && !ai.getKeys()[set2] ? `\n⚠️ ඒ provider එකේ key එක නෑ — .setkey ${set2} <KEY>` : '';
+                    return send(jid, { text: `✅ AI provider: *${label2}*${hint2}` }, { quoted: msg });
+                }
                 if (c === '.restart') { await send(jid, { text: '🔄 Restart වෙනවා... තත්පර 10 කින් *.ping*' }, { quoted: msg }); setTimeout(() => process.exit(process.env.ARENA_LAUNCHER ? 100 : 0), 1500); continue; }
                 if (await runJob(() => tools.handle(c, { send, jid, msg, rest, sock: SOCK, me: ME, react }))) continue;
                 if (await runJob(() => features.handle(c, { send, jid, msg, rest, sock: SOCK, me: ME, download, react }))) continue;
@@ -448,7 +459,8 @@ const CATS = [
     ['🎉', 'Fun', `*🎉 FUN*\n\n✦ *.joke* · *.fact* · *.quote*\n✦ *.8ball <ප්‍රශ්නය>* — 🎱`],
     ['👥', 'Group', `*👥 GROUP* — group එකේ ඔයා ගහන්න\n\n✦ *.groupinfo* · *.grouplink* · *.jid*\n✦ *.tagall [msg]* — විනාඩි 10 කට 1\n✦ *.kick @user* · *.promote* · *.demote*\n✦ *.mute* · *.unmute* · *.tagadmins* · *.resetlink*\n\n> @mention නැත්නම් message එකකට reply කරන්න`],
     ['🤖', 'AI', `*🤖 AI*\n\n✦ *.ai <ප්‍රශ්නය>* — සිංහල OK\n✦ message එකකට reply + *.ai* — ඒක ගැනම\n✦ *.ai reset* — අලුත් කතාවක්
-✦ *.ai memory* — මතකය status · save state\n✦ AI chat auto-reply — *.mode* → 5/6 on·off · 11-16 modes
+✦ *.ai memory* — මතකය status · save state
+✦ AI provider තෝරන්න — *.aiprovider gemini/groq/zai/auto* · *.setting* → 10\n✦ AI chat auto-reply — *.mode* → 5/6 on·off · 11-16 modes
 ✦ *.setkey gemini/groq/zai <KEY>* · *.keys*`],
     ['🔧', 'Network', `*🔧 NETWORK*\n\n✦ *.net <link>* — fail වුණොත් හේතුව\n✦ *.setproxy <url|off>* — block sites වලට\n✦ *.proxies* — free pool status · *.proxies check*\n✦ *.setcookies* — YouTube bot-check fix`],
     ['⚙️', 'Settings', `*⚙️ SETTINGS*\n\n✦ *.setlogo* / *.dellogo* — menu logo\n✦ *.react on|off* — auto react\n✦ *.maxmb <MB>* — download limit\n✦ *.setting* — ⚙️ settings panel (අංක reply → toggle)
@@ -504,6 +516,7 @@ function settingCaption() {
         `🍀 | *WORK TYPE:* ${guard.chatMode()}`,
         `🍀 | *AI KEYS:* Gemini ${k.gemini ? '✅' : '❌'} · Groq ${k.groq ? '✅' : '❌'} · Z.ai ${k.zai ? '✅' : '❌'}`,
         `🧠 | *AI MEMORY:* ${m.msgs} msgs · ${m.chats} chats · TTL ${m.ttlDays}d`,
+        `🤖 | *AI PROVIDER:* ${ai.getProvider() ? ai.getProvider().toUpperCase() : 'AUTO (Gemini → Groq → Z.ai)'}`,
         `🍀 | *ANTI-BUG:* ${oo(a.on)}`,
         `🍀 | *AUTO REPORT:* ${a.report ? 'on ×' + a.reportCount : 'off'}`,
         `🍀 | *AUTO BLOCK:* ${oo(a.block)}`,
@@ -528,6 +541,7 @@ function settingCaption() {
         `7 | Auto-Update: ${s.autoUpdate !== false ? 'ON' : 'OFF'}`,
         `8 | Max File: ${maxMB()} MB → next`,
         `9 | Auto React: ${reactOn() ? 'ON' : 'OFF'}`,
+        `10 | AI Provider: ${ai.getProvider() ? ai.getProvider().toUpperCase() : 'AUTO'} → next`,
         '',
         foot('🔢 option එකේ number එක reply කරන්න'),
     ].join('\n');
@@ -546,6 +560,13 @@ function applySetting(n) {
         case 7: return autoupdate.command(readSettings().autoUpdate === false ? 'on' : 'off').split('\n')[0];
         case 8: { const m = cyc(maxMB(), MAXMB_STEPS); const d = readSettings(); d.maxMB = m; save(d); process.env.DL_MAX_MB = String(m); return `📏 max file: ${m} MB`; }
         case 9: { const nv = !reactOn(); const d = readSettings(); d.react = nv; save(d); return nv ? '✨ auto react ON' : '🚫 auto react OFF'; }
+        case 10: { // 🤖 AI provider cycle: AUTO → GEMINI → GROQ → Z.AI
+            const nxt = cyc(ai.getProvider() || '', ['', 'gemini', 'groq', 'zai']);
+            ai.setProvider(nxt);
+            const label = { '': 'AUTO (Gemini → Groq → Z.ai)', gemini: 'GEMINI', groq: 'GROQ', zai: 'Z.AI' }[nxt];
+            const hint = nxt && !ai.getKeys()[nxt] ? ' ⚠️ ඒ provider එකේ key නෑ — .setkey ' + nxt + ' <KEY>' : '';
+            return `🤖 AI provider: ${label}${hint}`;
+        }
         default: return null;
     }
 }
@@ -553,7 +574,7 @@ async function handleSetting(send, jid, msg, arg) {
     const n = parseInt(arg, 10);
     if (n) {
         const done = applySetting(n);
-        if (!done) return send(jid, { text: '❌ 1 – 9 අතර number එකක් reply කරන්න' }, { quoted: msg });
+        if (!done) return send(jid, { text: '❌ 1 – 10 අතර number එකක් reply කරන්න' }, { quoted: msg });
         await send(jid, { text: '✅ ' + done }, { quoted: msg });   // toggle confirm → පස්සේ panel refresh
     }
     const caption = settingCaption();

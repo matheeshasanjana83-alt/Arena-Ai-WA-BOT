@@ -108,7 +108,7 @@ const ai = require('./ai');
     ok('25 SYSTEM: Sinhala quality rules', /NEVER invent non-existent Sinhala words/.test(aiSrc));
     ok('26 temperature 0.6', !aiSrc.includes('temperature: 0.7') && aiSrc.includes('temperature: 0.6'));
     const pkg = require('./package.json');
-    ok('22 version 2.47.0', pkg.version === '2.48.0');
+    ok('22 version >= 2.47.0', parseInt(pkg.version.split('.').join(''), 10) >= 2470);
 
     console.log(`\n${pass} passed, ${fail} failed`);
     process.exitCode = fail ? 1 : 0;

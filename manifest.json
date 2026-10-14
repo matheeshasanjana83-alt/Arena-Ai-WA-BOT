@@ -1,6 +1,6 @@
 {
-  "version": "2.48.0",
-  "notes": "🧠 AI BRAIN TUNE (v2.48.0): SYSTEM prompt retrain — identity lock (user ගේ නම bot ට mirror කරන්නේ නෑ), Sinhala quality rules (හදන වචන/broken sentences නෑ), memory honesty. Temperature 0.7→0.6. Tip: සිංහල වඩාත් හොඳට ඕන නම් free Gemini key එකක් දාන්න — .setkey gemini <KEY>",
+  "version": "2.49.0",
+  "notes": "🎛 AI PROVIDER SELECTOR (v2.49.0): කැමති AI එක තෝරන්න — .aiprovider gemini/groq/zai/auto (හෝ .setting → 10). AUTO = Gemini → Groq → Z.ai fallback. 🌍 Gemini location-block / Groq 403 → free-proxy pool එකෙන් auto-retry. + Gemini/Groq keys user ගෙන් install කළා.",
   "removed": [
     "movies.js",
     "test_v218.js",
@@ -64,6 +64,7 @@
     "test_v244.js",
     "test_v245.js",
     "test_v246.js",
-    "test_v247.js"
+    "test_v247.js",
+    "test_v249.js"
   ]
 }
