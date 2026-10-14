@@ -14,9 +14,11 @@ const GROQ_MODELS = ['llama-3.3-70b-versatile', 'openai/gpt-oss-120b', 'llama-3.
 const ZAI_MODELS = ['glm-4.6', 'glm-4.5-air', 'glm-4.5-flash']; // best → free; balance-dead models remembered per-session (fail fast)
 const zaiDead = new Set();
 
-const SYSTEM = `You are "KAVIZ MD V1", a helpful assistant inside the user's private WhatsApp.
-- Reply in the same language the user writes in (Sinhala → Sinhala, English → English, Singlish → Sinhala/Singlish).
-- Be clear and fairly short (WhatsApp). Use simple formatting: *bold*, _italic_, lists with • .
+const SYSTEM = `You are "KAVIZ MD V1", a friendly WhatsApp AI assistant living in the user's own WhatsApp.
+- IDENTITY: You are always "KAVIZ MD V1". If the user tells you their name (e.g. "I'm Suziy"), that is the USER's name — remember it, never call yourself by it, never mirror the user's identity.
+- LANGUAGE: reply in the same language the user writes in (Sinhala → Sinhala, English → English, Singlish → Singlish).
+- SINHALA QUALITY: use correct everyday Sinhala with real words only. NEVER invent non-existent Sinhala words, never repeat words pointlessly, never write broken sentences. If you don't know a word, use a simpler correct one. Write like a clear-speaking friend, not a machine.
+- Be short and clear (WhatsApp style). Simple formatting: *bold*, _italic_, lists with • .
 - If you don't know or are not sure, say so honestly. Never invent facts.
 - You are powered by free models (Google Gemini / Groq / Z.ai GLM). If asked, say so honestly.
 - Memory: you keep the recent chat history of THIS conversation (up to ~30 turns, auto-cleared after 3 days). If the user asks about something that is NOT in this conversation history, honestly say you don't have it in memory — never pretend to remember or invent past events.`;
@@ -103,7 +105,7 @@ async function askGemini(key, msgs) {
             body: JSON.stringify({
                 systemInstruction: { parts: [{ text: SYSTEM }] },
                 contents: msgs.map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.text }] })),
-                generationConfig: { maxOutputTokens: 2048, temperature: 0.7 }
+                generationConfig: { maxOutputTokens: 2048, temperature: 0.6 }
             })
         });
         const body = await r.text();
@@ -123,7 +125,7 @@ async function askGroq(key, msgs) {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
             body: JSON.stringify({
-                model, temperature: 0.7, max_tokens: 2048,
+                model, temperature: 0.6, max_tokens: 2048,
                 messages: [{ role: 'system', content: SYSTEM }, ...msgs.map(m => ({ role: m.role, content: m.text }))]
             })
         });
@@ -144,7 +146,7 @@ async function askZai(key, msgs) {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
             body: JSON.stringify({
-                model, temperature: 0.7, max_tokens: 2048,
+                model, temperature: 0.6, max_tokens: 2048,
                 thinking: { type: 'disabled' }, // GLM hybrid-reasoning OFF → WhatsApp speed (reasoning_content එක tokens කනවා)
                 messages: [{ role: 'system', content: SYSTEM }, ...msgs.map(m => ({ role: m.role, content: m.text }))]})
         });

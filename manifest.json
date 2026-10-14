@@ -1,6 +1,6 @@
 {
-  "version": "2.47.1",
-  "notes": "🧠 AI MEMORY (v2.47.0→v2.47.1): .ai මතකය ai_memory.json එකේ save — restart/redeploy වුණත් තියෙනවා. දවස් 3ට පරණ messages auto-clear (ARENA_AI_MEMORY_DAYS · ARENA_AI_TURNS). v2.47.1: bot එක මතක ගැන ඇත්ත කියනවා — history එකේ නැති දේවල් ගැන බොරුවට 'මතක තියෙනවා' කියන්නේ නෑ. .ai memory — status · .ai reset — clear.",
+  "version": "2.48.0",
+  "notes": "🧠 AI BRAIN TUNE (v2.48.0): SYSTEM prompt retrain — identity lock (user ගේ නම bot ට mirror කරන්නේ නෑ), Sinhala quality rules (හදන වචන/broken sentences නෑ), memory honesty. Temperature 0.7→0.6. Tip: සිංහල වඩාත් හොඳට ඕන නම් free Gemini key එකක් දාන්න — .setkey gemini <KEY>",
   "removed": [
     "movies.js",
     "test_v218.js",
