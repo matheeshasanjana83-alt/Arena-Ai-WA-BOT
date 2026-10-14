@@ -26,6 +26,12 @@ litterbox/catbox, x0.at, transfer.archivete.am, filebin, eporner (v2.17). (gofil
 
 🔒 Private: ඔයා යවන messages විතරයි. වෙන අය commands යැව්වත් ignore.
 
+v2.44.0 — ⚡ MovieBox download SPEED II
+  • CDN එක per-connection throttle (benchmark-verified) → segment workers 8/6 → 16/8 → download ~1.5-1.9× වේගවත් (env: ARENA_SEG_WORKERS_V/A)
+  • 360p re-encode: veryfast → ultrafast (2-3× faster, size cap එක විතරම)
+  • අලුත් phase logs: ⬇️ chunks / 🎞️ re-encode / 📤 upload — slow phase එක හරියටම trace කරන්න පුළුවන්
+  • සාක්ෂිය: WhatsApp upload 53MB → ~6s. Slow පාරවල්වල bottleneck එක MovieBox CDN download එක.
+
 v2.41.0 — 🛡 MODE PANEL + 🤖 AI CHAT + 🧭 FORWARD
   • .mode — numbered panel: 1 Public (හැමොටම inbox+groups) · 2 Private (owner ට විතරයි) · 3 Inbox Only (DM වල විතරයි) · 4 Groups Only (groups වල විතරයි) — අංකය reply → set → panel refresh. Legacy .mode all/self = public/private
   • Public/Inbox/Groups modes වලදී අනිත් අයටත් bot එක use කරන්න පුළුවන් — owner-only commands (.mode/.setting/.setkey/.block/.update/.forward/group tools...) ඔක්කොම අගුලුලා (🔒 owner ට විතරයි reply)

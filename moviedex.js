@@ -28,7 +28,7 @@
  *    stream.url alone is a shared 824 KB notice stub — the signCookie DASH is the real file.
  *
  *  v2.30: ① 360p row — MovieBox DASH ladders stop at 480p (verified 2026-10 across titles),
- *             so "360p" downloads the 480p track and re-encodes locally (x264 veryfast,
+ *             so "360p" downloads the 480p track and re-encodes locally (x264,
  *             audio copy → live progress bar). ② quality menus merge ALL play-info streams
  *             (not just streams[0]) + dedupe duplicate MPD entries. ③ honest progress:
  *             real downloaded bytes, byte-based % in drain mode (no instant fake 99%),
@@ -40,6 +40,13 @@
  *             ASYNC now (was execFileSync → the whole bot froze for minutes during mux, so an
  *             episode request sent mid-mux sat unanswered and replayed — users saw it as
  *             "download restarts from the beginning"). The bot stays live during mux.
+ *   v2.44 — download SPEED II (benchmarked on the real sbcdn3 edge): the CDN throttles
+ *             PER-CONNECTION (~60-120KB/s each) — aggregate scales with connection count
+ *             up to ~16-24 total. ① segment workers 8/6 → 16/8 (env: ARENA_SEG_WORKERS_V/A).
+ *             ② 360p re-encode preset veryfast → ultrafast (2-3× faster mux, maxrate cap
+ *             keeps the size). ③ separate phase timing logs (chunks / mux / re-encode) so
+ *             the next "slow" report pinpoints the exact phase. NOTE: WhatsApp upload is
+ *             NOT the bottleneck (53MB in ~6s measured); the DASH CDN download is.
  */
 const crypto = require('crypto');
 const fs = require('fs');
@@ -366,7 +373,9 @@ async function dashDownload({ mpd, cookie, height, outPath, onProgress, wantSize
             const queue = Array.from({ length: cap }, (_, i) => seg.start + i);
             const results = new Map();
             let nextToWrite = seg.start, cursor = 0, got404 = 0;
-            const workers = Array.from({ length: kind === 'v' ? 8 : 6 }, async () => {   // v2.37: was 4
+            const workers = Array.from({ length: kind === 'v'
+                ? (parseInt(process.env.ARENA_SEG_WORKERS_V || '16', 10) || 16)
+                : (parseInt(process.env.ARENA_SEG_WORKERS_A || '8', 10) || 8) }, async () => {   // v2.44: was 8/6 — CDN throttles per-connection, 16+8 scales ~1.5-1.9× (benchmarked)
                 while (!stop) {
                     if (count === 0 && estBytes > 0 && bytes.v + bytes.a > estBytes * 3) { drainOver = true; stop = true; return; }   // v2.30 runaway guard
                     const idx = cursor < queue.length ? queue[cursor++] : null;
@@ -435,7 +444,7 @@ async function dashDownload({ mpd, cookie, height, outPath, onProgress, wantSize
     }
 }
 
-/** v2.30 — 360p re-encode (source ladders stop at 480p): x264 veryfast, audio copy when the
+/** v2.30 — 360p re-encode (source ladders stop at 480p): x264 ultrafast (v2.44), audio copy when the
  *  stream is mp4-friendly, one AAC fallback. -progress pipe:1 → live % via onProgress. */
 async function transcode360(inp, outPath, { durSec = 0, onProgress, edit } = {}) {
     const ffmpeg = await require('./media').getBin('ffmpeg').catch(() => null);
@@ -443,7 +452,7 @@ async function transcode360(inp, outPath, { durSec = 0, onProgress, edit } = {})
     const { spawn } = require('child_process');
     const run = (aEnc) => new Promise((res, rej) => {
         const args = ['-y', '-hide_banner', '-loglevel', 'error', '-nostats', '-progress', 'pipe:1', '-i', inp,
-            '-vf', 'scale=-2:360', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '27', '-maxrate', '450k', '-bufsize', '900k',
+            '-vf', 'scale=-2:360', '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '27', '-maxrate', '450k', '-bufsize', '900k',
             '-c:a', aEnc, ...(aEnc === 'aac' ? ['-b:a', '128k'] : []), '-movflags', '+faststart', outPath];
         const p = spawn(ffmpeg, args, { stdio: ['ignore', 'pipe', 'pipe'] });
         let buf = '', err = '';
@@ -480,14 +489,18 @@ async function transcode360(inp, outPath, { durSec = 0, onProgress, edit } = {})
 async function downloadDash(row, { tmpDir, finalName, onProgress, edit }) {
     fs.mkdirSync(tmpDir, { recursive: true });
     const rawPath = row.transcode ? path.join(tmpDir, 'src-' + Date.now() + '.mkv') : path.join(tmpDir, finalName);
+    const tChunk0 = Date.now();   // v2.44 phase timing (chunks vs re-encode)
     const res = await dashDownload({
         mpd: row.dash.mpd, cookie: row.dash.cookie, height: row.transcode ? row.srcH : row.h,
         outPath: rawPath, onProgress, wantSize: (row.sizeMB || 0) * 1048576,
         man: row.man || null, mpdTxt: row.mpdTxt || null,
     });
+    console.log(`[moviedex] ⬇️ chunks ${row.transcode ? row.srcH + 'p src' : row.label} (${human(res.bytes)}) in ${Math.round((Date.now() - tChunk0) / 1000)}s`);   // v2.44 phase log
     if (!row.transcode) return res;
     const finalPath = path.join(tmpDir, finalName);
+    const tEnc0 = Date.now();
     const bytes = await transcode360(res.path, finalPath, { durSec: row.man?.durSec || 0, onProgress, edit });
+    console.log(`[moviedex] 🎞️ 360p re-encode (${human(bytes)}) in ${Math.round((Date.now() - tEnc0) / 1000)}s`);   // v2.44 phase log
     try { fs.rmSync(res.path, { force: true }); } catch { }
     return { path: finalPath, bytes, hevc: false };
 }
