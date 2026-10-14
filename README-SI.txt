@@ -30,7 +30,7 @@ v2.41.0 — 🛡 MODE PANEL + 🤖 AI CHAT + 🧭 FORWARD
   • .mode — numbered panel: 1 Public (හැමොටම inbox+groups) · 2 Private (owner ට විතරයි) · 3 Inbox Only (DM වල විතරයි) · 4 Groups Only (groups වල විතරයි) — අංකය reply → set → panel refresh. Legacy .mode all/self = public/private
   • Public/Inbox/Groups modes වලදී අනිත් අයටත් bot එක use කරන්න පුළුවන් — owner-only commands (.mode/.setting/.setkey/.block/.update/.forward/group tools...) ඔක්කොම අගුලුලා (🔒 owner ට විතරයි reply)
   • 🤖 AI CHAT — panel 5/6: Enable/Disable. AI modes 11-16: Inbox Public (everyone) · Inbox Self (owner "Message yourself") · Inbox Private (others only) · Groups Only (@KAVIZ / bot ට reply කරාම) · All (inbox+groups+bot) · All Public (bot chat එකෙන් නෑ). Group වල AI = mention/reply විතරයි (flood නෑ) · per-chat 4s gap · keys නෑනම් silent
-  • 🧭 .forward <number|jid> — message එකකට reply කරලා අනිත් chat එකකට forward (5 targets දක්වා, 07x/+94x/94x numbers + @g.us groups + "me" = self chat). Owner-only (account abuse/Spam වළක්වන්න)
+  • 🧭 .forward <number|jid> — message එකකට reply කරලා අනිත් chat එකකට forward (5 targets දක්වා, 07x/+94x/94x + dashes + @g.us + @lid + wa.me links + "me" = self chat; ephemeral/viewOnce replies වලටත් වැඩ; full jid copy-paste ✅). Owner-only (account abuse/Spam වළක්වන්න)
   • Number routing දැන් 3 panels: .setting / .menu / .mode — exact quote win · නැත්නම් අලුත්ම panel. v2.40 packs removal unchanged (v2.37 speed intact)
 
 v2.29.0 — 🌐 NEW: Pair site — panel එකේම web pairing page

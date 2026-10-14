@@ -328,7 +328,12 @@ function targets(msg, args) {
     return [...new Set(t.map(bare))];
 }
 async function group(sock, send, jid, msg, c, args, me) {
-    if (c === '.jid') return send(jid, { text: `🆔 ${jid}` }, { quoted: msg });
+    if (c === '.jid') {
+        const ci2 = ctxInfo(msg);   // unwrap වෙනවා — reply contextInfo එක wrapper ඇතුළේ නමුත් හොයනවා (v2.42)
+        const who = ci2?.participant ? '\n👤 ' + bare(ci2.participant) : '';
+        const mid = ci2?.stanzaId ? '\n🧾 ' + ci2.stanzaId : '';
+        return send(jid, { text: `🆔 *Chat:* ${jid}${who}${mid}` }, { quoted: msg });
+    }
     if (!jid.endsWith('@g.us')) return send(jid, { text: '👥 මේ command එක group එකක විතරයි වැඩ' }, { quoted: msg });
     const meta = await sock.groupMetadata(jid);
     const mine = new Set([me.pn, me.lid].filter(Boolean));

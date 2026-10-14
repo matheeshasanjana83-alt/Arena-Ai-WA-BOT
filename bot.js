@@ -644,35 +644,53 @@ async function handleMode(send, jid, msg, arg) {
     if (sent?.key?.id) modeState.set(jid, { id: sent.key.id, at: Date.now() });   // number replies → අලුත් panel එකටම
 }
 
-// ───────── .forward — reply කරපු message එක JID/number එකකට forward (owner-only, v2.41) ─────────
+// ───────── .forward — reply කරපු message එක JID/number එකකට forward (owner-only, v2.42 rewrite) ─────────
+// 2026 MD-bot proven forward shape (nova-md /save): sendMessage(t, { forward: {key:{remoteJid, id: stanzaId, participant}, message: quotedMessage}, force: true })
+function unwrapCtx(m) {   // reply contextInfo එක wrapper එකක් ඇතුළේ හැංගිලා තියෙන්නත් පුළුවන් — getText() වගේම unwrap (v2.42 fix)
+    let x = m;
+    for (let i = 0; i < 6 && x; i++) {
+        const ci = x.extendedTextMessage?.contextInfo || x.imageMessage?.contextInfo || x.videoMessage?.contextInfo || x.documentMessage?.contextInfo || x.audioMessage?.contextInfo || x.stickerMessage?.contextInfo;
+        if (ci) return ci;
+        x = x.deviceSentMessage?.message || x.ephemeralMessage?.message || x.viewOnceMessage?.message || x.viewOnceMessageV2?.message || x.viewOnceMessageV2Extension?.message || x.editedMessage?.message;
+    }
+    return null;
+}
 async function handleForward(send, jid, msg, arg) {
-    const ci = msg.message?.extendedTextMessage?.contextInfo;
+    const ci = unwrapCtx(msg.message);
     const quoted = ci?.quotedMessage;
-    if (!quoted) return send(jid, { text: '🧭 *FORWARD*\n\n✦ message එකකට reply කරලා *.forward <number|jid>*\n✦ උදා: *.forward 94771234567* · *.forward 9477…@g.us*\n✦ *.jid* — chat එකේ jid එක බලලා copy කරන්න\n\n> targets 5 දක්වා එකපාර' }, { quoted: msg });
+    if (!quoted) return send(jid, { text: '🧭 *FORWARD*\n\n✦ message එකකට reply කරලා *.forward <number|jid>*\n✦ උදා: *.forward 94771234567* · *.forward 9477…@g.us* · *.forward https://wa.me/9477…*\n✦ *.jid* — chat එකේ jid එක බලලා copy කරන්න\n\n> targets 5 දක්වා එකපාර' }, { quoted: msg });
     if (!arg) return send(jid, { text: '❌ target JID / number එක දෙන්න — උදා: *.forward 94771234567*\n> *.jid* — jid එක බලන්න' }, { quoted: msg });
-    const mine = (j) => !!j && (bareJid(j) === ME.pn || bareJid(j) === ME.lid);
     const norm = (t) => {
-        t = String(t || '').replace(/^@/, '').trim();
+        t = String(t || '').trim();
         if (/^me$/i.test(t)) return ME.pn;
-        if (/@(g\.us|s\.whatsapp\.net|lid)$/.test(t)) return t.endsWith('@g.us') ? t : bareJid(t) + (t.endsWith('@lid') ? '@lid' : '@s.whatsapp.net');
-        if (/^\+?\d{8,15}$/.test(t)) return t.replace(/^\+/, '').replace(/^0/, '94') + '@s.whatsapp.net';
+        const link = t.match(/(?:wa\.me|api\.whatsapp\.com\/send\?phone=)\/?\+?(\d{8,15})/i);   // wa.me / click-to-chat links
+        if (link) return link[1].replace(/^0/, '94') + '@s.whatsapp.net';
+        if (/@(g\.us|s\.whatsapp\.net|lid)$/i.test(t)) {
+            if (t.toLowerCase().endsWith('@g.us')) return t;
+            const user = t.split('@')[0].split(':')[0];   // device (:NN) suffix එකත් අයින් — v2.41 double-suffix bug fix (@lid@lid / @s.whatsapp.net@s.whatsapp.net)
+            return user + (t.toLowerCase().endsWith('@lid') ? '@lid' : '@s.whatsapp.net');
+        }
+        const plain = t.replace(/[\s\-()]/g, '');   // "077-123 4567" වගේ ඒවත් ගන්න
+        if (/^\+?\d{8,15}$/.test(plain)) return plain.replace(/^\+/, '').replace(/^0/, '94') + '@s.whatsapp.net';
         return null;
     };
-    const targets = [...new Set(arg.split(/\s+/).filter(Boolean))].slice(0, 5);
+    const allTargets = [...new Set(arg.split(/\s+/).filter(Boolean))];
+    const targets = allTargets.slice(0, 5);
     const jids = []; const bad = []; const seenT = new Set();
     for (const t of targets) { const j = norm(t); if (!j) { bad.push(t); continue; } if (seenT.has(j)) continue; seenT.add(j); jids.push(j); }   // dedupe AFTER normalize (9477… = 077… = me)
-    if (!jids.length) return send(jid, { text: '❌ JID / number වලින් දෙන්න — 947XXXXXXXX / xxx@g.us' }, { quoted: msg });
-    const fwd = { key: { remoteJid: jid, fromMe: !ci.participant || mine(ci.participant), id: ci.stanzaId || msg.key.id, participant: ci.participant || undefined }, message: quoted };
-    const ok = jids;
-    const st = await send(jid, { text: `🧭 forward වෙනවා → ${ok.length} target…` }, { quoted: msg });
+    if (!jids.length) return send(jid, { text: '❌ JID / number වලින් දෙන්න — 947XXXXXXXX / xxx@g.us / xxx@lid / wa.me link' }, { quoted: msg });
+    const fwd = { key: { remoteJid: jid, id: ci.stanzaId, participant: ci.participant || undefined }, message: quoted };   // stanzaId = quoted msg එකේම real id (fake fallback එක අයින් — v2.42)
+    const st = await send(jid, { text: `🧭 forward වෙනවා → ${jids.length} target…` }, { quoted: msg });
     const out = [];
     for (const t of jids) {
-        try { await SOCK.sendMessage(t, { forward: fwd }); out.push(`✅ ${t}`); }
+        try { await SOCK.sendMessage(t, { forward: fwd, force: true }); out.push(`✅ ${t}`); }   // force → "Forwarded" label එක හැමවෙලාවෙම
         catch (e) { out.push(`❌ ${t} — ${String(e.message).slice(0, 60)}`); }
         await guard.sleep(600);   // anti-ban pace
     }
     if (bad.length) out.push(`⚠️ වලංගු නෑ: ${bad.join(', ')}`);
-    await send(jid, { text: '🧭 *Forward*\n' + out.join('\n'), edit: st.key });
+    if (allTargets.length > 5) out.push(`ℹ️ ඉතුරු ${allTargets.length - 5} ක් skip කළා (එකපාර max 5)`);
+    const card = '🧭 *Forward*\n' + out.join('\n');
+    try { await send(jid, { text: card, edit: st?.key }); } catch { await send(jid, { text: card }, { quoted: msg }); }   // edit fail → plain send (v2.42)
 }
 
 // ───────── 🤖 AI auto-chat (v2.41) — mode panel 5/6 + 11-16 වලින් control වෙනවා ─────────

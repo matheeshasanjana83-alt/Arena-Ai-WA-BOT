@@ -27,8 +27,8 @@ const POSIX_FF = '#!/bin/sh\nprev=""; src=""; out=""; for a in "$@"; do if [ "$p
 (async () => {
     const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8'));
     const man = JSON.parse(fs.readFileSync(path.join(__dirname, 'manifest.json'), 'utf8'));
-    ok('version 2.41.0 (package.json)', pkg.version === '2.41.0');
-    ok('version 2.41.0 (manifest.json)', man.version === '2.41.0');
+    ok('version 2.42.0 (package.json)', pkg.version === '2.42.0');
+    ok('version 2.42.0 (manifest.json)', man.version === '2.42.0');
 
     // ── ① source checks ──
     const src = fs.readFileSync(path.join(__dirname, 'moviedex.js'), 'utf8');

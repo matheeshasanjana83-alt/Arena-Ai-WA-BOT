@@ -1,6 +1,6 @@
 {
-  "version": "2.41.0",
-  "notes": "🛡 MODE PANEL + 🤖 AI CHAT + 🧭 FORWARD (v2.41.0): .mode = numbered panel — BOT MODES 1 Public (හැමොටම) / 2 Private (owner) / 3 Inbox Only / 4 Groups Only (අංක reply → set → panel refresh; legacy all/self → public/private) + අනිත් අයට bot use කරන්න පුළුවන් modes වල (owner-only commands 🔒 locked). AI & TOOLS 5/6 Enable/Disable AI Chat + AI CHAT MODES 11-16 (Inbox Public/Self/Private · Groups Only · All · All Public — groups = mention/reply only, per-chat 4s gap). 🧭 .forward <number|jid> — reply → forward (5 targets, owner-only). Number routing = 3 panels (.setting/.menu/.mode) exact-quote-wins. guard.js botAccess/aiAllowed matrix + test_v241 60+ checks. MovieDex v2.37 speed unchanged.",
+  "version": "2.42.0",
+  "notes": "🧭 FORWARD FIX (v2.42.0): .forward REWRITE — 2026 MD-bot proven shape (nova-md pattern) — ① contextInfo WRAPPER UNWRAP (ephemeral/viewOnce/deviceSent/edited replies වලටත් වැඩ — v2.41 ඒවා miss කරා) ② FULL-JID double-suffix fix (9477…@s.whatsapp.net@s.whatsapp.net / @lid@lid → valid jid — .jid output copy-paste වලටත් වැඩ) ③ force:true → Forwarded label හැමවෙලාවෙම ④ targets: +94/07x/dash/space numbers + @g.us + @lid + wa.me links + me, 5 දක්වා (ඉතුරු ℹ️ note) ⑤ per-target ❌/✅ result card + edit-fail fallback ⑥ .jid upgrade — reply context: Chat jid + 👤 sender + 🧾 msg id (unwrap-aware). v2.37 speed patches + v2.40 clean state untouched.",
   "removed": [
     "movies.js",
     "test_v218.js",
@@ -58,6 +58,7 @@
     "pairsite.js",
     "autoupdate.js",
     "test_v237.js",
-    "test_v241.js"
+    "test_v241.js",
+    "test_v242.js"
   ]
 }
