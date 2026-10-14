@@ -91,7 +91,7 @@ const PROVIDERS = ['gemini', 'groq', 'zai'];
 function getProvider() { const p = String(loadSettings().aiProvider || '').toLowerCase().trim(); return PROVIDERS.includes(p) ? p : ''; }
 
 // 🧰 AI tools (v2.50) — GLM (Z.ai) එකට විතරක් connector abilities (GLM-first per user)
-const { TOOLS, runTool } = require('./ai_tools');
+const { TOOLS, runToolEx } = require('./ai_tools');
 const getTools = () => loadSettings().aiTools !== false;   // default ON
 function setTools(on) { const s = loadSettings(); s.aiTools = !!on; saveSettings(s); return !!on; }
 function setProvider(p) { // 🎛 .aiprovider / .setting 10 — user කැමති provider එක (z.ai/glm → zai alias)
@@ -165,14 +165,14 @@ async function askGroq(key, msgs) {
     throw lastErr;
 }
 
-async function askZai(key, msgs) {
+async function askZai(key, msgs, chatId) {
     let lastErr;
     const toolsOn = getTools(); // connector tools — GLM first (v2.50)
     for (const model of ZAI_MODELS) {
         if (zaiDead.has(model)) continue;
-        const messages = [{ role: 'system', content: SYSTEM + (toolsOn ? '\n- TOOLS: you have tools (web_search, get_datetime, calculator, weather, youtube_search). If the question needs CURRENT/fresh facts, today\'s date/time, math, weather, or YouTube videos — call the matching tool first, then answer in the user\'s language using the result. For normal chat do not call tools.' : '') }, ...msgs.map(m => ({ role: m.role, content: m.text }))];
-        let useTools = toolsOn, answer = null;
-        for (let iter = 0; iter < 3 && !answer; iter++) {
+        const messages = [{ role: 'system', content: SYSTEM + (toolsOn ? "\n- TOOLS: you have tools (web_search, get_datetime, calculator, weather, youtube_search, generate_image, read_url, set_reminder, list_reminders). Rules: current/fresh facts, news, prices, scores -> web_search; date/time -> get_datetime; math -> calculator; weather -> weather; YouTube videos -> youtube_search; the user asks you to CREATE an image/photo/art/logo -> generate_image with a vivid detailed English prompt, then briefly say you made it; the user shares a LINK and asks about it -> read_url first; the user asks to be REMINDED -> call get_datetime first, then set_reminder (time as ISO 8601 +05:30, note in user language); asks for active reminders -> list_reminders. Call the matching tool first, then answer in the user's language using the result. For normal chat do not call tools." : '') }, ...msgs.map(m => ({ role: m.role, content: m.text }))];
+        let useTools = toolsOn, answer = null; let images = [];   // 🖼 tool images (v2.51)
+        for (let iter = 0; iter < 4 && !answer; iter++) {
             const payload = {
                 model, temperature: 0.6, max_tokens: 2048,
                 thinking: { type: 'disabled' }, // GLM hybrid-reasoning OFF → WhatsApp speed (reasoning_content එක tokens කනවා)
@@ -194,13 +194,15 @@ async function askZai(key, msgs) {
                 throw lastErr;
             }
             const m0 = j.choices?.[0]?.message;
-            if (useTools && Array.isArray(m0?.tool_calls) && m0.tool_calls.length && iter < 2) {
+            if (useTools && Array.isArray(m0?.tool_calls) && m0.tool_calls.length && iter < 3) {
                 messages.push({ role: 'assistant', content: m0.content || '', tool_calls: m0.tool_calls });
                 for (let i = 0; i < m0.tool_calls.length; i++) {
                     const tc = m0.tool_calls[i];
                     if (!tc?.function?.name) continue;
-                    const out = await runTool(tc.function.name, tc.function.arguments); // connector → run
-                    messages.push({ role: 'tool', tool_call_id: tc.id || `call_${iter}_${i}`, content: String(out).slice(0, 1500) });
+                    const ex = await runToolEx(tc.function.name, tc.function.arguments, { chatId, zaiKey: key });   // connector → run (v2.51: {text, image})
+                    const out = ex.image ? (ex.text || 'Image generated') + ' — sent to the user as a photo' : ex.text;
+                    if (ex.image) images.push(ex.image);
+                    messages.push({ role: 'tool', tool_call_id: tc.id || `call_${iter}_${i}`, content: String(out).slice(0, 4000) });
                 }
                 continue; // tool results එක්ක ආයෙත් — final answer එකට
             }
@@ -208,11 +210,50 @@ async function askZai(key, msgs) {
             if (text) answer = { text, model: 'GLM ' + model };
             else break; // empty → ඊළඟ model එකට fallback
         }
-        if (answer) return answer;
+        if (answer) return images.length ? { ...answer, images } : answer;
         lastErr = lastErr || new Error('Z.ai empty answer');
     }
     throw lastErr || new Error('Z.ai: වැඩ කරන model එකක් නෑ (balance/models බලන්න)');
 }
+
+/** 👁 v2.51 vision — photo/PDF එකකට reply + .ai → Gemini inline කියවීම (memory store එකත් එක්කම) */
+async function askVision(chatId, question, media) {
+    const keys = getKeys();
+    if (!keys.gemini) { const e = new Error('Gemini key එක නෑ'); e.noGemini = true; throw e; }
+    const mime = String(media?.mime || 'image/jpeg');
+    const b64 = String(media?.b64 || '');
+    if (!b64) throw new Error('attachment data නෑ');
+    const pref = getProvider();
+    const mk = memKeyOf(chatId, pref ? 'gemini' : '');   // vision = Gemini → fixed-select නම් gemini store
+    const now = Date.now();
+    const h = (history.get(mk) || []).filter(m => now - (m.t || now) < TTL_MS);
+    const parts = [{ text: question || 'මේක මොකක්ද? පැහැදිලිව කියන්න.' }, { inline_data: { mime_type: mime, data: b64 } }];
+    const url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent';
+    const opts = {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': keys.gemini },
+        body: JSON.stringify({
+            systemInstruction: { parts: [{ text: SYSTEM }] },
+            contents: [...h.map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.text }] })), { role: 'user', parts }],
+            generationConfig: { maxOutputTokens: 2048, temperature: 0.5 }
+        })
+    };
+    let r = await fetch(url, opts);
+    let body = await r.text();
+    if (!r.ok && /location is not supported|FAILED_PRECONDITION|forbidden/i.test(body)) {
+        try { const rp = await require('./net').viaPool(url, opts); const pb = await rp.text(); if (rp.ok) { r = rp; body = pb; } } catch { } // 🌍 geo-block → proxy pool
+    }
+    if (!r.ok) throw apiError('Gemini', r.status, body);
+    const text = (JSON.parse(body).candidates?.[0]?.content?.parts || []).map(p => p.text || '').join('').trim();
+    if (!text) throw new Error('Gemini vision empty answer');
+    const t = Date.now();
+    h.push({ role: 'user', text: (question || '[attachment]').slice(0, 2000) + ' [attachment]', t }, { role: 'assistant', text, t });
+    while (h.length > MAX_TURNS * 2) h.shift();
+    history.set(mk, h);
+    scheduleSave();
+    return { text: toWhatsApp(text), model: 'Gemini vision' };
+}
+
 
 /** Markdown → WhatsApp formatting */
 function toWhatsApp(t) {
@@ -249,7 +290,7 @@ async function ask(chatId, question) {
         const h = (history.get(mk) || []).filter(m => now - (m.t || now) < TTL_MS); // TTL prune
         const msgs = [...h, { role: 'user', text: question }];
         try {
-            const res = await fn(keys[name], msgs);
+            const res = await fn(keys[name], msgs, chatId);
             const text = toWhatsApp(res.text);
             const t = Date.now();
             h.push({ role: 'user', text: question, t }, { role: 'assistant', text, t });
@@ -297,4 +338,4 @@ function stats(chatId) { // 🧠 .ai memory card data
     };
 }
 
-module.exports = { ask, reset, stats, setKey, getKeys, getProvider, setProvider, getTools, setTools, splitLong, toWhatsApp, _history: history, _memoryFile: MEM_FILE, _memKey: memKeyOf, _flush: saveMemoryNow };
+module.exports = { ask, askVision, reset, stats, setKey, getKeys, getProvider, setProvider, getTools, setTools, splitLong, toWhatsApp, _history: history, _memoryFile: MEM_FILE, _memKey: memKeyOf, _flush: saveMemoryNow };

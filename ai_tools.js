@@ -46,6 +46,38 @@ const TOOLS = [
             description: 'Search YouTube. Returns top videos with title, duration, channel and link.',
             parameters: { type: 'object', properties: { query: { type: 'string', description: 'Search words' } }, required: ['query'] }
         }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'generate_image',
+            description: 'CREATE/generate/draw a NEW image from a text description (photo, art, anime, logo, poster, character). Use ONLY when the user asks you to MAKE an image. Write a vivid detailed English prompt for best quality.',
+            parameters: { type: 'object', properties: { prompt: { type: 'string', description: 'Image description in English, detailed and vivid' } }, required: ['prompt'] }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'read_url',
+            description: 'Read the text content of a web page link (articles, blogs, docs, news posts). Use when the user shares a link and asks about it, or when you need details from a specific page.',
+            parameters: { type: 'object', properties: { url: { type: 'string', description: 'Full http(s) URL to read' } }, required: ['url'] }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'set_reminder',
+            description: 'Set a reminder/alarm for the user. FIRST call get_datetime to know the current time, then compute the target time. The time MUST be ISO 8601 with +05:30 offset (Sri Lanka), e.g. 2026-10-15T08:00:00+05:30.',
+            parameters: { type: 'object', properties: { time: { type: 'string', description: 'ISO 8601 date-time with +05:30 offset' }, note: { type: 'string', description: 'What to remind — keep the user language' } }, required: ['time', 'note'] }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'list_reminders',
+            description: 'List the currently active reminders of this user.',
+            parameters: { type: 'object', properties: {} }
+        }
     }
 ];
 
@@ -148,20 +180,97 @@ async function ytSearch(q) {
     return vids.map((v, i) => `${i + 1}. ${String(v.title || '').slice(0, 100)}${v.timestamp ? ' [' + v.timestamp + ']' : ''} — ${v.author && v.author.name ? v.author.name : '?'}\n   ${v.url}`).join('\n');
 }
 
-// ── dispatcher — never throws ──
-async function runTool(name, argsJson) {
+// ── 🖼 generate image — Z.ai CogView-3-Flash → Pollinations fallback (key ඕන නෑ) ──
+async function generateImage(prompt, zaiKey) {
+    prompt = String(prompt || '').trim().slice(0, 600);
+    if (!prompt) throw new Error('empty prompt');
+    if (zaiKey) {
+        try {
+            const r = await ffetch('https://api.z.ai/api/paas/v4/images/generations', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${zaiKey}` },
+                body: JSON.stringify({ model: 'cogview-3-flash', prompt, size: '1024x1024' })
+            }, 60000);
+            const j = JSON.parse(await r.text());
+            const u = j?.data?.[0]?.url;
+            if (r.ok && u) {
+                const ir = await ffetch(u, {}, 30000);
+                if (ir.ok) {
+                    const buf = Buffer.from(await ir.arrayBuffer());
+                    if (buf.length > 2000) return buf;
+                }
+            }
+        } catch { } // CogView fail → Pollinations fallback
+    }
+    const seed = Math.floor(Math.random() * 1e9);
+    const r2 = await ffetch(`https://image.pollinations.ai/prompt/${encodeURIComponent(prompt.slice(0, 400))}?width=1024&height=1024&nologo=true&safe=true&seed=${seed}`, {}, 90e3);
+    if (!r2.ok) throw new Error('image gen fail (' + r2.status + ')');
+    const ct = String(r2.headers.get('content-type') || '');
+    const buf2 = Buffer.from(await r2.arrayBuffer());
+    if (!ct.startsWith('image/') || buf2.length < 2000) throw new Error('image gen fail (bad output)');
+    return buf2;
+}
+
+// ── 📖 read url — page text කියවලා දෙනවා (Deep Research / document power) ──
+async function readUrl(u) {
+    u = String(u || '').trim();
+    if (!/^https?:\/\//i.test(u)) throw new Error('http(s) link එකක් දෙන්න');
+    if (u.length > 500) throw new Error('url too long');
+    const r = await ffetchPool(u, { headers: { 'Accept': 'text/html,application/xhtml+xml,text/plain,application/json,*/*' } }, 14000);
+    if (!r.ok) throw new Error('http ' + r.status);
+    const ct = String(r.headers.get('content-type') || '');
+    let raw = await r.text();
+    if (raw.length > 300000) raw = raw.slice(0, 300000);
+    let title = '', text = '';
+    if (/html/i.test(ct) || /^\s*<(!doctype|html)/i.test(raw)) {
+        title = (raw.match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [])[1] || '';
+        text = raw
+            .replace(/<script[\s\S]*?<\/script>/gi, ' ').replace(/<style[\s\S]*?<\/style>/gi, ' ')
+            .replace(/<noscript[\s\S]*?<\/noscript>/gi, ' ')
+            .replace(/<\/(p|div|li|h[1-6]|tr|section|article)>/gi, '\n').replace(/<br\s*\/?>/gi, '\n')
+            .replace(/<[^>]+>/g, ' ');
+        text = text.replace(/&(amp|lt|gt|quot|#x27|#39|nbsp);/g, (m) => ENT[m] || m)
+            .replace(/[ \t]+/g, ' ').replace(/\n\s*\n+/g, '\n').trim();
+    } else text = raw.replace(/\n{3,}/g, '\n\n').trim();
+    if (!text) throw new Error('page එකේ text නෑ (JS-only site වෙන්න පුළුවන්)');
+    return `PAGE: ${clean(title).slice(0, 120)}\nURL: ${u}\n\n${text.slice(0, 4500)}`;
+}
+
+// ── ⏰ reminders (reminders.js wrapper — chat context එක call එකෙන්ම එනවා, race-free) ──
+function setReminder(args, ctx) {
+    const rem = require('./reminders');
+    if (!ctx || !ctx.chatId) throw new Error('chat context missing');
+    if (!args.time) throw new Error('time ඕන — ISO 8601 (2026-10-15T08:00:00+05:30)');
+    return rem.toolAdd(ctx.chatId, args.time, args.note || args.text || args.what);
+}
+function listReminders(ctx) {
+    const rem = require('./reminders');
+    if (!ctx || !ctx.chatId) throw new Error('chat context missing');
+    return rem.toolList(ctx.chatId);
+}
+
+// ── dispatcher — never throws (v2.51: {text, image} shape — image = WhatsApp එකට යවන Buffer) ──
+async function runToolEx(name, argsJson, ctx) {
     let args = {};
     try { args = JSON.parse(argsJson || '{}') || {}; } catch { }
     try {
         switch (String(name || '')) {
-            case 'web_search': return await webSearch(args.query);
-            case 'get_datetime': return getDateTime(args);
-            case 'calculator': return calc(args.expression);
-            case 'weather': return await weather(args.location);
-            case 'youtube_search': return await ytSearch(args.query);
-            default: return 'Unknown tool: ' + name;
+            case 'web_search': return { text: await webSearch(args.query) };
+            case 'get_datetime': return { text: getDateTime(args) };
+            case 'calculator': return { text: calc(args.expression) };
+            case 'weather': return { text: await weather(args.location) };
+            case 'youtube_search': return { text: await ytSearch(args.query) };
+            case 'generate_image': {
+                const buf = await generateImage(args.prompt, ctx && ctx.zaiKey);
+                return { text: `Image generated OK — prompt: ${String(args.prompt).slice(0, 150)}`, image: buf, mime: 'image/jpeg' };
+            }
+            case 'read_url': return { text: await readUrl(args.url) };
+            case 'set_reminder': return { text: setReminder(args, ctx) };
+            case 'list_reminders': return { text: listReminders(ctx) };
+            default: return { text: 'Unknown tool: ' + name };
         }
-    } catch (e) { return 'Tool error: ' + String(e && e.message || e).slice(0, 150); }
+    } catch (e) { return { text: 'Tool error: ' + String(e && e.message || e).slice(0, 150) }; }
 }
+async function runTool(name, argsJson, ctx) { return (await runToolEx(name, argsJson, ctx)).text; }   // v2.50 compat
 
-module.exports = { TOOLS, runTool, _webSearch: webSearch, _getDateTime: getDateTime, _calc: calc, _weather: weather, _ytSearch: ytSearch };
+module.exports = { TOOLS, runTool, runToolEx, _webSearch: webSearch, _getDateTime: getDateTime, _calc: calc, _weather: weather, _ytSearch: ytSearch, _generateImage: generateImage, _readUrl: readUrl };

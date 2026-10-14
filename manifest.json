@@ -1,6 +1,6 @@
 {
-  "version": "2.50.0",
-  "notes": "🧰 AI TOOLS + 🧠 PER-MODEL MEMORY (v2.50.0): GLM (Z.ai) එකට connector tools — web search · date/time · calculator · weather · YouTube search (AI ම හිතලා ඕන වෙලාවට පාවිච්චි කරනවා · .ai tools on/off). Memory: .aiprovider එකෙන් select කරන model එකට වෙනම store — AUTO එකේ shared. .ai reset = models 3 ගේම clear.",
+  "version": "2.51.0",
+  "notes": "👁 VISION + 🎨 IMAGE GEN + 📖 LINK READ + ⏰ REMINDERS (v2.51.0): AI Tools 5→9 — AI ම හිතලා පාවිච්චි කරනවා: photo හදලා දෙනවා (CogView) · දෙන link එකේ page එක කියවනවා · කියපු වෙලාවට reminder දානවා (.remind වලටත් OK) · photo/PDF එකකට reply + .ai = Gemini vision එකෙන් බලලා කියනවා.",
   "removed": [
     "movies.js",
     "test_v218.js",
@@ -67,6 +67,8 @@
     "test_v247.js",
     "test_v249.js",
     "ai_tools.js",
-    "test_v250.js"
+    "test_v250.js",
+    "reminders.js",
+    "test_v251.js"
   ]
 }

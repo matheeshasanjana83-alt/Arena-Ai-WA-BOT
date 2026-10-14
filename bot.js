@@ -45,6 +45,7 @@ const moviedex = require('./moviedex');
 const antibug = require('./antibug');
 const antispam = require('./antispam');
 const { BRAND, foot, cut } = require('./style');
+const reminders = require('./reminders');
 
 const AUTH = path.join(__dirname, 'auth');
 const LOGO = path.join(__dirname, 'logo.img');        // your own photo (.setlogo) — never touched by .update
@@ -137,6 +138,7 @@ const HELP = `*◈ KAVIZ MD V1 ◈* — commands
 🎉 *.joke* · *.fact* · *.quote* · *.8ball*
 👥 *.groupinfo* · *.grouplink* · *.tagall* · *.kick* · *.promote* · *.demote* · *.mute* · *.resetlink* · *.jid*
 🤖 *.ai <ප්‍රශ්නය>* (reply කරලත් · *.ai reset* · *.ai memory*)
+⏰ *.remind 10m <note>* · 👁 photo/PDF reply + *.ai* · 🎨 *.ai* — "image එකක් හදලා දෙන්න"
 🔧 *.net* · *.setproxy* · *.proxies* · *.setcookies* · *.setkey* · *.keys*
 ⚙️ *.setting* (panel) · *.mode* · *.react* · *.maxmb* · *.setlogo* · *.autoupdate* · *.update* · *.version* · *.restart*
 🛡️ *.antibug* · *.block* · *.unblock* · *.blocklist* · *.antispam* · *.spamlog*
@@ -384,6 +386,7 @@ else { const b = moviedex.bridgeReply(jid0, qid, text); if (b) text = b; }
                     const hint2 = set2 && !ai.getKeys()[set2] ? `\n⚠️ ඒ provider එකේ key එක නෑ — .setkey ${set2} <KEY>` : '';
                     return send(jid, { text: `✅ AI provider: *${label2}*${hint2}` }, { quoted: msg });
                 }
+                if (c === '.remind') { await handleRemind(send, jid, msg, rest.join(' ')); continue; }   // ⏰ reminders (v2.51)
                 if (c === '.restart') { await send(jid, { text: '🔄 Restart වෙනවා... තත්පර 10 කින් *.ping*' }, { quoted: msg }); setTimeout(() => process.exit(process.env.ARENA_LAUNCHER ? 100 : 0), 1500); continue; }
                 if (await runJob(() => tools.handle(c, { send, jid, msg, rest, sock: SOCK, me: ME, react }))) continue;
                 if (await runJob(() => features.handle(c, { send, jid, msg, rest, sock: SOCK, me: ME, download, react }))) continue;
@@ -455,11 +458,13 @@ const CATS = [
     ['📱', 'Social', `*📱 SOCIAL*\n\n✦ *.tiktok <link>* — watermark නෑ (*.tt*)\n✦ *.fb <link>* — Facebook (*.facebook*)\n✦ *.ig <link>* — Instagram\n✦ *.x <link>* — X / Twitter`],
     ['🔍', 'Search', `*🔍 SEARCH*\n\n✦ *.wiki <මාතෘකාව>* — Wikipedia\n✦ *.wiki si <මාතෘකාව>* — සිංහල wiki\n✦ *.yts <නම>* — YouTube search`],
     ['🖼️', 'Sticker', `*🖼️ STICKER*\n\n✦ *.s* — photo/video reply → sticker\n✦ *.take Pack | Author* — නම වෙනස් කරන්න\n\n> video sticker — තත්පර 6 දක්වා`],
-    ['🛠️', 'Tools', `*🛠️ TOOLS*\n\n✦ *.tr <භාෂාව> <text>* — translate\n✦ *.tts <text>* — voice (සිංහල OK)\n✦ *.weather <නගරය>* — කාලගුණය · දින 3\n✦ *.lyrics <සින්දුව>* — lyrics\n✦ *.imagine <විස්තරය>* — AI image\n✦ *.toimg* — sticker → photo\n✦ *.tourl* — media → 🔗 link\n✦ *.ss <site>* · *.qr* · *.short* · *.calc*\n✦ *.github <user>* · *.del* · *.setpp*`],
+    ['🛠️', 'Tools', `*🛠️ TOOLS*\n\n✦ *.tr <භාෂාව> <text>* — translate\n✦ *.remind <time> <note>* — ⏰ reminders\n✦ *.tts <text>* — voice (සිංහල OK)\n✦ *.weather <නගරය>* — කාලගුණය · දින 3\n✦ *.lyrics <සින්දුව>* — lyrics\n✦ *.imagine <විස්තරය>* — AI image\n✦ *.toimg* — sticker → photo\n✦ *.tourl* — media → 🔗 link\n✦ *.ss <site>* · *.qr* · *.short* · *.calc*\n✦ *.github <user>* · *.del* · *.setpp*`],
     ['🎉', 'Fun', `*🎉 FUN*\n\n✦ *.joke* · *.fact* · *.quote*\n✦ *.8ball <ප්‍රශ්නය>* — 🎱`],
     ['👥', 'Group', `*👥 GROUP* — group එකේ ඔයා ගහන්න\n\n✦ *.groupinfo* · *.grouplink* · *.jid*\n✦ *.tagall [msg]* — විනාඩි 10 කට 1\n✦ *.kick @user* · *.promote* · *.demote*\n✦ *.mute* · *.unmute* · *.tagadmins* · *.resetlink*\n\n> @mention නැත්නම් message එකකට reply කරන්න`],
     ['🤖', 'AI', `*🤖 AI*\n\n✦ *.ai <ප්‍රශ්නය>* — සිංහල OK\n✦ message එකකට reply + *.ai* — ඒක ගැනම\n✦ *.ai reset* — අලුත් කතාවක්
 ✦ *.ai memory* — මතකය status · save state
+✦ photo/PDF එකකට reply + *.ai* — 👁 බලලා කියනවා
+✦ *.remind 10m <note>* — ⏰ මතක් කරන්න
 ✦ *.ai tools* — GLM connector (search/weather/YT)
 ✦ AI provider තෝරන්න — *.aiprovider gemini/groq/zai/auto* · *.setting* → 10\n✦ AI chat auto-reply — *.mode* → 5/6 on·off · 11-16 modes
 ✦ *.setkey gemini/groq/zai <KEY>* · *.keys*`],
@@ -890,6 +895,77 @@ function quotedText(msg) {
     return ctx?.quotedMessage ? getText(ctx.quotedMessage) : '';
 }
 
+// ── ⏰ .remind — reminders (v2.51) — AI එකෙනුත් දාන්න පුළුවන් (.ai හෙට උදේ 8ට මතක් කරන්න...) ──
+async function handleRemind(send, jid, msg, arg) {
+    arg = String(arg || '').trim();
+    if (!arg || /^(list|ls|\?)$/i.test(arg)) {
+        const l = reminders.list(jid);
+        if (!l.length) return send(jid, { text: `⏰ *REMINDERS*
+
+✦ Active reminders නෑ
+
+දාන්න: *.remind 10m බත් කාලා ඉන්න*
+✦ *.remind 30s / 10m / 2h / 1d / 1h30m <note>*
+✦ *.remind 08:30 <note>* — අද/හෙට ඒ වෙලාවට
+✦ *.remind 2026-10-20 09:00 <note>*
+🤖 නැත්නම් සිංහලෙන්ම — *.ai හෙට උදේ 8ට මතක් කරන්න ...*` }, { quoted: msg });
+        const body = l.map((r, i2) => `${i2 + 1}. ${reminders.fmtWhen(r.at)}
+   📝 ${r.note}`).join('\n');
+        return send(jid, { text: `⏰ *REMINDERS* (${l.length})
+
+${body}
+
+> *.remind del <n>* — අයින් කරන්න` }, { quoted: msg });
+    }
+    if (/^(del|delete|rm|clear)/i.test(arg)) {
+        const m = arg.match(/\d+/);
+        if (m) { const r = reminders.del(jid, m[0]); return send(jid, { text: r ? `🗑️ Reminder අයින් කළා: ${r.note.slice(0, 80)}` : '❌ ඒ අංකේ reminder එකක් නෑ — *.remind list*' }, { quoted: msg }); }
+        const n = reminders.clearAll(jid);
+        return send(jid, { text: n ? `🗑️ Reminders ${n}ක්ම clear කළා` : '⚠️ Clear කරන්න reminders නෑ' }, { quoted: msg });
+    }
+    const m = arg.match(/^(\S+)\s+([\s\S]+)$/);
+    if (!m) return send(jid, { text: '⏰ *.remind <time> <note>* — උදා: *.remind 10m බත් කාලා ඉන්න*' }, { quoted: msg });
+    let note = m[2];
+    let at = reminders.parseWhen(m[1]);
+    if (!isFinite(at)) {   // "2026-10-20 09:00 note" — date + time වෙන වෙනම tokens
+        const d2 = arg.match(/^(\d{4}-\d{2}-\d{2})\s+(\d{1,2}:\d{2})\s+([\s\S]+)$/);
+        if (d2) { at = reminders.parseWhen(d2[1] + 'T' + d2[2]); note = d2[3]; }
+    }
+    if (!isFinite(at)) return send(jid, { text: `❌ Time එක තේරුම් ගන්න බෑ: ${m[1].slice(0, 30)}
+
+✦ *.remind 30s/10m/2h/1d <note>*
+✦ *.remind 08:30 <note>*
+✦ *.remind 2026-10-20 09:00 <note>*` }, { quoted: msg });
+    try {
+        const r = reminders.add(jid, at, note, 'cmd');
+        await send(jid, { text: `✅ Reminder දැම්මා!
+
+⏰ ${reminders.fmtWhen(r.at)}
+📝 ${r.note}` }, { quoted: msg });
+        log(`⏰ reminder set: ${new Date(r.at).toISOString()} — ${r.note.slice(0, 50)}`);
+    } catch (e) { await send(jid, { text: '❌ ' + e.message }, { quoted: msg }); }
+}
+
+// 👁 v2.51 — quoted photo/PDF එකක් download කරලා base64 (8MB cap) — vision path එකට
+async function quotedMediaOf(msg) {
+    try {
+        const unwrap = (m) => m?.viewOnceMessage?.message || m?.viewOnceMessageV2?.message || m?.ephemeralMessage?.message || m;
+        const own = unwrap(msg.message);
+        const ctx = own?.extendedTextMessage?.contextInfo || own?.imageMessage?.contextInfo || own?.documentMessage?.contextInfo || own?.videoMessage?.contextInfo;
+        const qm = ctx?.quotedMessage && unwrap(ctx.quotedMessage);
+        if (!qm) return null;
+        const im = qm.imageMessage, dm = qm.documentMessage;
+        const mime = im ? (im.mimetype || 'image/jpeg') : (dm && /pdf/i.test(dm.mimetype || '') ? 'application/pdf' : null);
+        if (!mime) return null;
+        const fl = Number((im || dm).fileLength || 0);
+        if (fl > 8 * 1048576) return null;   // Gemini inline safety cap
+        const buf = await mediaDownloader({ key: { remoteJid: msg.key.remoteJid, id: ctx.stanzaId, fromMe: false, participant: ctx.participant }, message: qm });
+        if (!buf || buf.length < 100 || buf.length > 9 * 1048576) return null;
+        return { mime, b64: Buffer.from(buf).toString('base64') };
+    } catch { return null; }
+}
+
+
 async function handleAI(send, jid, msg, question) {
     question = question.trim();
     if (/^(memory|mem)$/i.test(question)) {
@@ -914,6 +990,9 @@ async function handleAI(send, jid, msg, question) {
 GLM (Z.ai) එකට connect වෙලා තියෙන abilities:
 ✦ *web search* — අලුත් facts / news
 ✦ *date/time + calculator*
+✦ *image gen* — 🎨 photo / art / anime හදනවා
+✦ *link read* — 📖 ඔයා දෙන link එකේ page එක කියවනවා
+✦ *reminders* — ⏰ කියපු වෙලාවට මතක් කරනවා
 ✦ *weather* — කාළගුණය
 ✦ *YouTube search* — videos / ගීත
 
@@ -924,16 +1003,40 @@ on/off: *.ai tools on* / *.ai tools off*` }, { quoted: msg });
         return send(jid, { text: `🧰 AI tools ${on ? '✅ ON' : '⛔ OFF'} — වැඩ කරන්නේ GLM (Z.ai) එකට විතරයි` }, { quoted: msg });
     }
     if (/^(reset|new|clear)$/i.test(question)) { ai.reset(jid); return send(jid, { text: '🆕 කතාව reset කළා. අලුතෙන් අහන්න!' }, { quoted: msg }); }
+    // 👁 v2.51 — photo/PDF එකකට reply කරලා .ai → Gemini vision එකෙන් කියවනවා
+    const att = await quotedMediaOf(msg);
+    if (att) {
+        if (!question) question = 'මේක මොකක්ද? පැහැදිලිව කියන්න.';
+        const status = await send(jid, { text: '👁 බලනවා... (Gemini vision)' }, { quoted: msg });
+        try {
+            const { text, model } = await ai.askVision(jid, question, att);
+            await send(jid, { text: text + `\n\n${foot('ᴀɪ')}`, edit: status.key });
+            reactTo(msg.key, '✅');
+            log(`👁 ${model}: ${question.slice(0, 50)} → ${String(text).replace(/\s+/g, ' ').slice(0, 70)}`);
+        } catch (e) {
+            reactTo(msg.key, '❌');
+            const hint = e.noGemini ? '\n👁 Vision වැඩ කරන්නේ Gemini එකෙන් — *.setkey gemini <KEY>*' : '';
+            await send(jid, { text: `❌ ${String(e.message).slice(0, 200)}${hint}\n> photo/PDF එකකට reply කරලා *.ai <ප්‍රශ්නය>*`, edit: status.key });
+            log('❌ AI vision: ' + e.message);
+        }
+        return;
+    }
+
     const q = quotedText(msg);
     if (q) question = question ? `${question}\n\n"""${q}"""` : `මේ message එක ගැන පැහැදිලි කරන්න:\n"""${q}"""`;
     if (!question) return send(jid, { text: '🤖 *.ai <ප්‍රශ්නය>*\nඋදා: .ai GTA SA වල cheats මොනවද?' }, { quoted: msg });
     const status = await send(jid, { text: '🤖 හිතනවා...' }, { quoted: msg });
     try {
-        const { text, model } = await ai.ask(jid, question);
-        const parts = ai.splitLong(text);
-        await send(jid, { text: parts[0] + (parts.length === 1 ? `\n\n${foot('ᴀɪ')}` : ''), edit: status.key });
-        for (let i = 1; i < parts.length; i++) await send(jid, { text: parts[i] + (i === parts.length - 1 ? `\n\n${foot('ᴀɪ')}` : '') });
-        reactTo(msg.key, '✅');
+        const { text, model, images } = await ai.ask(jid, question);
+        if (images?.length) {   // 🖼 AI tool image (generate_image) — photo + reply text එකම caption
+            try { await send(jid, { delete: status.key }); } catch { }
+            await send(jid, { image: images[0], caption: text + `\n\n${foot('ᴀɪ')}` }, { quoted: msg });
+            for (let i2 = 1; i2 < Math.min(images.length, 3); i2++) await send(jid, { image: images[i2] }, { quoted: msg });
+        } else {
+            const parts = ai.splitLong(text);
+            await send(jid, { text: parts[0] + (parts.length === 1 ? `\n\n${foot('ᴀɪ')}` : ''), edit: status.key });
+            for (let i2 = 1; i2 < parts.length; i2++) await send(jid, { text: parts[i2] + (i2 === parts.length - 1 ? `\n\n${foot('ᴀɪ')}` : '') });
+        }
         log(`🤖 ${model}: ${question.slice(0, 60)} → ${String(text).replace(/\s+/g, ' ').slice(0, 80)}`);
     } catch (e) {
         if (e.noKey) return send(jid, { text: '⚠️ AI key එකක් තවම දාලා නෑ.\n\n' + KEY_HELP, edit: status.key });
@@ -1022,5 +1125,6 @@ if (require.main === module) {
     console.log('🚀 KAVIZ MD V1 starting...');
     require('./media').checkUpdate(true).catch(() => { });   // yt-dlp fresh → FB "Cannot parse data" / YT format errors fix (max 1 check/hour)
     require('./proxypool').warmup();                          // free-proxy pool check in background (net.js / yt-dlp fallback)
+    reminders.start({ getSock: () => SOCK, log });               // ⏰ reminders scheduler (v2.51)
     start().catch((e) => { log('Startup fail: ' + e.message); process.exit(1); });
 }

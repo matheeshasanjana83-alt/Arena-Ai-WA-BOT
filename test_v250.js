@@ -23,9 +23,9 @@ const T = require('./ai_tools');
 
 (async () => {
     // 1. TOOLS schema
-    ok('1 TOOLS: 5 entries', Array.isArray(T.TOOLS) && T.TOOLS.length === 5);
+    ok('1 TOOLS: >= 5 entries (v2.51: 9)', Array.isArray(T.TOOLS) && T.TOOLS.length >= 5);
     const names = T.TOOLS.map(t => t.function.name);
-    ok('2 TOOLS: names unique + expected', new Set(names).size === 5 && ['web_search', 'get_datetime', 'calculator', 'weather', 'youtube_search'].every(n => names.includes(n)));
+    ok('2 TOOLS: names unique + v2.50 five present (v2.51: +4)', new Set(names).size === names.length && ['web_search', 'get_datetime', 'calculator', 'weather', 'youtube_search'].every(n => names.includes(n)));
     ok('3 TOOLS: openai function format', T.TOOLS.every(t => t.type === 'function' && t.function && t.function.parameters && t.function.parameters.type === 'object'));
 
     // 2. calculator
@@ -83,7 +83,7 @@ const T = require('./ai_tools');
     const aiSrc = fs.readFileSync(path.join(__dirname, 'ai.js'), 'utf8');
     ok('30 ai: require ai_tools', aiSrc.includes("require('./ai_tools')"));
     ok('31 ai: payload.tools wiring', aiSrc.includes('payload.tools = TOOLS') && aiSrc.includes("tool_choice = 'auto'"));
-    ok('32 ai: tool loop + runTool call', aiSrc.includes('await runTool(tc.function.name') && aiSrc.includes("role: 'tool'"));
+    ok('32 ai: tool loop + runToolEx call', aiSrc.includes('await runToolEx(tc.function.name') && aiSrc.includes("role: 'tool'"));
     ok('33 ai: tools-off retry on unsupported', aiSrc.includes("useTools = false; continue"));
     ok('34 ai: per-model hint in SYSTEM when tools on', aiSrc.includes('TOOLS: you have tools'));
 
