@@ -3,7 +3,7 @@
    • ask(): preferred provider first, per-URL mock (gemini/groq style), fallback when key missing
    • net.js viaPool export + ai.js geo-block retry wiring (source asserts)
    • bot.js: .setting option 10, caption lines, 1-10 error, .aiprovider route, AI menu line
-   • version 2.49.0
+   • version >= 2.49.0
 */
 process.env.ARENA_NO_DELAY = '1';
 process.env.DL_TMP = require('os').tmpdir();
@@ -80,10 +80,12 @@ const ai = require('./ai');
     ok('17 bot: error text 1 – 10', botSrc.includes('1 – 10 අතර'));
     ok('18 bot: .aiprovider route', botSrc.includes("c === '.aiprovider'") && botSrc.includes('ai.setProvider(arg2)'));
     ok('19 bot: AI menu provider line', botSrc.includes('*.aiprovider gemini/groq/zai/auto*'));
+    ok('19b bot: .ai log shows WA reply preview (panel log ≠ WhatsApp display)', botSrc.includes('→ ${String(text)'));
 
     // 8. version
     const pkg = require('./package.json');
-    ok('20 version 2.49.0', pkg.version === '2.49.0');
+    const [maj, min] = String(pkg.version).split('.').map(Number);
+    ok('20 version >= 2.49.0', maj > 2 || (maj === 2 && (min > 49 || (min === 49))));
 
     console.log(`\n${pass} passed, ${fail} failed`);
     process.exitCode = fail ? 1 : 0;

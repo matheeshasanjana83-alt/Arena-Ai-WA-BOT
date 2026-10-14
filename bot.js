@@ -913,7 +913,7 @@ async function handleAI(send, jid, msg, question) {
         await send(jid, { text: parts[0] + (parts.length === 1 ? `\n\n${foot('ᴀɪ')}` : ''), edit: status.key });
         for (let i = 1; i < parts.length; i++) await send(jid, { text: parts[i] + (i === parts.length - 1 ? `\n\n${foot('ᴀɪ')}` : '') });
         reactTo(msg.key, '✅');
-        log(`🤖 ${model}: ${question.slice(0, 60)}`);
+        log(`🤖 ${model}: ${question.slice(0, 60)} → ${String(text).replace(/\s+/g, ' ').slice(0, 80)}`);
     } catch (e) {
         if (e.noKey) return send(jid, { text: '⚠️ AI key එකක් තවම දාලා නෑ.\n\n' + KEY_HELP, edit: status.key });
         reactTo(msg.key, '❌');

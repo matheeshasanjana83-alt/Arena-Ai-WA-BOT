@@ -1,6 +1,6 @@
 {
-  "version": "2.49.0",
-  "notes": "🎛 AI PROVIDER SELECTOR (v2.49.0): කැමති AI එක තෝරන්න — .aiprovider gemini/groq/zai/auto (හෝ .setting → 10). AUTO = Gemini → Groq → Z.ai fallback. 🌍 Gemini location-block / Groq 403 → free-proxy pool එකෙන් auto-retry. + Gemini/Groq keys user ගෙන් install කළා.",
+  "version": "2.49.1",
+  "notes": "🔎 AI LOG FIX (v2.49.1): .ai log line එකේ දැන් WhatsApp එකට යවපු ඇත්ත reply preview එකත් පේනවා (කලින් පෙන්නුවේ ප්‍රශ්නය විතරයි — panel log rendering ≠ WhatsApp display, z.ai ඇත්තටම හොඳට කතා කරනවා). v2.49.0: AI PROVIDER SELECTOR — .aiprovider gemini/groq/zai/auto (හෝ .setting → 10). AUTO = Gemini → Groq → Z.ai. 🌍 geo-block → proxy pool auto-retry.",
   "removed": [
     "movies.js",
     "test_v218.js",
