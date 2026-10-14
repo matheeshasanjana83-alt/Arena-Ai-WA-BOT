@@ -66,8 +66,10 @@ async function apply({ force = false, onStatus = () => { } } = {}) {
     for (const f of files) data[f] = await fetchRaw(sha, f);
 
     // syntax check every .js before touching anything (a broken update never gets installed)
+    // v2.45.1: strip a leading shebang first — node direct-run එකේ strip වෙනවා, ඒත් vm wrapper එකේ mid-code `#!` = false "Invalid or unexpected token"
     for (const f of files.filter(f => f.endsWith('.js'))) {
-        try { new vm.Script(`(function(exports,require,module,__filename,__dirname){${data[f].toString('utf8')}\n})`, { filename: f }); }
+        const src = data[f].toString('utf8').replace(/^#![^\n]*/, '');
+        try { new vm.Script(`(function(exports,require,module,__filename,__dirname){${src}\n})`, { filename: f }); }
         catch (e) { throw new Error(`${f} එකේ error එකක් — update එක install කළේ නෑ (${e.message})`); }
     }
 

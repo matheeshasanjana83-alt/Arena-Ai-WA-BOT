@@ -1,5 +1,5 @@
-#!/usr/bin/env node
 /* test_v245.js — hung-text-send deadlock fix
+ *  ⚠️ shebang line එකක් දාන්න එපා — updater.js vm.Script wrapper check එකේදී mid-code `#!` = SyntaxError (v2.45.1 lesson)
  *  ① guard.pacer: default timeout (ARENA_PACE_DEFAULT) — hanging fn without timeoutMs must reject, never hang
  *  ② guard.pacer: chain UNBLOCKS after a timeout — next send still goes through (THE bug-fix property)
  *  ③ guard.pacer: explicit timeoutMs honored + minGap still respected
@@ -69,9 +69,14 @@ const pace = guard.pacer(10);   // small gap
     console.log('— version —');
     const pkg = JSON.parse(fs.readFileSync('./package.json', 'utf8'));
     const man = JSON.parse(fs.readFileSync('./manifest.json', 'utf8'));
-    ok('package.json 2.45.0', pkg.version === '2.45.0');
-    ok('manifest.json 2.45.0', man.version === '2.45.0');
+    ok('package.json >= 2.45.0', parseInt(pkg.version.split('.').join(''), 10) >= 2450);
+    ok('manifest.json >= 2.45.0', parseInt(man.version.split('.').join(''), 10) >= 2450);
     ok('manifest files[] includes guard.js', (man.files || []).includes('guard.js'));
+
+    console.log('— ⑦ updater shebang-safety (v2.45.1) —');
+    const upSrc = fs.readFileSync('./updater.js', 'utf8');
+    ok('syntax-check strips leading shebang before vm wrapper', upSrc.includes('v2.45.1: strip a leading shebang first') && upSrc.includes("const src = data[f].toString('utf8').replace("));
+    ok('no .js file in repo root starts with a shebang (manifest files)', (man.files || []).filter(f => f.endsWith('.js')).every(f => !fs.readFileSync(f, 'utf8').startsWith('#!')));
 
     console.log(`\n${pass}/${pass + fail} passed${fail ? '  ❌ ' + fail + ' FAILED' : '  ✅'}`);
     process.exit(fail ? 1 : 0);

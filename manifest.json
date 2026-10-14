@@ -1,6 +1,6 @@
 {
-  "version": "2.45.0",
-  "notes": "🛡️ DEADLOCK FIX (v2.45.0): hung text send එකක් pacer chain එක සදාකාලිකව block කරලා whole bot silence කරන bug එක fix — quality menu එක නොඑන (⏳ විතරයි) ප්‍රශ්නයේ මූලය. Text sends → 60s hard cap (ARENA_TEXT_TIMEOUT) · pacer default timeout 120s (ARENA_PACE_DEFAULT) → deadlock එක දැන් අසාධ්‍ය. Send fail/timeout → console log + handler error එකේදී heavy command ⏳ → ❌ react + user ට timeout notice. Menu probe logs ([moviedex] 🎬/🧳/📺) — ඊළඟ silence එකක් /logs එකෙන් හරියටම trace. v2.44 speed patches untouched.",
+  "version": "2.45.1",
+  "notes": "🩹 UPDATE-INSTALL FIX (v2.45.1): auto-update/.update එකෙන් \"test_v245.js එකේ error එකක් (Invalid or unexpected token)\" එන bug එක fix — test_v245.js file එකේ පළවෙනි line එකේ #! shebang එක node direct-run එකේ valid, ඒත් updater syntax-check vm wrapper එකේදී mid-code #! → false SyntaxError → install abort. Fix: shebang strip (updater.js, future-proof) + test file clean. v2.45.0 deadlock fix (quality menu silence bug) මේ ගමන්ම install වෙනවා.",
   "removed": [
     "movies.js",
     "test_v218.js",
