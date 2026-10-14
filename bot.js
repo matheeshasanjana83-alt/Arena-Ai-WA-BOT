@@ -1038,7 +1038,8 @@ on/off: *.ai tools on* / *.ai tools off*` }, { quoted: msg });
             const on = ai.getRoast();
             return send(jid, { text: `🔥 *ROAST MODE* ${on ? '✅ ON' : '⛔ OFF'}
 
-බැනපු එකාට ආපහු බැනීම — "කින්ටි මෙට්ට", "Fuck of" වගේ බැනුමකට AI එක සිංහල slang වලින් savage comeback එකක් දෙනවා 😂😎
+බැනපු එකාට ආපහු බැනීම — සිංහල/සිංග්ලිෂ් බැනුමකට (මෙට්ට · කින්ටි · යකො · fuck · kari/ponnaya · hukanna · pukata...) AI එක savage comeback එකක් දෙනවා 😂😎
+✦ v2.56 trained: Groq gpt-oss-120b first (කලින් llama සිංහල කැඩුවා) · refuse/English/garble → ඊළඟ model → Roast bank (30 canned savage lines) — silent වෙන්නෙ නෑ
 ✦ roast replies — 1-2 පේළි පමණයි, photo requests වලට බලපෑමක් නෑ
 on/off: *.ai roast on* / *.ai roast off*` }, { quoted: msg });
         }

@@ -26,6 +26,20 @@ litterbox/catbox, x0.at, transfer.archivete.am, filebin, eporner (v2.17). (gofil
 
 🔒 Private: ඔයා යවන messages විතරයි. වෙන අය commands යැව්වත් ignore.
 
+v2.56.0 — 🔥 ROAST TRAINED + SINHALA FIXED (screenshots bug fix)
+  • Groq model order: openai/gpt-oss-120b FIRST — කලින් llama-3.3-70b එකෙන් එන සිංහල කැඩිලා
+    ("සම තිට්ටිකිරිම කන කරන්න" වගේ garble + එකම reply ×5 repeat loop) — gpt-oss සිංහල + instructions වඩා හොඳයි
+  • Roast persona trained: refuse/apologize FORBIDDEN (banter framing), Sinhala script ONLY,
+    එකම comeback දෙපාරක් නෑ, gibberish typing වලටම roast, heavy බැනුමට heavy roast
+  • 🛡 Quality guards: reply එක refusal / English / කලින් එකම repeat නම් → ඊළඟ model auto-retry →
+    Roast bank (canned savage Sinhala 30 lines, ring-8 anti-repeat) — bot කවදාවත් silent නෑ
+  • Singlish detection boost: kari · ponnaya · pukata · hukanna · kimba · pusha · gawura · yako/yakoneko ·
+    miyo · balla · karaya · ammata · thoge + යකො · යකෝ · මියෝ · බල්ලා · මෝඩ · බනින්නම්...
+  • lang-guard (normal chat): කෙටි/සිංහල/සිංග්ලිෂ් message වලට English reply ආවොත් ("Hey! How can I help
+    you today?" bug) ඊළඟ model එකට retry → අන්තිමට last reply (silent නෙවෙයි)
+  • Memory poison purge: boot එකේදී refusal + repeat-garble history auto-clean (හයිනා garble loop නැවතුම්)
+  • SYSTEM trained: Singlish glossary (kohomada/mokada/ubata/karanna...) + ALWAYS-means-ALWAYS Sinhala
+    ("Hy"/"hi" වලටත් සිංහල) + no-garble rule + gibberish playful rule · roast replies temperature 0.95
 v2.55.0 — 🛡️ POWERFUL ANTI-BUG v5 (OUT-GUARD + echo-hole close + stuck-chat rescue)
   • OUT-GUARD: bot එකෙන් යන හැම text/caption එකක්ම auto sanitize — control chars, bidi overrides, tag chars
     (U+E0000-E01EF), invisible storms, unbroken runs, lone surrogates ඔක්කොම මකලා + 60k hard cap.

@@ -1,6 +1,6 @@
 {
-  "version": "2.55.0",
-  "notes": "v2.55.0: POWERFUL ANTI-BUG v5 — ① OUT-GUARD: every outgoing text/caption sanitized (control/bidi/tag chars, invisible storms, unbroken runs, lone surrogates stripped; 60k cap) — bot එකෙන් bug payload කවදාවත් යන්නේ නෑ ② guard-return: bug detect වුනාම AI/antispam/commands NEVER touch that message (echo hole closed) ③ report 24h budget (default 20/day) + 3-fail abort + 1h account-safety pause — mass-report backfire නැති වෙනවා ④ storm lockdown: severe bug 3/10min → AI silent 5min ⑤ .antibug clearchat yes — bug වැදලා phone එකේ clear වෙන්නේ නැති chat එක account-wide clear ⑥ .antibug unblock all recovery ⑦ invincible-50k + tag-char self-tests",
+  "version": "2.56.0",
+  "notes": "v2.56.0: ROAST TRAINED + SINHALA FIXED — ① Groq gpt-oss-120b first (llama-3.3-70b සිංහල කැඩුවා — \"සම තිට්ටිකිරිම\" garble ×5 loop) ② ROAST_SYSTEM trained: anti-refusal banter framing (refuse/apologize FORBIDDEN), Sinhala-script-only, unique comeback rule, gibberish-mock rule ③ 🛡 quality guards: refusal/English-leak/repeat reply → ඊළඟ provider auto-retry → Roast bank (30 canned savage Sinhala lines, anti-repeat ring 8) — bot silent වෙන්නෙ නෑ ④ Singlish detection: kari/ponnaya/pukata/hukanna/kimba/pusha/gawura/yako/miyo/balla/ammata/thoge + යකො/යකෝ/මියෝ/බල්ලා/මෝඩ... ⑤ lang-guard: short/Sinhala/Singlish messages → English reply retry (\"Hey! How can I help you today?\" bug) → last-reply fallback (silence නෙවෙයි) ⑥ memory poison purge: refusal + repeated-garble history cleanup on boot ⑦ roast temperature 0.95 · SYSTEM: Singlish glossary + ALWAYS-means-ALWAYS Sinhala + no-garble rule ⑧ test_v256 91+ checks; v255 44/44, v253 35/35, v2511 24/24, v251 43/43, test.js 163/20 == baseline externals",
   "removed": [
     "movies.js",
     "test_v218.js",
@@ -20,7 +20,8 @@
     "test_v236.js",
     "test_v238.js",
     "test_v239.js",
-    "test_v254.js"
+    "test_v254.js",
+    "test_v255.js"
   ],
   "files": [
     "bot.js",
@@ -74,6 +75,6 @@
     "test_v2511.js",
     "test_v252.js",
     "test_v253.js",
-    "test_v255.js"
+    "test_v256.js"
   ]
 }

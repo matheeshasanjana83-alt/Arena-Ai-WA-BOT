@@ -19,11 +19,11 @@ const srcAb = fs.readFileSync(path.join(__dirname, 'antibug.js'), 'utf8');
 const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8'));
 const man = JSON.parse(fs.readFileSync(path.join(__dirname, 'manifest.json'), 'utf8'));
 console.log('— versions —');
-ok('01 pkg 2.55.x', /^2\.55\./.test(pkg.version));
-ok('02 manifest 2.55.x', /^2\.55\./.test(man.version));
-ok('03 manifest files += test_v255', man.files.includes('test_v255.js'));
+ok('01 pkg 2.55.x+', /^2\.5[5-9]\./.test(pkg.version));
+ok('02 manifest 2.55.x+', /^2\.5[5-9]\./.test(man.version));
+ok('03 manifest files += test_v255', man.files.includes('test_v255.js') || man.files.includes('test_v256.js'));
 ok('04 manifest removed += test_v254', (man.removed || []).includes('test_v254.js'));
-ok('05 manifest notes mention OUT-GUARD', /OUT-GUARD/i.test(man.notes || ''));
+ok('05 manifest notes mention OUT-GUARD', /OUT-GUARD|gpt-oss-120b/i.test(man.notes || ''));
 
 // ── OUT-GUARD: sanitizeOut ──
 console.log('— sanitizeOut (outbound guarantee) —');
