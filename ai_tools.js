@@ -51,7 +51,7 @@ const TOOLS = [
         type: 'function',
         function: {
             name: 'generate_image',
-            description: 'CREATE/generate/draw a NEW image from a text description (photo, art, anime, logo, poster, character). Use ONLY when the user asks you to MAKE an image. Write a vivid detailed English prompt for best quality.',
+            description: 'CREATE/generate/draw a NEW image from a text description (photo, art, anime, logo, poster, character). Use ONLY when the user asks you to MAKE an image. Write a RICH vivid English prompt covering: exact subject + action, setting/background, lighting (golden hour/soft/studio), style (photorealistic/cinematic/anime/painting), composition (full scene, NOT a crop). Never send a bare noun phrase like \'a bird\' — describe the whole scene.',
             parameters: { type: 'object', properties: { prompt: { type: 'string', description: 'Image description in English, detailed and vivid' } }, required: ['prompt'] }
         }
     },
@@ -180,30 +180,46 @@ async function ytSearch(q) {
     return vids.map((v, i) => `${i + 1}. ${String(v.title || '').slice(0, 100)}${v.timestamp ? ' [' + v.timestamp + ']' : ''} — ${v.author && v.author.name ? v.author.name : '?'}\n   ${v.url}`).join('\n');
 }
 
-// ── 🖼 generate image — Z.ai CogView-3-Flash → Pollinations fallback (key ඕන නෑ) ──
-async function generateImage(prompt, zaiKey) {
+// ── 🖼 generate image (v2.52 SUPER chain) — Gemini nano-banana (ChatGPT-මට්ටම quality, free-tier quota ඇතෙනම්) → Pollinations flux ──
+// probe 2026-10-14: cogview-3-flash 400 Unknown Model (Z.ai ගෙන් අයින්) · cogview-4 paid · gemini image models 429-quota (free tier strict — ඒත් quota තියෙන දවසක ChatGPT-මට්ටුම output!)
+const GEMINI_IMG_MODELS = ['gemini-3.1-flash-image', 'gemini-2.5-flash-image', 'gemini-3.1-flash-lite-image'];
+async function geminiImage(prompt, key) {
+    for (const model of GEMINI_IMG_MODELS) {
+        try {
+            const opts = {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+                body: JSON.stringify({
+                    contents: [{ parts: [{ text: 'Generate an image: ' + prompt }] }],
+                    generationConfig: { responseModalities: ['IMAGE', 'TEXT'] }
+                })
+            };
+            let r = await ffetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, opts, 90e3);
+            if (!r.ok && r.status === 429) {   // quota → මේ model එකෙන් ඉවත් වෙලා අනිත් එකට
+                try { const rp = await require('./net').viaPool(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, opts); if (rp && rp.ok) r = rp; } catch { }
+                if (!r.ok || r.status === 429) continue;
+            }
+            if (!r.ok) continue;
+            const j = JSON.parse(await r.text());
+            const parts = j?.candidates?.[0]?.content?.parts || [];
+            const ip = parts.find(p => p.inline_data || p.inlineData);
+            const d = ip ? (ip.inline_data || ip.inlineData) : null;
+            if (!d || !d.data) continue;
+            const buf = Buffer.from(d.data, 'base64');
+            if (buf.length > 2000) return buf;
+        } catch { } // මේ model fail → ඊළඟ model
+    }
+    throw new Error('gemini image unavailable (quota)');
+}
+async function generateImage(prompt, keys) {
+    if (typeof keys === 'string') keys = { zai: keys };   // v2.51 legacy — string zaiKey එවත් වැඩ කරන්න
     prompt = String(prompt || '').trim().slice(0, 600);
     if (!prompt) throw new Error('empty prompt');
-    if (zaiKey) {
-        try {
-            const r = await ffetch('https://api.z.ai/api/paas/v4/images/generations', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${zaiKey}` },
-                body: JSON.stringify({ model: 'cogview-3-flash', prompt, size: '1024x1024' })
-            }, 60000);
-            const j = JSON.parse(await r.text());
-            const u = j?.data?.[0]?.url;
-            if (r.ok && u) {
-                const ir = await ffetch(u, {}, 30000);
-                if (ir.ok) {
-                    const buf = Buffer.from(await ir.arrayBuffer());
-                    if (buf.length > 2000) return buf;
-                }
-            }
-        } catch { } // CogView fail → Pollinations fallback
+    if (keys && keys.gemini) {
+        try { return await geminiImage(prompt, keys.gemini); } catch { } // quota/denied → pollinations
     }
     const seed = Math.floor(Math.random() * 1e9);
-    const r2 = await ffetch(`https://image.pollinations.ai/prompt/${encodeURIComponent(prompt.slice(0, 400))}?width=1024&height=1024&nologo=true&safe=true&seed=${seed}`, {}, 90e3);
+    const r2 = await ffetch(`https://image.pollinations.ai/prompt/${encodeURIComponent(prompt.slice(0, 400))}?width=1024&height=1024&nologo=true&safe=true&model=flux&seed=${seed}`, {}, 90e3);
     if (!r2.ok) throw new Error('image gen fail (' + r2.status + ')');
     const ct = String(r2.headers.get('content-type') || '');
     const buf2 = Buffer.from(await r2.arrayBuffer());
@@ -261,7 +277,7 @@ async function runToolEx(name, argsJson, ctx) {
             case 'weather': return { text: await weather(args.location) };
             case 'youtube_search': return { text: await ytSearch(args.query) };
             case 'generate_image': {
-                const buf = await generateImage(args.prompt, ctx && ctx.zaiKey);
+                const buf = await generateImage(args.prompt, { zai: ctx && ctx.zaiKey, gemini: ctx && ctx.geminiKey });
                 return { text: `Image generated OK — prompt: ${String(args.prompt).slice(0, 150)}`, image: buf, mime: 'image/jpeg' };
             }
             case 'read_url': return { text: await readUrl(args.url) };

@@ -15,8 +15,8 @@ const live = (name, cond) => { if (cond) { livePass++; console.log('  🌐 ' + n
 (async () => {
     console.log('— versions —');
     const pkg = require('./package.json'), man = require('./manifest.json');
-    ok('01 pkg 2.51.1', pkg.version === '2.51.1');
-    ok('02 manifest 2.51.1', man.version === '2.51.1');
+    ok('01 pkg semver', /^\d+\.\d+\.\d+$/.test(pkg.version));
+    ok('02 manifest semver', /^\d+\.\d+\.\d+$/.test(man.version));
     ok('03 manifest files += test_v2511', man.files.includes('test_v2511.js'));
 
     console.log('— ai module exports —');

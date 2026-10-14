@@ -165,12 +165,12 @@ async function askGroq(key, msgs) {
     throw lastErr;
 }
 
-async function askZai(key, msgs, chatId) {
+async function askZai(key, msgs, chatId, allKeys) {
     let lastErr;
     const toolsOn = getTools(); // connector tools — GLM first (v2.50)
     for (const model of ZAI_MODELS) {
         if (zaiDead.has(model)) continue;
-        const messages = [{ role: 'system', content: SYSTEM + (toolsOn ? "\n- TOOLS: you have tools (web_search, get_datetime, calculator, weather, youtube_search, generate_image, read_url, set_reminder, list_reminders). Rules: current/fresh facts, news, prices, scores -> web_search; date/time -> get_datetime; math -> calculator; weather -> weather; YouTube videos -> youtube_search; the user asks you to CREATE an image/photo/art/logo -> you MUST call generate_image IN THAT SAME TURN with a vivid detailed English prompt — never only promise ('I will make it') without calling the tool; after the tool result briefly say you made it; the user shares a LINK and asks about it -> read_url first; the user asks to be REMINDED -> call get_datetime first, then set_reminder (time as ISO 8601 +05:30, note in user language); asks for active reminders -> list_reminders. Call the matching tool first, then answer in the user's language using the result. For normal chat do not call tools." : '') }, ...msgs.map(m => ({ role: m.role, content: m.text }))];
+        const messages = [{ role: 'system', content: SYSTEM + (toolsOn ? "\n- TOOLS: you have tools (web_search, get_datetime, calculator, weather, youtube_search, generate_image, read_url, set_reminder, list_reminders). Rules: current/fresh facts, news, prices, scores -> web_search; date/time -> get_datetime; math -> calculator; weather -> weather; YouTube videos -> youtube_search; the user asks you to CREATE an image/photo/art/logo -> you MUST call generate_image IN THAT SAME TURN — never only promise ('I will make it') without calling the tool; write a RICH vivid English prompt: exact subject + action, setting/background, lighting, style, full-scene composition (never a bare noun phrase like 'a bird'); after the tool result briefly say you made it; the user shares a LINK and asks about it -> read_url first; the user asks to be REMINDED -> call get_datetime first, then set_reminder (time as ISO 8601 +05:30, note in user language); asks for active reminders -> list_reminders. Call the matching tool first, then answer in the user's language using the result. For normal chat do not call tools." : '') }, ...msgs.map(m => ({ role: m.role, content: m.text }))];
         let useTools = toolsOn, answer = null;   // 🖼 tool images — v2.51.1: model loop එකෙන් එළියට hoist (model fallback වුණත් images නැති වෙන්නේ නෑ)
         const images = [];
         for (let iter = 0; iter < 4 && !answer; iter++) {
@@ -200,7 +200,7 @@ async function askZai(key, msgs, chatId) {
                 for (let i = 0; i < m0.tool_calls.length; i++) {
                     const tc = m0.tool_calls[i];
                     if (!tc?.function?.name) continue;
-                    const ex = await runToolEx(tc.function.name, tc.function.arguments, { chatId, zaiKey: key });   // connector → run (v2.51: {text, image})
+                    const ex = await runToolEx(tc.function.name, tc.function.arguments, { chatId, zaiKey: key, geminiKey: allKeys && allKeys.gemini });   // connector → run (v2.52: keys වල ඔක්කොම image chain එකට)
                     const out = ex.image ? (ex.text || 'Image generated') + ' — sent to the user as a photo' : ex.text;
                     if (ex.image) images.push(ex.image);
                     messages.push({ role: 'tool', tool_call_id: tc.id || `call_${iter}_${i}`, content: String(out).slice(0, 4000) });
@@ -286,7 +286,7 @@ async function imgPromptEn(question, keys) {   // සිංහල request එක
     for (const p of PROVIDERS) {
         if (!keys[p]) continue;
         try {
-            const r = await FNS[p](keys[p], [{ role: 'user', text: 'Convert this image request into ONE vivid detailed English image-generation prompt. Reply with ONLY the prompt text itself (no quotes, no explanation, no extra words).\n\nRequest: ' + q }], 'img-prompt');
+            const r = await FNS[p](keys[p], [{ role: 'user', text: 'Convert this image request into ONE vivid detailed English image-generation prompt covering: exact subject + action, setting/background, lighting, style, full-scene composition. Reply with ONLY the prompt text itself (no quotes, no explanation).\n\nRequest: ' + q }], 'img-prompt');
             const t = String(r.text || '').replace(/\s+/g, ' ').trim().replace(/^["']|["']$/g, '').slice(0, 500);
             if (t && !/error|HTTP \d/i.test(t.slice(0, 60))) return t;
         } catch { }
@@ -315,13 +315,13 @@ async function ask(chatId, question) {
         const h = (history.get(mk) || []).filter(m => now - (m.t || now) < TTL_MS); // TTL prune
         const msgs = [...h, { role: 'user', text: question }];
         try {
-            const res = await fn(keys[name], msgs, chatId);
+            const res = await fn(keys[name], msgs, chatId, keys);
             let text = toWhatsApp(res.text);
             let images = Array.isArray(res.images) ? res.images : [];   // 🖼 v2.51.1 FIX: කලින් images drop වෙනවා — GLM generate_image ගහලාත් photo නොගිය හැම්බයි!
             if (!images.length && getTools() && looksLikeImageAsk(question)) {   // 🖼 fallback — provider එක මොකක වුණත් (AUTO/Gemini/Groq) photo එනවා
                 try {
                     const prompt = await imgPromptEn(question, keys);
-                    const buf = await require('./ai_tools')._generateImage(prompt, keys.zai);
+                    const buf = await require('./ai_tools')._generateImage(prompt, { gemini: keys.gemini, zai: keys.zai });
                     if (buf && buf.length > 2000) {
                         images = [buf];
                         if (!text || /බෑ|බැහැ|නොහැකි|can\s?['’´`]t|cannot|unable|sorry|සමාව/i.test(text)) text = '🖼 හදලා දුන්නා!';

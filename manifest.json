@@ -1,6 +1,6 @@
 {
-  "version": "2.51.1",
-  "notes": "🖼 PHOTO FIX (v2.51.1): .ai එකෙන් හරස් හදලා දෙන්න කිව්වම photo එන්නේ නැති බැගෙ හරියා හරි කළා — images එක් මයි ask() ඇතුළදී drop වෙනවා. දැන්: GLM tool image → photo + caption දෙකම යනවා · AUTO/Gemini/Groq වලටත෍ image request හඳනක්ට auto-fallback එකෙන් photo යනවා · GLM ට promise-only replies එරෙහි MUST-call rule.",
+  "version": "2.52.0",
+  "notes": "🖼 IMAGE SUPER CHAIN (v2.52.0): .ai photo quality උපර මට්ටමට — Gemini nano-banana (gemini-3.1-flash-image → 2.5 → 3.1-lite, ඔන්නාම key එකෙනෛ, quota ඇතෙනම෍ ChatGPT-මට්ටම + watermark නෑ) → Pollinations flux fallback (reliable). CogView Z.ai ගෙන් අයින් (400 Unknown Model) — probe කරලා අයින් කළා. RICH prompt rule — AI දැන් සම්පූර්ණ scene එකක් ලියනවා (subject/setting/lighting/style/composition) — ඉල්ලපු දේ තමටම එනවා. Group/other chats වලටත෍ වැඩ — bot mode public කළා (panel chats: inbox → public).",
   "removed": [
     "movies.js",
     "test_v218.js",
@@ -70,6 +70,7 @@
     "test_v250.js",
     "reminders.js",
     "test_v251.js",
-    "test_v2511.js"
+    "test_v2511.js",
+    "test_v252.js"
   ]
 }
