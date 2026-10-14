@@ -61,7 +61,10 @@ const MV_FOOT = '> ＫＡＶＩＺ Ｖ1 🍁';
 
 /* ───────────────── 1. signed MovieBox mobile-BFF client ───────────────── */
 
-const MB_SECRET = Buffer.from('efa891974eecd3148df63aa611602defd101259ba521022c57ae0566bd8e', 'hex');
+const MB_SECRET = Buffer.from('76iRl07s0xSN9jqmEWAt79EBJZulIQIsV64FZr2O', 'base64');   // v2.46: base64 gateway key (the old hex efa89197… key + visitor identity gets stubbed streams now)
+const MB_CLIENT_BUILD = '1786863422670304777.c58dd77ad46d7d89b4605211013d392f-1786863190149921915.2f932bfba072c98c72572c2ecde2b365';
+/** shared notice-stub markers (matches upstream MovieBox-Tui is_deprecation_notice_url) */
+const MB_STUB_RE = /macdn\.aoneroom\.com\/other\/|9a0461bc39da389663bf3dbb17091d3f|80da52722ee7de7a4303290af6783424|1c7de0bd3393702d9191801f15f88f8d|b164fbfb4347792950bdfbfb563d39d9|\/notice\.mp4/i;
 const MB_HOSTS = ['https://api6.aoneroom.com', 'https://api5.aoneroom.com', 'https://api4.aoneroom.com',
     'https://api4sg.aoneroom.com', 'https://api3.aoneroom.com', 'https://api.inmoviebox.com'];
 const STREAM_REFERER = 'https://sportslive.wine';
@@ -70,37 +73,44 @@ const md5hex = (b) => crypto.createHash('md5').update(b).digest('hex');
 let mbUA = '', mbCI = '', mbIP = '', mbToken = null, mbHostIdx = 0;
 const sleepMs = (ms) => new Promise(res => setTimeout(res, ms));
 
-/** random Redmi/Cronet device identity (server rejects known-bad fingerprints) */
+/** v2.46 registered-app identity (4.0.02 / version_code 50020126) — the visitor-era identity
+ *  (4.0.01 / 50020117-19, region US) now receives stubbed notice links on stream endpoints. */
 function mbIdentity() {
-    const ver = ['10', '11', '12', '13'][Math.floor(Math.random() * 4)];
-    const build = { 10: 'QP1A.191005.007.A3', 11: 'RP1A.200720.011', 12: 'S1B.220414.015', 13: 'TQ2A.230405.003' }[ver];
-    const devs = [['23078RKD5C', 'Redmi'], ['M2012K11AG', 'Redmi'], ['2201117TY', 'Redmi']];
+    const ver = ['12', '13', '14'][Math.floor(Math.random() * 3)];
+    const build = { 12: 'S1B.220414.015', 13: 'TQ2A.230405.003', 14: 'UP1A.231005.007' }[ver];
+    const devs = [['SM-G991B', 'Samsung'], ['23106RN0DA', 'Redmi'], ['2201117TG', 'Redmi']];
     const [model, brand] = devs[Math.floor(Math.random() * devs.length)];
-    const vc = [50020117, 50020118, 50020119][Math.floor(Math.random() * 3)];
     const did = crypto.randomBytes(16).toString('hex');
-    const gaid = [8, 4, 4, 4, 12].map(n => crypto.randomBytes(Math.ceil(n / 2)).toString('hex').slice(0, n)).join('-');
-    mbUA = `com.community.oneroom/${vc} (Linux; U; Android ${ver}; en_US; ${model}; Build/${build}; Cronet/135.0.7012.3)`;
-    mbCI = JSON.stringify({ package_name: 'com.community.oneroom', version_name: '4.0.01.0813.03', version_code: vc, os: 'android', os_version: ver, install_ch: 'ps', device_id: did, install_store: 'ps', gaid, brand, model, system_language: 'en', net: 'NETWORK_WIFI', region: 'US', timezone: 'Asia/Kolkata', sp_code: '40401', 'X-Play-Mode': '2' });
+    const gaid = [4, 2, 2, 2, 6].map(n => crypto.randomBytes(Math.ceil(n / 2)).toString('hex').slice(0, n)).join('-');
+    mbUA = 'okhttp/4.9.3';
+    mbCI = JSON.stringify({ package_name: 'com.community.oneroom', version_name: '4.0.02.0831.03', version_code: 50020126, os: 'android', os_version: ver, install_ch: 'google-play', device_id: did, install_store: 'gp', gaid, brand, model, system_language: 'en', net: 'NETWORK_WIFI', region: 'NG', timezone: 'Africa/Lagos', sp_code: '62120', 'X-Child-UID': '', 'X-Client-Build': MB_CLIENT_BUILD, 'X-Play-Mode': '2', 'X-Idle-Data': '1', 'X-Family-Mode': '0', 'X-Content-Mode': '0' });
     mbIP = Array.from({ length: 4 }, () => 2 + Math.floor(Math.random() * 253)).join('.');
 }
 mbIdentity();
 
-/** X-TR-Signature: ts|2|b64(hmac-md5(secret, canonical)) — canonical = METHOD\naccept\nctype\nlen\nts\nmd5(body)\nurl */
+/** X-TR-Signature: ts|2|b64(hmac-md5(secret, canonical)) — canonical = METHOD\naccept\nctype\nlen\nts\nmd5(body)\nurl
+ *  v2.46: okhttp UA, charset content-type, x-client-build + play/idle/family/content headers,
+ *  Authorization prefers the registered user token (mbPickToken) over the visitor JWT. */
 function mbHeaders(method, url, body) {
     const ts = Date.now();
     const u = new URL(url);
     const qs = [...u.searchParams.entries()].sort((a, b) => a[0].localeCompare(b[0]));
     const canonical = u.pathname + (qs.length ? '?' + qs.map(([k, v]) => `${k}=${v}`).join('&') : '');
-    const canon = [method.toUpperCase(), 'application/json', 'application/json',
+    const ct = body ? 'application/json;charset=UTF-8' : '';
+    const canon = [method.toUpperCase(), 'application/json', ct,
         body ? String(Buffer.byteLength(body)) : '', String(ts), body ? md5hex(body) : '', canonical].join('\n');
     const sig = crypto.createHmac('md5', MB_SECRET).update(canon).digest('base64');
     const h = {
-        'User-Agent': mbUA, Accept: 'application/json', 'Content-Type': 'application/json', Connection: 'keep-alive',
+        'User-Agent': 'okhttp/4.9.3', Accept: 'application/json', Connection: 'keep-alive',
         'x-client-token': `${ts},${md5hex(String(ts).split('').reverse().join(''))}`,
         'x-tr-signature': `${ts}|2|${sig}`,
-        'x-client-info': mbCI, 'x-client-status': '0', 'x-forwarded-for': mbIP,
+        'x-client-info': mbCI, 'x-client-status': '1', 'x-forwarded-for': mbIP,
+        'x-client-build': MB_CLIENT_BUILD, 'x-play-mode': '2', 'x-idle-data': '1',
+        'x-family-mode': '0', 'x-content-mode': '0', 'x-child-uid': '',
     };
-    if (mbToken) h.Authorization = 'Bearer ' + mbToken;
+    if (ct) h['Content-Type'] = ct;
+    const tok = mbPickToken();
+    if (tok) h.Authorization = 'Bearer ' + tok;
     return h;
 }
 
@@ -111,7 +121,8 @@ async function mbLogin(rounds = 6) {
         const host = MB_HOSTS[mbHostIdx++ % MB_HOSTS.length];
         const url = host + '/wefeed-mobile-bff/user-api/visitor-login';
         try {
-            const r = await fetch(url, { method: 'POST', headers: mbHeaders('POST', url, '{}'), body: '{}', signal: AbortSignal.timeout(15000) });
+            const _vh = mbHeaders('POST', url, '{}'); delete _vh.Authorization;   // v2.46: visitor-login must be anonymous
+            const r = await fetch(url, { method: 'POST', headers: _vh, body: '{}', signal: AbortSignal.timeout(15000) });
             if (!r.ok) { try { await r.body?.cancel(); } catch { } throw new Error('HTTP ' + r.status); }
             const j = await r.json();
             const tok = (j.data || {}).token;
@@ -137,11 +148,14 @@ async function mbApi(p, bodyObj, tries = 8) {
             if (!r.ok) { const bt = await r.text().catch(() => ''); try { await r.body?.cancel(); } catch { } throw new Error('HTTP ' + r.status + ' ' + bt.slice(0, 50)); }
             const j = await r.json();
             if (j.code !== undefined && j.code !== 0 && j.code !== 200) throw new Error('api ' + j.code + ' ' + String(j.message || '').slice(0, 40));
+            mbAuthFailAt = 0;   // v2.46: authenticated again
             return j;
         } catch (e) {
             last = e; fails++;
-            if (/HTTP 441|HTTP 401|miss token|UNAUTHORIZED/i.test(String(e.message))) {
+            if (/HTTP 441|HTTP 401|HTTP 406|miss token|UNAUTHORIZED/i.test(String(e.message))) {
                 mbToken = null;
+                mbAuthFailAt = Date.now(); mbUserToken = '';   // v2.46: token rejected → visitor window + fresh registration
+                if (/resource/.test(p)) scheduleMbRegister(1500);
                 if (!await mbLogin(tries <= 3 ? 2 : 6)) throw new Error('MovieBox re-login fail');   // probes fail FAST — no minute-long login loops
             } else {
                 if (fails % 2 === 0) mbIdentity();   // flagged fingerprint → new device
@@ -487,6 +501,7 @@ async function transcode360(inp, outPath, { durSec = 0, onProgress, edit } = {})
  *  DASH download (cached manifest) [+ 360p re-encode when row.transcode]. Files live in a
  *  per-run tmpDir so the WhatsApp filename stays CLEAN (the old flow appended -<timestamp>). */
 async function downloadDash(row, { tmpDir, finalName, onProgress, edit }) {
+    if (row.direct) return directDownload(row, { tmpDir, finalName, onProgress });   // v2.46: resource-position MP4 (no DASH, no mux)
     fs.mkdirSync(tmpDir, { recursive: true });
     const rawPath = row.transcode ? path.join(tmpDir, 'src-' + Date.now() + '.mkv') : path.join(tmpDir, finalName);
     const tChunk0 = Date.now();   // v2.44 phase timing (chunks vs re-encode)
@@ -504,6 +519,267 @@ async function downloadDash(row, { tmpDir, finalName, onProgress, edit }) {
     try { fs.rmSync(res.path, { force: true }); } catch { }
     return { path: finalPath, bytes, hevc: false };
 }
+
+/* ───────────────── 2b. DIRECT-MP4 mode (v2.46) ─────────────────
+ * MovieBox stubbed the visitor play-info/signCookie DASH path (2026-10-10): every stream now
+ * points at the shared 824 KB notice MP4 on macdn.aoneroom.com/other/ — that is why the quality
+ * menu died with "0 rows in 0s" (the signCookie filter dropped everything). The real files moved
+ * to the REGISTERED-user path: subject-api/resource (per-resolution items) → subject-api/
+ * resource-position/v2 → time-signed MP4 on bcdn.hakunaymatata.com. Verified live 2026-10-14:
+ * S1E1 37MB + 287MB movie, parallel ranged GET ~16MB/s aggregate, no cookie needed, UA okhttp.
+ * Identity also bumped: version_code 50020126 (4.0.02.0831.03) + x-client-build + base64
+ * gateway HMAC key — visitor-only identity with the old hex key gets stubbed streams. */
+
+const SET_PATH = path.join(__dirname, 'settings.json');
+const readSet = () => { try { return JSON.parse(fs.readFileSync(SET_PATH, 'utf8')); } catch { return {}; } };
+const saveSet = (d) => { try { fs.writeFileSync(SET_PATH, JSON.stringify(d, null, 2)); } catch { } };
+
+/** registered-user JWT (temp-email account) — visitor tokens only get stubbed links */
+let mbUserToken = (() => {
+    if (process.env.MB_USER_TOKEN) return String(process.env.MB_USER_TOKEN);
+    try { return String(readSet().moviedexUserToken || ''); } catch { return ''; }
+})();
+let mbAuthFailAt = 0;   // v2.46 auth-failure window → visitor fallback while re-registering
+const jwtExpMs = (t) => { try { const p = JSON.parse(Buffer.from(String(t).split('.')[1], 'base64').toString('utf8')); return (p.exp || 0) * 1000; } catch { return 0; } };
+const tokenUsable = (t) => !!t && jwtExpMs(t) - Date.now() > 3600e3;
+
+/** bootstrap registered token (shared pool account) — replaced by our own registration ASAP */
+const MB_BOOTSTRAP_TOKEN = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOjkxMTAyODI4OTUyNzIzMzgzOTIsInV0cCI6MSwiZXhwIjoxNzk2MDcxNTgwLCJpYXQiOjE3ODgyOTUyODB9.l4MFha-s4DfMUOEQqPUGKZ_1NqfgI7NewaGJ0Saruik';
+
+let mbRegRunning = false;
+function scheduleMbRegister(delayMs = 0) {
+    if (mbRegRunning || tokenUsable(mbUserToken)) return;
+    const t = setTimeout(() => { mbRegisterAccount().catch(() => { }); }, delayMs);
+    if (t.unref) t.unref();
+}
+
+/** temp-email inbox → { email, waitCode(ms) } — tempmail.lol first, guerrillamail fallback */
+async function mbTempEmail() {
+    try {
+        const r = await fetch('https://api.tempmail.lol/v2/inbox/create', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}', signal: AbortSignal.timeout(15000) });
+        const j = await r.json();
+        if (j.address && j.token) {
+            return {
+                email: j.address, waitCode: async (ms) => {
+                    const dl = Date.now() + ms;
+                    while (Date.now() < dl) {
+                        await sleepMs(2500);
+                        try {
+                            const ir = await fetch(`https://api.tempmail.lol/v2/inbox?token=${encodeURIComponent(j.token)}`, { signal: AbortSignal.timeout(15000) });
+                            const ij = JSON.parse(await ir.text());
+                            for (const m of (ij.emails || [])) {
+                                const mm = `${m.subject || ''} ${m.body || ''}`.match(/\b(\d{4,8})\b/);
+                                if (mm) return mm[1];
+                            }
+                        } catch { }
+                    }
+                    throw new Error('code timeout');
+                },
+            };
+        }
+    } catch { }
+    const r2 = await fetch('https://api.guerrillamail.com/ajax.php?f=get_email_address', { signal: AbortSignal.timeout(15000) });
+    const j2 = await r2.json();
+    if (!j2.email_addr || !j2.sid_token) throw new Error('temp-email fail');
+    let seq = 0;
+    return {
+        email: j2.email_addr, waitCode: async (ms) => {
+            const dl = Date.now() + ms;
+            while (Date.now() < dl) {
+                await sleepMs(3000);
+                try {
+                    const ir = await fetch(`https://api.guerrillamail.com/ajax.php?f=check_email&seq=${seq}&sid_token=${encodeURIComponent(j2.sid_token)}`, { signal: AbortSignal.timeout(15000) });
+                    const ij = JSON.parse(await ir.text());
+                    for (const mail of (ij.list || [])) {
+                        seq = Math.max(seq, Number(mail.mail_id) || 0);
+                        const fr = await fetch(`https://api.guerrillamail.com/ajax.php?f=fetch_email&email_id=${mail.mail_id}&sid_token=${encodeURIComponent(j2.sid_token)}`, { signal: AbortSignal.timeout(15000) });
+                        const body = await fr.text();
+                        const mm = body.match(/\b(\d{4,8})\b/);
+                        if (mm) return mm[1];
+                    }
+                } catch { }
+            }
+            throw new Error('code timeout');
+        },
+    };
+}
+
+/** register a real MovieBox account (get-sms-code → email code → register) → persists JWT */
+async function mbRegisterAccount() {
+    if (mbRegRunning) return null;
+    mbRegRunning = true;
+    try {
+        if (tokenUsable(mbUserToken)) return mbUserToken;
+        const { email, waitCode } = await mbTempEmail();
+        const regPost = async (p, obj) => {
+            const host = MB_HOSTS[mbHostIdx++ % MB_HOSTS.length];
+            const url = `${host}${p}?host=${encodeURIComponent(host)}`;
+            const body = JSON.stringify(obj);
+            const hh = mbHeaders('POST', url, body);
+            delete hh.Authorization;   // register endpoints must be anonymous
+            const r = await fetch(url, { method: 'POST', headers: hh, body, signal: AbortSignal.timeout(20000) });
+            const t = await r.text();
+            if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + t.slice(0, 60));
+            const jj = JSON.parse(t);
+            if (jj.code !== 0) throw new Error('api ' + jj.code + ' ' + String(jj.message || '').slice(0, 40));
+            return jj.data;
+        };
+        await regPost('/wefeed-mobile-bff/user-api/get-sms-code', { type: 1, authType: 1, mail: email, package_name: 'com.community.oneroom' });
+        const code = await waitCode(55e3);
+        const reg = await regPost('/wefeed-mobile-bff/user-api/register', { authType: 1, mail: email, verificationCode: code, password: 'Mb!' + crypto.randomBytes(6).toString('hex'), package_name: 'com.community.oneroom' });
+        const tok = reg?.token;
+        if (!tok) throw new Error('no token in register response');
+        mbUserToken = tok;
+        mbAuthFailAt = 0;
+        const d = readSet(); d.moviedexUserToken = tok; saveSet(d);
+        console.log('[moviedex] 🔐 MovieBox account registered — real-stream path live');
+        return tok;
+    } catch (e) {
+        console.log('[moviedex] 🔐 register fail: ' + cut(String(e.message || ''), 100));
+        return null;
+    } finally { mbRegRunning = false; }
+}
+
+/** best token: registered JWT → bootstrap pool → visitor */
+function mbPickToken() {
+    if (tokenUsable(mbUserToken) && Date.now() - mbAuthFailAt > 120e3) return mbUserToken;
+    if (tokenUsable(MB_BOOTSTRAP_TOKEN) && Date.now() - mbAuthFailAt > 120e3) return MB_BOOTSTRAP_TOKEN;
+    return mbToken;   // visitor (metadata keeps working)
+}
+
+/** resource-position/v2 → REAL signed MP4 (not the poisoned play-info stub) */
+async function mbDirectUrl(sid, se, ep, rid) {
+    const j = await mbApi(`/wefeed-mobile-bff/subject-api/resource-position/v2?subjectId=${sid}&resourceId=${rid}&failUrl=&failCode=&resourceNum=1&isVip=false`, undefined, 3);
+    const link = String((((j.data || {}).list) || [])[0]?.resourceLink || '');
+    if (!link || MB_STUB_RE.test(link)) throw new Error('MovieBox මේ item එක VIP-only වෙලා — free copy එකක් නෑ');
+    return link;
+}
+
+/** resource items for (se,ep) across all resolutions · movies: se=0, ep=0 */
+async function mbResourceItems(sid, se, ep) {
+    const wantSe = Number(se || 0), wantEp = Number(ep || 0);
+    const out = [];
+    await Promise.all([1080, 720, 480, 360].map(async (r) => {
+        for (let page = 1; page <= 6; page++) {
+            const j = await mbApi(`/wefeed-mobile-bff/subject-api/resource?subjectId=${sid}&se=${wantSe}&page=${page}&perPage=20&all=0&pagerMode=0&resolution=${r}`, undefined, 2).catch(() => null);   // perPage>20 → 400 "exceed limit"
+            const items = (j?.data?.list) || [];
+            const hit = items.filter(i => Number(i.se || 0) === wantSe && Number(i.ep || 0) === wantEp && Number(i.size || 0) > 0);
+            if (hit.length) { out.push(...hit); return; }
+            if (!items.length) return;
+        }
+    }));
+    return out;
+}
+
+/** v2.46 — quality rows from the registered-user resource path (REAL mp4 per resolution).
+ *  row.direct = { sid, se, ep, rid, codec } — the signed URL is resolved FRESH at download time. */
+async function mbDirectRows(sid, se, ep) {
+    const items = await mbResourceItems(sid, se, ep);
+    const byRes = new Map();
+    for (const it of items) {
+        const r = Number(it.resolution) || 0;
+        if (!r || it.vipInfo?.requireMemberType === 1) continue;   // VIP-locked → honest skip (preview files are not the episode)
+        if (!byRes.has(r)) byRes.set(r, it);
+    }
+    return [...byRes.entries()].sort((a, b) => b[0] - a[0]).map(([r, it]) => ({
+        h: r, bw: 0, label: `${r}p`, sizeMB: Math.round((Number(it.size) || 0) / 1048576),
+        transcode: false, direct: { sid, se: Number(se || 0), ep: Number(ep || 0), rid: String(it.resourceId), codec: String(it.codecName || '') },
+    }));
+}
+
+/** legacy DASH rows + direct rows merged (direct wins per height) — the v2.46 menu source */
+async function combinedRows(sid, se, ep, streams) {
+    const [dashRows, directRows] = await Promise.all([
+        streams?.length ? mergedQualities(streams).catch(() => []) : Promise.resolve([]),
+        mbDirectRows(sid, se, ep).catch(() => []),
+    ]);
+    const byH = new Map();
+    for (const r of [...directRows, ...dashRows]) if (r && !byH.has(r.h)) byH.set(r.h, r);
+    return [...byH.values()].sort((a, b) => b.h - a.h || (b.bw || 0) - (a.bw || 0));
+}
+
+/** direct row → file: fresh signed URL → parallel ranged GET (bcdn allows ~16MB/s aggregate).
+ *  4MB chunks, ordered position-writes, retry ×3 per chunk, 120s stall watchdog. */
+async function directDownload(row, { tmpDir, finalName, onProgress }) {
+    fs.mkdirSync(tmpDir, { recursive: true });
+    const outPath = path.join(tmpDir, finalName);
+    const url = await mbDirectUrl(row.direct.sid, row.direct.se, row.direct.ep, row.direct.rid);
+    const hdrs = () => ({ 'User-Agent': 'okhttp/4.12.0', Accept: '*/*', 'Accept-Encoding': 'identity' });
+    const openRes = async (u, range) => {   // manual redirect follow (CDN 302s, headers preserved)
+        let cur = u;
+        for (let hop = 0; hop < 5; hop++) {
+            const r = await fetch(cur, { headers: { ...hdrs(), ...(range ? { Range: range } : {}) }, redirect: 'manual', signal: AbortSignal.timeout(45000) });
+            if (r.status >= 300 && r.status < 400 && r.headers.get('location')) {
+                const loc = r.headers.get('location');
+                try { await r.body?.cancel(); } catch { }
+                cur = loc.startsWith('http') ? loc : new URL(loc, cur).toString();
+                continue;
+            }
+            return r;
+        }
+        throw new Error('CDN redirect loop');
+    };
+    const head = await openRes(url, 'bytes=0-1');
+    if (head.status !== 206 && !head.ok) { try { await head.body?.cancel(); } catch { } throw new Error('CDN HTTP ' + head.status); }
+    const cr = head.headers.get('content-range') || '';
+    const total = Number((cr.split('/')[1] || head.headers.get('content-length') || 0)) || 0;
+    try { await head.body?.cancel(); } catch { }
+    if (!total) throw new Error('file size එක unknown — ආයෙත් try');
+    const CHUNK = 4 * 1048576;
+    const chunks = Math.ceil(total / CHUNK);
+    let got = 0, cursor = 0, stop = false, lastByteAt = Date.now();
+    const wd = setInterval(() => { if (Date.now() - lastByteAt > 120e3) stop = true; }, 15000);
+    const fd = fs.openSync(outPath, 'w');
+    try {
+        try { fs.ftruncateSync(fd, total); } catch { }
+        const results = new Map();
+        let nextWrite = 0;
+        const nW = parseInt(process.env.ARENA_DL_WORKERS || '10', 10) || 10;
+        const t0 = Date.now();
+        await Promise.all(Array.from({ length: Math.min(nW, chunks) }, async () => {
+            while (!stop) {
+                const idx = cursor < chunks ? cursor++ : null;
+                if (idx == null) return;
+                let ok = false;
+                for (let t = 0; t < 3 && !stop && !ok; t++) {
+                    try {
+                        const r = await openRes(url, `bytes=${idx * CHUNK}-${Math.min(total, (idx + 1) * CHUNK) - 1}`);
+                        if (r.status === 206 || r.ok) {
+                            const buf = Buffer.from(await r.arrayBuffer());
+                            try { await r.body?.cancel(); } catch { }
+                            if (buf.length > 0) {
+                                results.set(idx, buf);
+                                lastByteAt = Date.now();
+                                while (results.has(nextWrite)) {
+                                    const b = results.get(nextWrite); results.delete(nextWrite);
+                                    fs.writeSync(fd, b, 0, b.length, nextWrite * CHUNK);
+                                    got += b.length; nextWrite++;
+                                }
+                                if (onProgress && nextWrite % 2 === 0) onProgress(Math.min(99, Math.floor(nextWrite * 100 / chunks)), got);
+                                ok = true;
+                            }
+                        } else { try { await r.body?.cancel(); } catch { } }
+                    } catch { }
+                    if (!ok && t < 2) await sleepMs(400 * (t + 1));
+                }
+                if (!ok) { stop = true; throw new Error('CDN chunk fail — ආයෙත් try'); }
+            }
+        }));
+        clearInterval(wd);
+        if (stop) throw new Error('CDN stall — තත්පර 120ක් bytes ආවේ නෑ');
+        const size = fs.statSync(outPath).size;
+        if (size < 100 * 1024) throw new Error('download එක අසම්පූර්ණයි (' + human(size) + ')');
+        if (onProgress) onProgress(100, size);
+        console.log(`[moviedex] ⬇️ direct ${row.label} (${human(size)}) in ${Math.round((Date.now() - t0) / 1000)}s · ${chunks} chunks`);
+        return { path: outPath, bytes: size, hevc: /hevc|h265/i.test(row.direct.codec || '') };
+    } finally {
+        clearInterval(wd);
+        try { fs.closeSync(fd); } catch { }
+    }
+}
+
+if (!tokenUsable(mbUserToken)) scheduleMbRegister(tokenUsable(MB_BOOTSTRAP_TOKEN) ? 8000 : 2000);   // boot-time registration (background, non-blocking)
+
 
 /* ───────────────── 3. sessions + message builders ───────────────── */
 
@@ -695,11 +971,11 @@ function packStat(show, season, ok, fail, at, total, note) {
  *  transcode? } resolved by mergedQualities → no re-probe, real-byte progress, clean filename,
  *  360p rows re-encode locally. st (optional) only as a defensive fallback. */
 async function deliverStream(send, jid, msg, { st, qrow, fname, capTitle, capMeta, linkMode, react, status, edit, show, season, ep }) {
-    if ((!qrow || !qrow.dash) && st) {
+    if ((!qrow || (!qrow.dash && !qrow.direct)) && st) {
         const q = await streamQualities(st).catch(() => null);
         if (q?.rows?.length) qrow = { ...q.rows[0], dash: q.dash, man: q.man || null, mpdTxt: q.txt || null };
     }
-    if (!qrow || !qrow.dash) { react?.('❌'); await edit('❌ streams decode කරන්න බැරි වුණා — ටිකකින් ආයෙත් try'); return; }
+    if (!qrow || (!qrow.dash && !qrow.direct)) { react?.('❌'); await edit('❌ streams decode කරන්න බැරි වුණා — ටිකකින් ආයෙත් try'); return; }
     const row = qrow;
     const mb = row.sizeMB || null;
     if (mb && mb > maxMB()) {
@@ -708,8 +984,8 @@ async function deliverStream(send, jid, msg, { st, qrow, fname, capTitle, capMet
     }
     const isEp = season && ep;
     const est = mb ? mb * 1048576 : 0;
-    const finalName = isEp ? epFileName(show, season, ep, row.h, !row.transcode)
-        : (fname || `MovieDex [${row.label}].${row.transcode ? 'mp4' : 'mkv'}`);
+    const finalName = isEp ? epFileName(show, season, ep, row.h, !row.transcode && !row.direct)
+        : (fname || `MovieDex [${row.label}].${(row.direct || row.transcode) ? 'mp4' : 'mkv'}`);
     let last = 0;
     const onProgress = (pct, realBytes) => {
         const now = Date.now();
@@ -769,7 +1045,7 @@ async function movieFileCmd(send, jid, msg, m, qi, cardRows, streams, linkMode, 
     } catch { }
     await deliverStream(send, jid, msg, {
         qrow, linkMode, react, status, edit,
-        fname: `${String(m.name).replace(/[\\/:*?"<>|.]/g, '').slice(0, 60)} [${qrow.label}].${qrow.transcode ? 'mp4' : 'mkv'}`,
+        fname: `${String(m.name).replace(/[\\/:*?"<>|.]/g, '').slice(0, 60)} [${qrow.label}].${(qrow.direct || qrow.transcode) ? 'mp4' : 'mkv'}`,
         capTitle: `🎬 *${cut(m.name, 90)}*${m.year ? ` (${m.year})` : ''}`,
         capMeta: `${qrow.sizeMB ? '~' + human(qrow.sizeMB * 1048576) + ' · ' : ''}${qrow.label} · ⭐ ${m.rating || '—'}`,
         show: m.name,
@@ -784,10 +1060,10 @@ async function episodeFileCmd(send, jid, msg, m, row, qi, qRows, linkMode, react
     const chosen = (qRows || [])[qi - 1];
     if (!chosen) return edit(`❌ ${qi} — quality නෑ (1-${(qRows || []).length || '?'})`);
     try {
-        const streams = await mbPlay(m.sid, row.season, row.ep);
-        if (!streams.length) { react?.('❌'); return edit(`❌ ${epLabel(row)} — streams නෑ\n> වෙන episode එකක් try`); }
-        const fresh = await mergedQualities(streams).catch(() => []);
+        const streams = await mbPlay(m.sid, row.season, row.ep).catch(() => []);   // legacy DASH — dead since the stubbing, kept as fallback
+        const fresh = await combinedRows(m.sid, row.season, row.ep, streams).catch(() => []);
         const qrow = fresh.find(r => r.h === chosen.h) || chosen;
+        if (!qrow || (!qrow.direct && !qrow.dash)) { react?.('❌'); return edit(`❌ ${epLabel(row)} — streams නෑ\n> වෙන episode එකක් try`); }
         await deliverStream(send, jid, msg, { qrow, linkMode, react, status, edit, show: m.name, season: row.season, ep: row.ep });
     } catch (e) {
         react?.('❌');
@@ -811,23 +1087,22 @@ async function seasonFilesCmd(send, jid, msg, m, season, maxEp, qNo, height, fro
         const tag = `S${season}E${ep}`;
         const tmpDir = path.join(process.env.DL_TMP || os.tmpdir(), 'mdx-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6));
         try {
-            const streams = await mbPlay(m.sid, season, ep);
-            if (!streams.length) throw new Error('streams නෑ');
+            const streams = await mbPlay(m.sid, season, ep).catch(() => []);   // legacy DASH — dead since the stubbing
             const per = async (pct, bytes) => {
                 const now = Date.now();
                 if (now - lastEdit < 9000) return;
                 lastEdit = now;
                 edit(`⬇️ ${tag} · ${bar(pct)} ${pct}%\n✅ ${ok}  ⚠️ ${fail}  ·  ${ep}/${total}`);
             };
-            const rows = await mergedQualities(streams).catch(() => []);
-            if (!rows.length) throw new Error('qualities නෑ');
+            const rows = await combinedRows(m.sid, season, ep, streams).catch(() => []);
+            if (!rows.length) throw new Error('streams නෑ (MovieBox මේ ep එක VIP-only කරලා ඇති)');
             const row = height ? (rows.find(r => r.h === height) || rows.find(r => r.h <= height && !r.transcode) || rows[rows.length - 1]) : rows[0];
             if (row.sizeMB && row.sizeMB > maxMB()) {
                 fail++;
                 await send(jid, { text: `⚠️ ${tag} — ~${human(row.sizeMB * 1048576)} limit එකට වඩා ලොකුයි (*.maxmb*)` }, { quoted: msg });
                 continue;
             }
-            const finalName = epFileName(m.name, season, ep, row.h, !row.transcode);
+            const finalName = epFileName(m.name, season, ep, row.h, !row.transcode && !row.direct);
             const s0 = Date.now();
             const res = await downloadDash(row, { tmpDir, finalName, onProgress: per, edit });
             console.log(`[moviedex] ⬇️ downloaded ${finalName} (${human(res.bytes)}) in ${Math.round((Date.now() - s0) / 1000)}s`);
@@ -975,11 +1250,12 @@ async function handle(c, ctx) {
                         const edit = async (t) => { try { await send(jid, { text: t, edit: st.key }); } catch { } };
                         let qRows = [];
                         try {
-                            const streams = await mbPlay(full.sid, row.season, 1, 2);   // v2.27: probe fast-fails — menu එක seconds වලින්
-                            if (streams.length) qRows = await mergedQualities(streams).catch(() => []);   // v2.30: merged (incl. 360p)
+                            const streams = await mbPlay(full.sid, row.season, 1, 2).catch(() => []);   // legacy DASH — dead since the stubbing
+                            qRows = await combinedRows(full.sid, row.season, 1, streams);   // v2.46: direct rows (resource-position) + dash
                         } catch { }
+                        const seasonErr = qRows.length ? '' : `❌ Season ${row.season} — streams නෑ (MovieBox free tier එකේ මේ season එක cover කරලා නෑ)`;
                         try { await send(jid, { delete: st.key }); } catch { }
-                        if (!qRows.length) return edit(`❌ Season ${row.season} — streams නෑ (MovieBox free tier එකේ මේ season එක cover කරලා නෑ)`);
+                        if (seasonErr) return send(jid, { text: seasonErr }, { quoted: msg });   // v2.46: NEW msg — edit-after-delete = user silence bug
                         (tv.qualities ||= {})[rowNo] = qRows;
                         console.log(`[moviedex] 🧳 season-menu probe done: ${qRows.length} rows in ${Math.round((Date.now() - sp0) / 1000)}s`);
                     }
@@ -1001,12 +1277,13 @@ async function handle(c, ctx) {
                 const edit = async (t) => { try { await send(jid, { text: t, edit: st.key }); } catch { } };
                 let qRows = [];
                 try {
-                    const streams = await mbPlay(full.sid, row.season, row.ep, 2);   // v2.27: probe fast-fails — menu එක seconds වලින්
-                    if (streams.length) qRows = await mergedQualities(streams).catch(() => []);   // v2.30: merged (incl. 360p)
+                    const streams = await mbPlay(full.sid, row.season, row.ep, 2).catch(() => []);   // legacy DASH — dead since the stubbing
+                    qRows = await combinedRows(full.sid, row.season, row.ep, streams);   // v2.46: direct rows (resource-position) + dash
                 } catch { }
-                console.log(`[moviedex] 🎬 menu probe done: ${qRows.length} rows in ${Math.round((Date.now() - p0) / 1000)}s`);
+                console.log(`[moviedex] 🎬 menu probe done: ${qRows.length} rows (${qRows.filter(r => r.direct).length} direct) in ${Math.round((Date.now() - p0) / 1000)}s`);
+                const epErr = qRows.length ? '' : `❌ ${epLabel(row)} — streams නෑ\n> වෙන episode එකක් try`;
                 try { await send(jid, { delete: st.key }); } catch { }
-                if (!qRows.length) return edit(`❌ ${epLabel(row)} — streams නෑ\n> වෙන episode එකක් try`);
+                if (epErr) return send(jid, { text: epErr }, { quoted: msg });   // v2.46: NEW msg — edit-after-delete = user silence bug
                 const optRows = [`🎬 *SELECT DOWNLOAD OPTION* — ${epLabel(row)}`, `📺 ${cut(full.name, 50)}`, '', '» Video Qualities 👇'];
                 qRows.forEach((r, i) => optRows.push(`*${i + 1}* | 🎥 ${r.label}${r.sizeMB ? ' · ~' + human(r.sizeMB * 1048576) : ''}`));
                 optRows.push('', MV_FOOT);
@@ -1037,10 +1314,10 @@ async function handle(c, ctx) {
         const mp0 = Date.now();
         console.log(`[moviedex] 📺 movie probe ${cut(full.name, 40)}…`);
         let streams = [];
-        try { streams = await mbPlay(full.sid, null, null, 3); } catch { }
-        console.log(`[moviedex] 📺 movie probe done: ${streams.length} streams in ${Math.round((Date.now() - mp0) / 1000)}s`);
+        try { streams = await mbPlay(full.sid, null, null, 3).catch(() => []); } catch { }
         let rows = [];
-        if (streams.length) rows = await mergedQualities(streams).catch(() => []);   // v2.30: merged rows (incl. 360p) carry dash → sends never re-probe
+        try { rows = await combinedRows(full.sid, 0, 0, streams); } catch { }   // v2.46: direct rows (resource-position) + dash
+        console.log(`[moviedex] 📺 movie probe done: ${rows.length} rows (${rows.filter(r => r.direct).length} direct) in ${Math.round((Date.now() - mp0) / 1000)}s`);
         (s.mv ||= {})[n] = { streams, qualities: rows, at: Date.now() };
         try { await send(jid, { delete: st.key }); } catch { }
         const sent = await sendCard(send, jid, msg, full, n, rows);
@@ -1070,4 +1347,4 @@ async function handle(c, ctx) {
     return true;
 }
 
-module.exports = { handle, bridgeReply, hasSession, setUi, mbSearch, mbDetails, mbSeasons, mbPlay, dashFrom, parseMpd, dashDownload, chunkCount, expandTpl, streamQualities, mergedQualities, downloadDash, transcode360, tvRows, listText, cardText, seriesText, seasonOptText, epFileName, epCaption, packStat, __deliver: deliverStream, _sessions: sessions, _testSession: (jid, s) => sessions.set(jid, s) };
+module.exports = { handle, bridgeReply, hasSession, setUi, mbSearch, mbDetails, mbSeasons, mbPlay, dashFrom, parseMpd, dashDownload, chunkCount, expandTpl, streamQualities, mergedQualities, downloadDash, transcode360, tvRows, listText, cardText, seriesText, seasonOptText, epFileName, epCaption, packStat, mbDirectRows, mbDirectUrl, combinedRows, directDownload, mbRegisterAccount, __deliver: deliverStream, _sessions: sessions, _testSession: (jid, s) => sessions.set(jid, s) };

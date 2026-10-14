@@ -26,6 +26,12 @@ litterbox/catbox, x0.at, transfer.archivete.am, filebin, eporner (v2.17). (gofil
 
 🔒 Private: ඔයා යවන messages විතරයි. වෙන අය commands යැව්වත් ignore.
 
+v2.46.0 — 🎬 MovieBox REAL-STREAM FIX (quality menus ආයෙත් වැඩ)
+  • MovieBox visitor DASH path එක (signCookie) Oct 10 ඉඳන් stub — හැම quality menu එකක්ම "0 rows" වෙලා තිබුණා
+  • අලුත් registered-user path: resource → resource-position/v2 → REAL signed MP4 (bcdn) — 1080/720/480/360 real files, DASH/mux නෑ (වේගය වැඩියි)
+  • Auto account registration (temp-email) — settings.json moviedexUserToken · 401/406 ආවොත් auto re-register · v2.43/v2.44/v2.45 fixes intact
+  • Menu error messages silence bug fix (edit-after-delete)
+
 v2.44.0 — ⚡ MovieBox download SPEED II
   • CDN එක per-connection throttle (benchmark-verified) → segment workers 8/6 → 16/8 → download ~1.5-1.9× වේගවත් (env: ARENA_SEG_WORKERS_V/A)
   • 360p re-encode: veryfast → ultrafast (2-3× faster, size cap එක විතරම)

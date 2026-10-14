@@ -1,6 +1,6 @@
 {
-  "version": "2.45.1",
-  "notes": "🩹 UPDATE-INSTALL FIX (v2.45.1): auto-update/.update එකෙන් \"test_v245.js එකේ error එකක් (Invalid or unexpected token)\" එන bug එක fix — test_v245.js file එකේ පළවෙනි line එකේ #! shebang එක node direct-run එකේ valid, ඒත් updater syntax-check vm wrapper එකේදී mid-code #! → false SyntaxError → install abort. Fix: shebang strip (updater.js, future-proof) + test file clean. v2.45.0 deadlock fix (quality menu silence bug) මේ ගමන්ම install වෙනවා.",
+  "version": "2.46.0",
+  "notes": "🎬 MOVIEDEX FIX (v2.46.0): MovieBox ගේ visitor DASH path එක (signCookie) Oct 10 ඉඳන් stub — quality menus \"0 rows in 0s\" වුණා. අලුත් registered-user path: subject-api/resource → resource-position/v2 → REAL signed MP4 (bcdn.hakunaymatata.com, parallel ranged 4MB chunks ~16MB/s). Identity 50020126 (4.0.02) + okhttp headers + base64 gateway HMAC key + temp-email auto account registration (settings.json moviedexUserToken · bootstrap pool token fallback · 401/406 ආවොත් auto re-register). Menu error messages edit-after-delete silence bug fix. v2.43 timeouts / v2.44 speed / v2.45 pacer fixes untouched. · v2.44 speed patches (per-connection workers + ARENA_SEG_WORKERS_V env) untouched.",
   "removed": [
     "movies.js",
     "test_v218.js",
@@ -62,6 +62,7 @@
     "test_v242.js",
     "test_v243.js",
     "test_v244.js",
-    "test_v245.js"
+    "test_v245.js",
+    "test_v246.js"
   ]
 }
