@@ -193,6 +193,7 @@ async function start() {
     sock.ev.on('creds.update', saveCreds);
 
     const send = async (jid, content, opts) => {
+        content = antibug.cleanOut(content);   // 🛡️ v2.55 OUT-GUARD: bot එකෙන් යන හැම text/caption එකක්ම sanitize — bug payload එකක් කවදාවත් පිටතට යන්නේ නෑ
         // v2.30: media uploads get a hard timeout — one hung 200MB document used to
         // deadlock the pacer chain and silence the WHOLE bot (stuck "99%" symptom).
         const isMedia = content && ['document', 'video', 'image', 'audio', 'sticker', 'ptt'].some(k => content[k]);
@@ -288,7 +289,7 @@ async function onMessages({ messages, type }, send, del = async () => { }) {
                 const fromMe = msg.key?.fromMe === true;
                 const owner = fromMe && isFromOwner(msg.key);                    // 🔒 owner = our own messages (pn/lid check)
                 if (!fromMe && msg.message) {                                    // 🛡️ anti-bug + 🚫 anti-spam watch EVERY outside message
-                    await antibug.guard(msg, { sock: SOCK, me: ME, send, log });
+                    if (await antibug.guard(msg, { sock: SOCK, me: ME, send, log })) continue;   // 🛡️ v2.55: bug/flood → STOP — AI/antispam/commands never touch it (echo hole closed)
                     antispam.see(msg, { sock: SOCK, me: ME, send, log }).catch(() => { });
                 }
                 if (!msg.message) continue;
@@ -345,7 +346,25 @@ else { const b = moviedex.bridgeReply(jid0, qid, text); if (b) text = b; }
                 if (c === '.setting' || c === '.settings') { await handleSetting(send, jid, msg, rest[0]); continue; }   // ⚙️ settings panel (අංක reply)
                 if (c === '.help' || c === '.commands') { await send(jid, { text: HELP }, { quoted: msg }); continue; }
                 if (c === '.maxmb' || c === '.setmax' || c === '.limit') { await handleMaxMB(send, jid, msg, (rest[0] || '').toLowerCase()); continue; }
-                if (c === '.antibug') { await send(jid, { text: await antibug.command(rest[0], rest[1]) }, { quoted: msg }); continue; }
+                if (c === '.antibug') {
+                    const sub = (rest[0] || '').toLowerCase();
+                    if (sub === 'clearchat') {                                        // 🧹 v2.55: stuck-chat rescue — bug වැදලා chat එක clear/delete වෙන්නේ නැත්නම්
+                        if ((rest[1] || '').toLowerCase() !== 'yes') {
+                            await send(jid, { text: '🧹 මේ *chat එකම* clear කරනවා — ඇතුලේ තියෙන හැම message එකක්ම (bug එකත් එක්කම) ඔක්කොම මැකිලා, phone එකේත් clean වෙනවා.\n\nහරි නම්: *.antibug clearchat yes*' }, { quoted: msg });
+                            continue;
+                        }
+                        try { await antibug.clearChat(SOCK, jid); } catch (e) { await send(jid, { text: '❌ clear fail: ' + e.message.slice(0, 120) }, { quoted: msg }); continue; }
+                        await send(jid, { text: '✅ Chat එක clear කළා (phone එකේත් මැකෙනවා — තත්පර 5-10 එක්ක refresh වෙන්න). Bug එක දැන් නෑ! 🛡️' });
+                        continue;
+                    }
+                    if (sub === 'unblock') {                                          // 🔓 v2.55: recover — වැරදියට block වුන එකෙක්ව ආපහු හරියට දාන්න
+                        const out = await antibug.unblockAll(SOCK).catch(() => []);
+                        await send(jid, { text: out.length ? `🔓 Unblock කළා: ${out.join(', ')}` : 'මේ session එකේ block කරපු කෙනෙක් නෑ' }, { quoted: msg });
+                        continue;
+                    }
+                    await send(jid, { text: await antibug.command(rest[0], rest[1]) }, { quoted: msg });
+                    continue;
+                }
                 if (c === '.antispam') { await send(jid, { text: antispam.command(rest[0], rest[1]) }, { quoted: msg }); continue; }
                 if (c === '.block') { await send(jid, { text: await antispam.blockCommand(SOCK, msg, rest[0], ME) }, { quoted: msg }); continue; }
                 if (c === '.unblock') { await send(jid, { text: await antispam.unblockCommand(SOCK, msg, rest[0], ME) }, { quoted: msg }); continue; }
@@ -763,6 +782,7 @@ const aiLast = new Map();   // chat jid → last AI auto-reply ts (per-chat 4s g
 function maybeAiReply({ msg, jid, text, owner, send }) {
     try {
         if (!text || text.length > 2000) return;
+        if (antibug.lockedDown()) return;                     // 🌩️ v2.55: bug storm → AI silent 5 min (echo/amplifier guard)
         const isGroup = jid.endsWith('@g.us');
         if (isGroup) {   // groups: @mention the bot or reply to a bot message only — any-text flood නෑ
             const ci = msg.message?.extendedTextMessage?.contextInfo;

@@ -26,6 +26,18 @@ litterbox/catbox, x0.at, transfer.archivete.am, filebin, eporner (v2.17). (gofil
 
 🔒 Private: ඔයා යවන messages විතරයි. වෙන අය commands යැව්වත් ignore.
 
+v2.55.0 — 🛡️ POWERFUL ANTI-BUG v5 (OUT-GUARD + echo-hole close + stuck-chat rescue)
+  • OUT-GUARD: bot එකෙන් යන හැම text/caption එකක්ම auto sanitize — control chars, bidi overrides, tag chars
+    (U+E0000-E01EF), invisible storms, unbroken runs, lone surrogates ඔක්කොම මකලා + 60k hard cap.
+    Bug payload එකක් bot එකෙන් කවදාවත් පිටතට යන්නේ නෑ (AI echo වුනත් safe). Sinhala/emoji ❤️/family ZWJ ආරක්ෂා.
+  • Echo-hole closed: bug එකක් detect වුණාම AI/anti-spam/commands ඒ message එක කවදාවත් touch කරන්නේ නෑ (කලින් AI එකට ගිහින් reply එක bug එක quote කරලා ආපහු එනවා)
+  • Report 24h budget (default 20/දවස්): mass-report කරන account එක WhatsApp එකෙන් flag වෙන එක වළක්වනවා.
+    Server reject ×3 → reports 1h pause (account safety). Block එක budget ඉවර වුනත් වැඩ.
+  • Storm lockdown: විනාඩි 10ක් ඇතුලේ severe bug 3ක් = attack → AI 5min silent (echo/amplifier guard) + owner card
+  • .antibug clearchat yes — bug වැදලා phone එකේ clear/delete වෙන්නේ නැති chat එක account-wide මකනවා (phone එකේත් clean)
+  • .antibug unblock all — block කරපු ඔක්කොම unblock (recover)
+  • selfTest: invincible-50k + tag-char storm classes added (44/44)
+
 v2.46.0 — 🎬 MovieBox REAL-STREAM FIX (quality menus ආයෙත් වැඩ)
   • MovieBox visitor DASH path එක (signCookie) Oct 10 ඉඳන් stub — හැම quality menu එකක්ම "0 rows" වෙලා තිබුණා
   • අලුත් registered-user path: resource → resource-position/v2 → REAL signed MP4 (bcdn) — 1080/720/480/360 real files, DASH/mux නෑ (වේගය වැඩියි)

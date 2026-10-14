@@ -1,6 +1,6 @@
 {
-  "version": "2.54.0",
-  "notes": "v2.54.0: ROAST MODE + REPLY-BAR + SINHALA BOOST — .ai roast on/off (default ON, aiRoast setting): Sinhala-slang insult detection (මෙට්ට/කින්ටි/පකයා/හුත්තො/බනිනවා/fuck/stupid...) swaps SYSTEM to savage-funny Sinhala comeback persona (1-2 lines, no slurs/family/religion; skipped for image asks); maybeAiReply text replies now QUOTE the sender (groups = reply-bar to the exact person, photos already did); SYSTEM rewrite: Singlish understood ('how to band whatsapp'), ALWAYS reply in Sinhala (was: Singlish→Singlish = English answers), BE SHORT 1-4 lines (no lectures — 'කෙටියෙන්' = 1-2 lines); group memory confirmed: per-jid stores in ai_memory.json, 3-day auto-clear (already v2.47+); test_v254 31 checks",
+  "version": "2.55.0",
+  "notes": "v2.55.0: POWERFUL ANTI-BUG v5 — ① OUT-GUARD: every outgoing text/caption sanitized (control/bidi/tag chars, invisible storms, unbroken runs, lone surrogates stripped; 60k cap) — bot එකෙන් bug payload කවදාවත් යන්නේ නෑ ② guard-return: bug detect වුනාම AI/antispam/commands NEVER touch that message (echo hole closed) ③ report 24h budget (default 20/day) + 3-fail abort + 1h account-safety pause — mass-report backfire නැති වෙනවා ④ storm lockdown: severe bug 3/10min → AI silent 5min ⑤ .antibug clearchat yes — bug වැදලා phone එකේ clear වෙන්නේ නැති chat එක account-wide clear ⑥ .antibug unblock all recovery ⑦ invincible-50k + tag-char self-tests",
   "removed": [
     "movies.js",
     "test_v218.js",
@@ -19,7 +19,8 @@
     "test_v235.js",
     "test_v236.js",
     "test_v238.js",
-    "test_v239.js"
+    "test_v239.js",
+    "test_v254.js"
   ],
   "files": [
     "bot.js",
@@ -73,6 +74,6 @@
     "test_v2511.js",
     "test_v252.js",
     "test_v253.js",
-    "test_v254.js"
+    "test_v255.js"
   ]
 }

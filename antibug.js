@@ -45,9 +45,22 @@ function cfg() {
         block: a.block !== false,
         report: a.report !== false,
         reportCount: clampCount(a.reportCount),
+        dailyCap: clampCount(a.dailyCap || 20),          // v2.55: 24h report budget (WhatsApp mass-report spam-flag guard)
     };
 }
 function setCfg(patch) { const d = readSet(); d.antibug = { ...cfg(), ...patch }; writeSet(d); return d.antibug; }
+
+// ── v2.55 persistent state (report budget / lockdown — survives restarts) ──
+const STATE_F = path.join(__dirname, 'antibug_state.json');
+const state = (() => { try { const j = JSON.parse(fs.readFileSync(STATE_F, 'utf8')); return j && typeof j === 'object' ? j : {}; } catch { return {}; } })();
+state.reports = Array.isArray(state.reports) ? state.reports : [];
+const saveState = () => { try { fs.writeFileSync(STATE_F, JSON.stringify(state)); } catch { } };
+const DAILY_CAP = () => cfg().dailyCap;
+function reportBudget() {   // reports left in the rolling 24h window
+    const now = Date.now();
+    state.reports = state.reports.filter((t) => now - t < 24 * 3600e3);
+    return Math.max(0, DAILY_CAP() - state.reports.length);
+}
 
 const L = {
     text: 12000,        // one text/caption longer than this (normal chats rarely pass 4k)
@@ -102,6 +115,37 @@ const maxSameLine = (s) => {                                            // v2.34
 };
 const longestRun = (s, re) => { let m = 0, c = 0; for (const ch of s) { if (re.test(ch)) { if (++c > m) m = c; } else c = 0; } return m; };
 const TEXT_KEYS = new Set(['conversation', 'text', 'caption', 'contentText', 'description', 'footerText', 'body', 'title', 'name', 'displayName', 'subject', 'accessibilityText', 'buttonParamsJson', 'paramsJson', 'buttonId', 'displayText', 'fileName']);
+
+// ── v2.55: OUTBOUND GUARANTEE — even if a bug payload sneaks past detection and reaches the AI,
+// nothing the bot SENDS can freeze/crash anyone's WhatsApp. Every outgoing string is neutralized:
+// control chars, bidi overrides, tag chars (U+E0000-E01EF), invisible storms, unbroken runs, lone
+// surrogates — all stripped; hard length cap. Normal Sinhala / emoji (incl. ❤️ VS16, family ZWJ,
+// ර්‍ය conjunct ZWJ) are untouched. ──
+const OUT_MAX = 60000;                                            // hard cap (normal replies are < 4k)
+const OUT_CTRL = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F\uFFFE\uFFFF]/g;
+const OUT_INVIS = /[\u202A-\u202E\u2066-\u2069\uFEFF\u180B-\u180F\u115F\u1160\u3164\uFFA0\uFFF9-\uFFFB\uFE00-\uFE0E]|[\u{E0000}-\u{E01EF}]/gu;   // bidi/tag/fillers/VS1-15 (VS16 \uFE0F kept for ❤️)
+const OUT_STORM = /\u200B{2,}|\u200C{2,}|\u200E{2,}|\u200F{2,}|\u2060-\u2064{2,}|\u2060{2,}|\u200D{3,}/g;   // invisible RUNS only (single ZWNJ/ZWJ legit)
+const OUT_SURR = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
+function sanitizeOut(text, max = OUT_MAX) {
+    let s = String(text == null ? '' : text);
+    if (s.length > max * 4) s = s.slice(0, max * 4);               // giant input: pre-chop (perf)
+    s = s.replace(OUT_CTRL, '').replace(OUT_INVIS, '').replace(OUT_STORM, ' ').replace(OUT_SURR, '');
+    s = s.replace(/(\S{1200})\S+/g, (m, a) => a);                  // unbroken run → cut the tail (render-safe)
+    if (s.length > max) s = s.slice(0, max) + ' …';
+    return s;
+}
+const OUT_MEDIA_CAP = 4000;                                       // captions/image-text cap (renderers choke on big captions)
+function cleanOut(content) {
+    if (!content || typeof content !== 'object') return content;
+    for (const k of ['text', 'caption']) {
+        const v = content[k];
+        if (typeof v !== 'string' || !v.length) continue;
+        const was = v;
+        content[k] = sanitizeOut(v, k === 'caption' ? OUT_MEDIA_CAP : OUT_MAX);
+        if (content[k] !== was && !content[k].trim()) content[k] = '🛡️ (bug-safe)';
+    }
+    return content;
+}
 
 /** pure check — returns { bug, severe, reasons[] } (no network, safe to unit-test) */
 function detect(message) {
@@ -246,8 +290,10 @@ function reportSpam(sock, sender, key) {
     });
 }
 
+let retalPauseUntil = 0;      // v2.55: server keeps rejecting reports → 1h pause (protects OUR account from flag-storms)
+
 /**
- * Bug sender retaliation: report ×N (human-paced) → then block (private only).
+ * Bug sender retaliation: report ×N (human-paced, 24h budget) → then block (private only).
  * NEVER touches the owner/bot itself. Returns { ok, want, blockedNow } or { skip }.
  */
 async function retaliate(sender, ctx, meta = {}) {
@@ -259,26 +305,38 @@ async function retaliate(sender, ctx, meta = {}) {
     if (meKeys.includes(sNorm)) return { skip: 'owner' };                        // NEVER report/block yourself
     if (retaliated.has(sNorm) && Date.now() - retaliated.get(sNorm) < RETAL_COOLDOWN_MS) return { skip: 'cooldown' };
     retaliated.set(sNorm, Date.now());
-    const want = c.report ? c.reportCount : 0;
-    let ok = 0, blockedNow = false, blockErr = '';
+    const asked = c.report ? c.reportCount : 0;
+    const want = Math.min(asked, reportBudget());                                // v2.55: 24h budget — mass-reporting gets the REPORTER flagged
+    let ok = 0, blockedNow = false, blockErr = '', fails = 0, aborted = false;
     for (let i = 0; i < want; i++) {
-        try { await reportSpam(sock, sender, meta.key); ok++; }
-        catch (e) { log(`antibug report ${i + 1}/${want}: ${e.message}`); }
+        if (Date.now() < retalPauseUntil) { aborted = true; break; }
+        try { await reportSpam(sock, sender, meta.key); ok++; fails = 0; state.reports.push(Date.now()); if (ok % 5 === 0) saveState(); }
+        catch (e) {
+            fails++; log(`antibug report ${i + 1}/${want}: ${e.message}`);
+            if (fails >= 3) {                                                     // server rejects ×3 → something is wrong — stop hammering
+                retalPauseUntil = Date.now() + 3600e3; aborted = true;
+                log('antibug: reports failing ×3 — reports paused 1h (account safety)');
+                break;
+            }
+        }
         if (i < want - 1) await sleep(TEST_FAST ? 1 : 700 + Math.floor(Math.random() * 700));   // human pacing (anti-ban)
     }
+    saveState();
     if (meta.canBlock && c.block && !blocked.has(sNorm)) {
         try { await sock.updateBlockStatus(sender, 'block'); blocked.add(sNorm); blockedNow = true; }
         catch (e) { blockErr = e.message; log('antibug block: ' + e.message); }
     }
     if (send && me?.pn) {                                                        // honest final card
         const who = sNorm.split('@')[0];
-        const rLine = want ? `│ 📨 report: ${ok}/${want}${ok === want ? ' ✅' : ok ? ' ⚠️' : ' ❌ (server reject)'}` : '│ 📨 report: OFF';
+        const rLine = !asked ? '│ 📨 report: OFF'
+            : want === 0 ? `│ 📨 report: ⏳ 24h budget ඉවරයි (${DAILY_CAP()}/දවස්) — block විතරක්`
+                : `│ 📨 report: ${ok}/${want}${aborted ? ' (නවත්වලා — server reject)' : ok === want ? ' ✅' : ok ? ' ⚠️' : ' ❌'}`;
         const bLine = !meta.canBlock ? '│ ⛔ block: — (private chat වලට විතරයි)'
             : c.block ? `│ ⛔ block: ${blockedNow ? '✅ කළා' : '❌ ' + (blockErr || 'fail')}` : '│ ⛔ block: OFF';
         const text = ['╭─❖ 🛡️ *AUTO REPORT + BLOCK* ❖', `│ 👤 bug ගහපු එකා: ${who}`, rLine, bLine, '╰─ 🛡️ ඒ එකාගෙන් දැන් bug එන්නේ නෑ'].join('\n');
         try { await send(me.pn, { text }); } catch { }
     }
-    return { ok, want, blockedNow };
+    return { ok, want, blockedNow, aborted };
 }
 
 /** fire-and-forget starter — the message loop never waits for the 30 reports */
@@ -288,6 +346,38 @@ function startRetaliate(sender, ctx, meta = {}) {
     return p;
 }
 function actionOk(now = Date.now()) { while (acts.length && now - acts[0] > 60e3) acts.shift(); if (acts.length >= 60) return false; acts.push(now); return true; }
+
+// ── v2.55: STORM LOCKDOWN — 3+ severe bugs in 10 min = an active attack → AI goes silent 5 min
+// (the bot can never be used as an echo/amplifier during a bug storm; commands + antibug still work) ──
+const severeTimes = [];
+function noteSevere() {
+    const now = Date.now();
+    while (severeTimes.length && now - severeTimes[0] > 10 * 60e3) severeTimes.shift();
+    severeTimes.push(now);
+    if (severeTimes.length >= 3 && now > (state.lockdownUntil || 0)) {
+        state.lockdownUntil = now + 5 * 60e3; saveState();
+        return true;                                  // caller notifies the owner once
+    }
+    return false;
+}
+function lockedDown() { return Date.now() < (state.lockdownUntil || 0); }
+
+// ── v2.55: stuck-chat rescue — a bug that already landed on the phone can make that chat
+// impossible to clear (client can't parse what it can't render). Deleting the chat account-wide
+// from here (a linked device) removes EVERY message in it — the phone refreshes clean. ──
+async function clearChat(sock, jid) {
+    if (!sock || !jid) throw new Error('sock/jid missing');
+    await sock.chatModify({ delete: true }, jid);     // "Delete chat" — same call the official app makes
+    return true;
+}
+async function unblockAll(sock) {                     // wrong-number recovery (e.g. own second number caught by an old rule)
+    const out = [];
+    for (const s of Array.from(blocked)) {
+        try { await sock.updateBlockStatus(s, 'unblock'); out.push(s.split('@')[0]); } catch { }
+        blocked.delete(s);
+    }
+    return out;
+}
 const adminCache = new Map();
 async function botIsAdmin(sock, gid, me) {
     const c = adminCache.get(gid); if (c && Date.now() - c.at < 10 * 60e3) return c.ok;
@@ -324,7 +414,7 @@ async function guard(msg, ctx) {
             try { await sock.sendMessage(jid, { delete: msg.key }); done.push('🗑️ delete (හැමෝටම)'); } catch { }
         }
     }
-    // ── v2.33: RETALIATION — bug ගහපු එකාට විතරයි: auto report ×N → ඉවර උනාම block ──
+    // ── v2.33: RETALIATION — bug ගහපු එකාට විතරයි: auto report ×N (24h budget) → ඉවර උනාම block ──
     // (background run — the message loop never waits for the reports; block lands AFTER them)
     if ((r.severe || isFlood) && sender) {
         const c = cfg();
@@ -336,6 +426,9 @@ async function guard(msg, ctx) {
             startRetaliate(sender, ctx, { key: msg.key, canBlock: isPrivate });
         }
     }
+    if (r.severe && noteSevere() && send && me?.pn) {          // 🌩️ v2.55: storm → AI lockdown (echo/amplifier guard)
+        try { await send(me.pn, { text: '╭─❖ 🌩️ *BUG STORM LOCKDOWN* ❖\n│ විනාඩි 10ක් ඇතුලේ severe bug 3ක් — attack එකක්!\n│ 🤖 AI එක විනාඩි 5කට silent (echo වළක්වන්න)\n│ 🛡️ anti-bug + commands සාමාන්‍ය විදිහට වැඩ\n╰─ lock ඉවර වුනාම auto back' }); } catch { }
+    }
     const num = String(sender || jid).split('@')[0].split(':')[0];
     log(`🛡️ anti-bug: ${num} ${isGroup ? '(group ' + jid.split('@')[0] + ')' : isStatus ? '(status)' : isNews ? '(newsletter)' : ''} — ${r.reasons.join(', ')} → ${done.join(', ') || 'no action'}`);
     recent.push({ at: new Date(), num, where: isGroup ? 'group' : isStatus ? 'status' : isNews ? 'newsletter' : 'private', reasons: r.reasons.join(' · '), done: done.join(' · ') || '-' });
@@ -343,7 +436,8 @@ async function guard(msg, ctx) {
     const now = Date.now();
     if (send && me?.pn && now - (lastReport.get(sender) || 0) > 5 * 60e3) {   // max 1 report / sender / 5 min
         lastReport.set(sender, now);
-        const text = ['╭─❖ 🛡️ *ANTI-BUG* ❖', `│ 👤 ${num}${isGroup ? '\n│ 👥 group එකක' : ''}`, `│ ⚠️ ${r.reasons.join(' · ')}`, `│ ✅ ${done.join(' · ') || 'කරන්න දෙයක් බැරි වුණා'}`, '╰─ chat එක දැන් open කරන්න පුළුවන්'].join('\n');
+        const fixLine = isPrivate ? '╰─ 🧹 chat එක phone එකෙන් clear/delete වෙන්නේ නැත්නම්: මේ chat එකේම *.antibug clearchat yes*' : '╰─ chat එක දැන් open කරන්න පුළුවන්';
+        const text = ['╭─❖ 🛡️ *ANTI-BUG* ❖', `│ 👤 ${num}${isGroup ? '\n│ 👥 group එකක' : ''}`, `│ ⚠️ ${r.reasons.join(' · ')}`, `│ ✅ ${done.join(' · ') || 'කරන්න දෙයක් බැරි වුණා'}`, fixLine].join('\n');
         try { await send(me.pn, { text }); } catch { }
     }
     return true;
@@ -372,6 +466,8 @@ function selfTest() {
     push('combining-mark storm', { conversation: 'ا' + 'ًٌٍَُِّ'.repeat(500) }, true);
     push('ZWSP flood', { conversation: 'a\u200B'.repeat(2000) }, true);
     push('pure invisible', { conversation: '\u200B'.repeat(3000) }, true);
+    push('invincible bug 50k (ZWNJ-only)', { conversation: '\u200C'.repeat(50000) }, true);   // v2.55: the "invincible" class — pure-invisible giant
+    push('tag-char storm (U+E0100)', { conversation: 'hi' + '\uDB40\uDD00'.repeat(3000) }, true);
     push('RTL override storm', { conversation: 'a\u202E'.repeat(1200) }, true);
     push('control-char storm', { conversation: 'a\u0000'.repeat(400) }, true);
     push('filler flood (U+3164)', { conversation: '\u3164'.repeat(3000) }, true);
@@ -432,19 +528,23 @@ async function command(arg, arg2) {
     else if (a === 'block' && (b === 'on' || b === 'off')) setCfg({ block: b === 'on' });
     else if (a === 'report' && (b === 'on' || b === 'off')) setCfg({ report: b === 'on' });
     else if ((a === 'count' || a === 'reports') && /^\d+$/.test(b)) setCfg({ reportCount: Number(b) });
-    const c = cfg();
+    const c = cfg(), budget = reportBudget();
     return ['╭─❖ 🛡️ *ANTI-BUG* ❖',
         `│ තත්ත්වය: ${c.on ? '✅ ON' : '❌ OFF'}`,
-        `│ Bug ගහපු එකාට auto report ×${c.reportCount}: ${c.report ? '✅' : '❌'}`,
+        `│ Bug ගහපු එකාට auto report ×${c.reportCount}: ${c.report ? '✅' : '❌'} (24h budget: ${budget}/${DAILY_CAP()})`,
         `│ Report ඉවර උනාම block (private): ${c.block ? '✅' : '❌'}`,
+        `│ 🛡️ OUT-GUARD: යන හැම message එකක්ම sanitize (bot එකෙන් bug යන්නේ නෑ) ✅`,
+        `│ 🌩️ storm lock: ${lockedDown() ? '⚠️ ON (AI silent)' : '—'}`,
         `│ මේ session එකේ block කළා: ${blocked.size}`,
         '├─ *.antibug on / off*',
         '├─ *.antibug report on / off*',
         '├─ *.antibug count <1-100>* — report ගණන (default 30)',
         '├─ *.antibug block on / off*',
+        '├─ *.antibug clearchat yes* — මේ chat එකම clear (bug වැදලා clear වෙන්නේ නැත්නම්)',
+        '├─ *.antibug unblock all* — block කරපු ඔක්කොම unblock (recover)',
         '├─ *.antibug scan* — recently caught bugs',
         '├─ *.antibug test* — crasher-payload self-test',
-        '╰─ Bug → delete + auto report ×30 → block (bug ගහපු එකාට විතරයි)'].join('\n');
+        '╰─ Bug → delete + report (24h budget) → block · යන messages ඔක්කොම sanitize'].join('\n');
 }
 
-module.exports = { detect, guard, command, cfg, setCfg, floodCheck, selfTest, reportSpam, retaliate, startRetaliate, L, _flood: flood, _blocked: blocked, _recent: recent, _retalRunning: retalRunning, _retaliated: retaliated };
+module.exports = { detect, guard, command, cfg, setCfg, floodCheck, selfTest, reportSpam, retaliate, startRetaliate, sanitizeOut, cleanOut, clearChat, unblockAll, lockedDown, noteSevere, reportBudget, L, _flood: flood, _blocked: blocked, _recent: recent, _retalRunning: retalRunning, _retaliated: retaliated, _state: state };
