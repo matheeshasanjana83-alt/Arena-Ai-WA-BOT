@@ -460,6 +460,7 @@ const CATS = [
     ['👥', 'Group', `*👥 GROUP* — group එකේ ඔයා ගහන්න\n\n✦ *.groupinfo* · *.grouplink* · *.jid*\n✦ *.tagall [msg]* — විනාඩි 10 කට 1\n✦ *.kick @user* · *.promote* · *.demote*\n✦ *.mute* · *.unmute* · *.tagadmins* · *.resetlink*\n\n> @mention නැත්නම් message එකකට reply කරන්න`],
     ['🤖', 'AI', `*🤖 AI*\n\n✦ *.ai <ප්‍රශ්නය>* — සිංහල OK\n✦ message එකකට reply + *.ai* — ඒක ගැනම\n✦ *.ai reset* — අලුත් කතාවක්
 ✦ *.ai memory* — මතකය status · save state
+✦ *.ai tools* — GLM connector (search/weather/YT)
 ✦ AI provider තෝරන්න — *.aiprovider gemini/groq/zai/auto* · *.setting* → 10\n✦ AI chat auto-reply — *.mode* → 5/6 on·off · 11-16 modes
 ✦ *.setkey gemini/groq/zai <KEY>* · *.keys*`],
     ['🔧', 'Network', `*🔧 NETWORK*\n\n✦ *.net <link>* — fail වුණොත් හේතුව\n✦ *.setproxy <url|off>* — block sites වලට\n✦ *.proxies* — free pool status · *.proxies check*\n✦ *.setcookies* — YouTube bot-check fix`],
@@ -517,6 +518,7 @@ function settingCaption() {
         `🍀 | *AI KEYS:* Gemini ${k.gemini ? '✅' : '❌'} · Groq ${k.groq ? '✅' : '❌'} · Z.ai ${k.zai ? '✅' : '❌'}`,
         `🧠 | *AI MEMORY:* ${m.msgs} msgs · ${m.chats} chats · TTL ${m.ttlDays}d`,
         `🤖 | *AI PROVIDER:* ${ai.getProvider() ? ai.getProvider().toUpperCase() : 'AUTO (Gemini → Groq → Z.ai)'}`,
+        `🧰 | *AI TOOLS:* ${ai.getTools() ? '✅ ON' : '⛔ OFF'} (GLM)`,
         `🍀 | *ANTI-BUG:* ${oo(a.on)}`,
         `🍀 | *AUTO REPORT:* ${a.report ? 'on ×' + a.reportCount : 'off'}`,
         `🍀 | *AUTO BLOCK:* ${oo(a.block)}`,
@@ -894,13 +896,32 @@ async function handleAI(send, jid, msg, question) {
         const st = ai.stats(jid);
         return send(jid, { text: `🧠 *AI MEMORY*
 
-✦ ඔයාගේ කතාව: *${st.myMsgs}* messages${st.myMsgs ? ` — ${st.myOldestH}h ඉඳන් මතකයේ` : ''}
+✦ AUTO (shared): *${st.myMsgs}* messages${st.myMsgs ? ` — ${st.myOldestH}h ඉඳන් මතකයේ` : ''}
+✦ Model stores — Gemini: ${st.myPerProv.gemini} · Groq: ${st.myPerProv.groq} · Z.ai: ${st.myPerProv.zai}
 ✦ Total: ${st.msgs} msgs · chats ${st.chats}ක් · file ${st.fileKB} KB
 ✦ Auto-clear: දවස් *${st.ttlDays}*ට පරණ messages මැකෙනවා
 ✦ Limit: chat එකක turns *${st.turns}*
 
-💾 Bot restart වුණත් මතකය save වෙලා තියෙනවා
-🆕 *.ai reset* — මතකය clear කරන්න` }, { quoted: msg });
+💾 Bot restart වුණත් මතකය save වෙලා තියෙනවා · 🎛 .aiprovider එකෙන් select කරන model එකට වෙනම memory
+🆕 *.ai reset* — models 3 ගේම මතක clear කරන්න` }, { quoted: msg });
+    }
+    const tm = question.match(/^tools?(?:\s+(on|off))?$/i); // 🧰 GLM connector tools (v2.50)
+    if (tm) {
+        if (!tm[1]) {
+            const on = ai.getTools();
+            return send(jid, { text: `🧰 *AI TOOLS* ${on ? '✅ ON' : '⛔ OFF'}
+
+GLM (Z.ai) එකට connect වෙලා තියෙන abilities:
+✦ *web search* — අලුත් facts / news
+✦ *date/time + calculator*
+✦ *weather* — කාළගුණය
+✦ *YouTube search* — videos / ගීත
+
+AI එකට ඕන වෙලාවට ම මේවා පාවිච්චි වෙනවා.
+on/off: *.ai tools on* / *.ai tools off*` }, { quoted: msg });
+        }
+        const on = ai.setTools(tm[1].toLowerCase() === 'on');
+        return send(jid, { text: `🧰 AI tools ${on ? '✅ ON' : '⛔ OFF'} — වැඩ කරන්නේ GLM (Z.ai) එකට විතරයි` }, { quoted: msg });
     }
     if (/^(reset|new|clear)$/i.test(question)) { ai.reset(jid); return send(jid, { text: '🆕 කතාව reset කළා. අලුතෙන් අහන්න!' }, { quoted: msg }); }
     const q = quotedText(msg);

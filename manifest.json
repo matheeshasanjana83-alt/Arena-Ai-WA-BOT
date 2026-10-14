@@ -1,6 +1,6 @@
 {
-  "version": "2.49.1",
-  "notes": "🔎 AI LOG FIX (v2.49.1): .ai log line එකේ දැන් WhatsApp එකට යවපු ඇත්ත reply preview එකත් පේනවා (කලින් පෙන්නුවේ ප්‍රශ්නය විතරයි — panel log rendering ≠ WhatsApp display, z.ai ඇත්තටම හොඳට කතා කරනවා). v2.49.0: AI PROVIDER SELECTOR — .aiprovider gemini/groq/zai/auto (හෝ .setting → 10). AUTO = Gemini → Groq → Z.ai. 🌍 geo-block → proxy pool auto-retry.",
+  "version": "2.50.0",
+  "notes": "🧰 AI TOOLS + 🧠 PER-MODEL MEMORY (v2.50.0): GLM (Z.ai) එකට connector tools — web search · date/time · calculator · weather · YouTube search (AI ම හිතලා ඕන වෙලාවට පාවිච්චි කරනවා · .ai tools on/off). Memory: .aiprovider එකෙන් select කරන model එකට වෙනම store — AUTO එකේ shared. .ai reset = models 3 ගේම clear.",
   "removed": [
     "movies.js",
     "test_v218.js",
@@ -65,6 +65,8 @@
     "test_v245.js",
     "test_v246.js",
     "test_v247.js",
-    "test_v249.js"
+    "test_v249.js",
+    "ai_tools.js",
+    "test_v250.js"
   ]
 }

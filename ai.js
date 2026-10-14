@@ -89,6 +89,11 @@ function setKey(provider, key) {
 
 const PROVIDERS = ['gemini', 'groq', 'zai'];
 function getProvider() { const p = String(loadSettings().aiProvider || '').toLowerCase().trim(); return PROVIDERS.includes(p) ? p : ''; }
+
+// 🧰 AI tools (v2.50) — GLM (Z.ai) එකට විතරක් connector abilities (GLM-first per user)
+const { TOOLS, runTool } = require('./ai_tools');
+const getTools = () => loadSettings().aiTools !== false;   // default ON
+function setTools(on) { const s = loadSettings(); s.aiTools = !!on; saveSettings(s); return !!on; }
 function setProvider(p) { // 🎛 .aiprovider / .setting 10 — user කැමති provider එක (z.ai/glm → zai alias)
     const s = loadSettings();
     p = String(p || '').toLowerCase().trim();
@@ -162,27 +167,49 @@ async function askGroq(key, msgs) {
 
 async function askZai(key, msgs) {
     let lastErr;
+    const toolsOn = getTools(); // connector tools — GLM first (v2.50)
     for (const model of ZAI_MODELS) {
         if (zaiDead.has(model)) continue;
-        const r = await fetch('https://api.z.ai/api/paas/v4/chat/completions', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
-            body: JSON.stringify({
+        const messages = [{ role: 'system', content: SYSTEM + (toolsOn ? '\n- TOOLS: you have tools (web_search, get_datetime, calculator, weather, youtube_search). If the question needs CURRENT/fresh facts, today\'s date/time, math, weather, or YouTube videos — call the matching tool first, then answer in the user\'s language using the result. For normal chat do not call tools.' : '') }, ...msgs.map(m => ({ role: m.role, content: m.text }))];
+        let useTools = toolsOn, answer = null;
+        for (let iter = 0; iter < 3 && !answer; iter++) {
+            const payload = {
                 model, temperature: 0.6, max_tokens: 2048,
                 thinking: { type: 'disabled' }, // GLM hybrid-reasoning OFF → WhatsApp speed (reasoning_content එක tokens කනවා)
-                messages: [{ role: 'system', content: SYSTEM }, ...msgs.map(m => ({ role: m.role, content: m.text }))]})
-        });
-        const body = await r.text();
-        const j = (() => { try { return JSON.parse(body); } catch { return {}; } })();
-        // balance error = HTTP 429 + code 1113 (Z.ai); 200-body error වුණත් catch කරනවා
-        if (!r.ok || j.error) {
-            lastErr = apiError('Z.ai', r.ok ? 500 : r.status, body);
-            if (lastErr.modelMissing) { zaiDead.add(model); continue; } // balance නැති model → මතක තියාගෙන ඊළඟ එකට
-            throw lastErr;
+                messages
+            };
+            if (useTools) { payload.tools = TOOLS; payload.tool_choice = 'auto'; }
+            const r = await fetch('https://api.z.ai/api/paas/v4/chat/completions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
+                body: JSON.stringify(payload)
+            });
+            const body = await r.text();
+            const j = (() => { try { return JSON.parse(body); } catch { return {}; } })();
+            // balance error = HTTP 429 + code 1113 (Z.ai); 200-body error වුණත් catch කරනවා
+            if (!r.ok || j.error) {
+                lastErr = apiError('Z.ai', r.ok ? 500 : r.status, body);
+                if (useTools && /tool/i.test(lastErr.message)) { useTools = false; continue; } // tools support නෑ → නැතුව retry
+                if (lastErr.modelMissing) { zaiDead.add(model); break; } // balance නැති model → මතක තියාගෙන ඊළඟ එකට
+                throw lastErr;
+            }
+            const m0 = j.choices?.[0]?.message;
+            if (useTools && Array.isArray(m0?.tool_calls) && m0.tool_calls.length && iter < 2) {
+                messages.push({ role: 'assistant', content: m0.content || '', tool_calls: m0.tool_calls });
+                for (let i = 0; i < m0.tool_calls.length; i++) {
+                    const tc = m0.tool_calls[i];
+                    if (!tc?.function?.name) continue;
+                    const out = await runTool(tc.function.name, tc.function.arguments); // connector → run
+                    messages.push({ role: 'tool', tool_call_id: tc.id || `call_${iter}_${i}`, content: String(out).slice(0, 1500) });
+                }
+                continue; // tool results එක්ක ආයෙත් — final answer එකට
+            }
+            const text = (m0?.content || '').trim(); // reasoning_content reply එකට යන්නේ නෑ
+            if (text) answer = { text, model: 'GLM ' + model };
+            else break; // empty → ඊළඟ model එකට fallback
         }
-        const text = (j.choices?.[0]?.message?.content || '').trim(); // reasoning_content reply එකට යන්නේ නෑ
-        if (!text) throw new Error('Z.ai empty answer (' + (j.choices?.[0]?.finish_reason || '?') + ')');
-        return { text, model: 'GLM ' + model };
+        if (answer) return answer;
+        lastErr = lastErr || new Error('Z.ai empty answer');
     }
     throw lastErr || new Error('Z.ai: වැඩ කරන model එකක් නෑ (balance/models බලන්න)');
 }
@@ -198,7 +225,11 @@ function toWhatsApp(t) {
         .trim();
 }
 
-/** ask with memory; tries Gemini → Groq → Z.ai */
+/** memory store key — AUTO mode = shared legacy key / fixed provider = per-model fresh store (v2.50) */
+const memKeyOf = (chatId, prov) => (prov ? `${chatId}|${prov}` : chatId);
+
+/** ask with memory; user's preferred provider first (AUTO = Gemini -> Groq -> Z.ai).
+ *  🧠 per-model memory (v2.50): කැමති model එකක් select කරලා නම් ඒ model ගේම store එක — AUTO නම් shared. */
 async function ask(chatId, question) {
     const keys = getKeys();
     if (!keys.gemini && !keys.groq && !keys.zai) {
@@ -206,23 +237,24 @@ async function ask(chatId, question) {
         e.noKey = true;
         throw e;
     }
-    const now = Date.now();
-    const h = (history.get(chatId) || []).filter(m => now - (m.t || now) < TTL_MS); // 🧠 TTL prune
-    const msgs = [...h, { role: 'user', text: question }];
-    const pref = getProvider(); // 🎛 user ගේ provider එක මුලින්ම — fail වුණොත් ඉතුරු ඒවා පරණ order එකට fallback
+    const pref = getProvider(); // 🎛 fixed provider → වෙන වෙනම memory store; AUTO → shared
     const FNS = { gemini: askGemini, groq: askGroq, zai: askZai };
     const order = PROVIDERS.map(p => [p, FNS[p]]);
     if (pref) order.sort((a, b) => (b[0] === pref) - (a[0] === pref));
     const errors = [];
     for (const [name, fn] of order) {
         if (!keys[name]) continue;
+        const mk = memKeyOf(chatId, pref ? name : ''); // උත්තර දුන්න model ගේම store එකට
+        const now = Date.now();
+        const h = (history.get(mk) || []).filter(m => now - (m.t || now) < TTL_MS); // TTL prune
+        const msgs = [...h, { role: 'user', text: question }];
         try {
             const res = await fn(keys[name], msgs);
             const text = toWhatsApp(res.text);
             const t = Date.now();
             h.push({ role: 'user', text: question, t }, { role: 'assistant', text, t });
             while (h.length > MAX_TURNS * 2) h.shift();
-            history.set(chatId, h);
+            history.set(mk, h);
             scheduleSave();
             return { text, model: res.model };
         } catch (e) { errors.push(e.message); }
@@ -230,7 +262,11 @@ async function ask(chatId, question) {
     throw new Error(errors.join('\n'));
 }
 
-function reset(chatId) { history.delete(chatId); scheduleSave(); }
+function reset(chatId) { // 🧹 AUTO store + models 3 ගේ per-provider stores ඔක්කොම clear
+    history.delete(chatId);
+    for (const p of PROVIDERS) history.delete(memKeyOf(chatId, p));
+    scheduleSave();
+}
 
 function splitLong(text, size = 3500) {
     const parts = [];
@@ -249,13 +285,16 @@ function stats(chatId) { // 🧠 .ai memory card data
     let msgs = 0, oldest = Infinity;
     for (const h of history.values()) for (const m of h) { msgs++; if (m.t && m.t < oldest) oldest = m.t; }
     const mine = (history.get(chatId) || []).filter(m => now - (m.t || now) < TTL_MS);
+    const per = {}; // 🧠 per-model stores (v2.50)
+    for (const p of PROVIDERS) per[p] = (history.get(memKeyOf(chatId, p)) || []).filter(m => now - (m.t || now) < TTL_MS).length;
+    const chats = new Set([...history.keys()].map(k => String(k).split('|')[0])).size; // unique chat ids
     let fileKB = 0; try { fileKB = Math.round(fs.statSync(MEM_FILE).size / 1024 * 10) / 10; } catch { }
     return {
-        chats: history.size, msgs, myMsgs: mine.length,
+        chats, msgs, myMsgs: mine.length, myPerProv: per,
         myOldestH: mine.length ? Math.round((now - mine[0].t) / 36e5 * 10) / 10 : 0,
         oldestH: isFinite(oldest) ? Math.round((now - oldest) / 36e5 * 10) / 10 : 0,
         ttlDays: MEM_TTL_DAYS, turns: MAX_TURNS, fileKB
     };
 }
 
-module.exports = { ask, reset, stats, setKey, getKeys, getProvider, setProvider, splitLong, toWhatsApp, _history: history, _memoryFile: MEM_FILE, _flush: saveMemoryNow };
+module.exports = { ask, reset, stats, setKey, getKeys, getProvider, setProvider, getTools, setTools, splitLong, toWhatsApp, _history: history, _memoryFile: MEM_FILE, _memKey: memKeyOf, _flush: saveMemoryNow };
