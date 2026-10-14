@@ -44,6 +44,8 @@ ok('deliverStream: alive=false in finally', movSrc.includes('} finally { alive =
 ok('deliverStream: ✅ sent log with seconds', movSrc.includes('✅ sent ${f.name} in ${Math.round((Date.now() - t0) / 1000)}s'));
 ok('deliverStream: ❌ send fail log', movSrc.includes("'[moviedex] ❌ send fail: ' + cut(String(e.message || ''), 120)"));
 ok('seasonFilesCmd: upload start + sent logs', movSrc.includes('📤 upload start: ${finalName} (${human(res.bytes)})') && movSrc.includes('✅ sent ${finalName} in ${Math.round((Date.now() - u0) / 1000)}s'));
+ok('v2.43.1: download duration logs (deliver + season)', movSrc.includes('⬇️ downloaded ${row.label} (${human(res.bytes)}) in ${Math.round((Date.now() - d0) / 1000)}s') && movSrc.includes('⬇️ downloaded ${finalName} (${human(res.bytes)}) in ${Math.round((Date.now() - s0) / 1000)}s'));
+ok('v2.43.1: mirror upload start/done logs', movSrc.includes('🪞 mirror upload start: ${f.name} (${human(f.size)})') && movSrc.includes('🪞 mirror done ${f.name} in ${Math.round((Date.now() - m0) / 1000)}s → ${rel.url}'));
 
 /* ── 4. forward hang-proof ── */
 ok('forward: ARENA_FWD_TIMEOUT (default 30s)', botSrc.includes("parseInt(process.env.ARENA_FWD_TIMEOUT || '30000', 10)"));

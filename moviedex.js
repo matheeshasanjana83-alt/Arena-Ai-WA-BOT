@@ -708,11 +708,16 @@ async function deliverStream(send, jid, msg, { st, qrow, fname, capTitle, capMet
     try {
         await edit(`⬇️ ${row.label} · ${est ? '~' + human(est) + ' · ' : ''}download…`);
         const tmpDir = path.join(process.env.DL_TMP || os.tmpdir(), 'mdx-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6));
+        const d0 = Date.now();
         const res = await downloadDash(row, { tmpDir, finalName, onProgress, edit });
+        console.log(`[moviedex] ⬇️ downloaded ${row.label} (${human(res.bytes)}) in ${Math.round((Date.now() - d0) / 1000)}s`);
         const f = { path: res.path, name: finalName, size: res.bytes };
         if (linkMode) {
+            console.log(`[moviedex] 🪞 mirror upload start: ${f.name} (${human(f.size)})`);
+            const m0 = Date.now();
             await edit(`🪞 upload… (${human(f.size)})`);
             const rel = await require('./mirror').uploadFile(f.path, f.name);
+            console.log(`[moviedex] 🪞 mirror done ${f.name} in ${Math.round((Date.now() - m0) / 1000)}s → ${rel.url}`);
             react?.('✅');
             await edit(`🔗 *${cut(show || capTitle || 'MovieDex', 80)}*\n${rel.url}\n${foot(`${human(f.size)} · ${row.label} · ${rel.days}d (${rel.host}) · public`)}`);
         } else {
@@ -810,7 +815,9 @@ async function seasonFilesCmd(send, jid, msg, m, season, maxEp, qNo, height, fro
                 continue;
             }
             const finalName = epFileName(m.name, season, ep, row.h, !row.transcode);
+            const s0 = Date.now();
             const res = await downloadDash(row, { tmpDir, finalName, onProgress: per, edit });
+            console.log(`[moviedex] ⬇️ downloaded ${finalName} (${human(res.bytes)}) in ${Math.round((Date.now() - s0) / 1000)}s`);
             console.log(`[moviedex] 📤 upload start: ${finalName} (${human(res.bytes)})`);
             const u0 = Date.now();
             await send(jid, {
