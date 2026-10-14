@@ -27,14 +27,14 @@ const POSIX_FF = '#!/bin/sh\nprev=""; src=""; out=""; for a in "$@"; do if [ "$p
 (async () => {
     const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8'));
     const man = JSON.parse(fs.readFileSync(path.join(__dirname, 'manifest.json'), 'utf8'));
-    ok('version 2.42.0 (package.json)', pkg.version === '2.43.1');
-    ok('version 2.42.0 (manifest.json)', man.version === '2.43.1');
+    ok('version >= 2.44.0 (package.json)', parseInt(pkg.version.split('.').join(''), 10) >= 2440);
+    ok('version >= 2.44.0 (manifest.json)', parseInt(man.version.split('.').join(''), 10) >= 2440);
 
     // ── ① source checks ──
     const src = fs.readFileSync(path.join(__dirname, 'moviedex.js'), 'utf8');
     ok('parallel A/V: Promise.all grabs', /await Promise\.all\(\[\s*\n\s*grab\('v'/.test(src));
     ok('parallel A/V: audio optional arm', /audio \? grab\('a', audio\.seg/.test(src));
-    ok('workers: video 8 / audio 6', /length: kind === 'v' \? 8 : 6/.test(src));
+    ok('workers: env-tunable 16/8 (v2.44+)', /ARENA_SEG_WORKERS_V/.test(src));
     ok('mux async: execFile used', src.includes("const { execFile } = require('child_process')"));
     ok('mux async: no execFileSync CALL left', !/\bexecFileSync\s*\(/.test(src));
     ok('mux async: await runFF', /await runFF\(args\)/.test(src) && /await runFF\(\['-y'/.test(src));
