@@ -466,6 +466,7 @@ const CATS = [
 ✦ photo/PDF එකකට reply + *.ai* — 👁 බලලා කියනවා
 ✦ *.remind 10m <note>* — ⏰ මතක් කරන්න
 ✦ *.ai tools* — GLM connector (search/weather/YT)
+✦ *.ai roast* — 🔥 බැනුමට ආපහු බැනීම (on/off)
 ✦ AI provider තෝරන්න — *.aiprovider gemini/groq/zai/auto* · *.setting* → 10\n✦ AI chat auto-reply — *.mode* → 5/6 on·off · 11-16 modes
 ✦ *.setkey gemini/groq/zai/together <KEY>* · *.keys*`],
     ['🔧', 'Network', `*🔧 NETWORK*\n\n✦ *.net <link>* — fail වුණොත් හේතුව\n✦ *.setproxy <url|off>* — block sites වලට\n✦ *.proxies* — free pool status · *.proxies check*\n✦ *.setcookies* — YouTube bot-check fix`],
@@ -783,7 +784,7 @@ function maybeAiReply({ msg, jid, text, owner, send }) {
             if (imgs.length) {
                 await send(jid, { image: imgs[0], caption: out || '🖼 හදලා දුන්නා!' }, { quoted: msg });
                 for (let i = 1; i < Math.min(imgs.length, 3); i++) await send(jid, { image: imgs[i] }, { quoted: msg });
-            } else if (out) await send(jid, { text: ai.splitLong(out)[0] });
+            } else if (out) await send(jid, { text: ai.splitLong(out)[0] }, { quoted: msg });   // v2.54: reply-bar — අදාල කෙනාටම reply විදිහට
             log(`🤖 AI chat → ${jid.slice(0, 24)}`);
         }).catch(() => { });
     } catch { }
@@ -1010,6 +1011,19 @@ on/off: *.ai tools on* / *.ai tools off*` }, { quoted: msg });
         }
         const on = ai.setTools(tm[1].toLowerCase() === 'on');
         return send(jid, { text: `🧰 AI tools ${on ? '✅ ON' : '⛔ OFF'} — \n✦ search/weather/YT/reminders — GLM (Z.ai) එකටම\n✦ 🎨 image gen — Together FLUX → Gemini → Pollinations (auto fallback)` }, { quoted: msg });
+    }
+    const rm = question.match(/^roast(?:\s+(on|off))?$/i); // 🔥 roast mode (v2.54)
+    if (rm) {
+        if (!rm[1]) {
+            const on = ai.getRoast();
+            return send(jid, { text: `🔥 *ROAST MODE* ${on ? '✅ ON' : '⛔ OFF'}
+
+බැනපු එකාට ආපහු බැනීම — "කින්ටි මෙට්ට", "Fuck of" වගේ බැනුමකට AI එක සිංහල slang වලින් savage comeback එකක් දෙනවා 😂😎
+✦ roast replies — 1-2 පේළි පමණයි, photo requests වලට බලපෑමක් නෑ
+on/off: *.ai roast on* / *.ai roast off*` }, { quoted: msg });
+        }
+        const on = ai.setRoast(rm[1].toLowerCase() === 'on');
+        return send(jid, { text: on ? '🔥 Roast mode *ON* — බැන්න ගමන් ආපහු බැනවා 😂😎' : '⛔ Roast mode OFF — AI එක හොඳ පුංචි එකෙක් වගේ ඉන්නවා' }, { quoted: msg });
     }
     if (/^(reset|new|clear)$/i.test(question)) { ai.reset(jid); return send(jid, { text: '🆕 කතාව reset කළා. අලුතෙන් අහන්න!' }, { quoted: msg }); }
     // 👁 v2.51 — photo/PDF එකකට reply කරලා .ai → Gemini vision එකෙන් කියවනවා

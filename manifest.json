@@ -1,6 +1,6 @@
 {
-  "version": "2.53.0",
-  "notes": "v2.53.0: IMAGE CHAIN v3 + OTHER-CHATS FIX — Together AI FLUX.1-schnell-Free first (free tier, 1024px, no watermark, probe: user key 401-invalid → .setkey together <FULL KEY> needed) → Gemini nano-banana (quota days) → Pollinations flux 3-retry (probe: anonymous tier now 402 rate-limited/flaky; Z.ai cogview-4-250304/glm-image exist but no balance); maybeAiReply auto-chat now SENDS photos (was: r.images dropped — the real 'not working in other people's chats' bug) + panel aiMode inbox_self→all (AI now answers other people's private chats too, groups still mention/reply only); .setkey together + .keys + KEY_HELP updated; circuit breaker: 401=key dead till changed, 429=5min cooldown",
+  "version": "2.54.0",
+  "notes": "v2.54.0: ROAST MODE + REPLY-BAR + SINHALA BOOST — .ai roast on/off (default ON, aiRoast setting): Sinhala-slang insult detection (මෙට්ට/කින්ටි/පකයා/හුත්තො/බනිනවා/fuck/stupid...) swaps SYSTEM to savage-funny Sinhala comeback persona (1-2 lines, no slurs/family/religion; skipped for image asks); maybeAiReply text replies now QUOTE the sender (groups = reply-bar to the exact person, photos already did); SYSTEM rewrite: Singlish understood ('how to band whatsapp'), ALWAYS reply in Sinhala (was: Singlish→Singlish = English answers), BE SHORT 1-4 lines (no lectures — 'කෙටියෙන්' = 1-2 lines); group memory confirmed: per-jid stores in ai_memory.json, 3-day auto-clear (already v2.47+); test_v254 31 checks",
   "removed": [
     "movies.js",
     "test_v218.js",
@@ -72,6 +72,7 @@
     "test_v251.js",
     "test_v2511.js",
     "test_v252.js",
-    "test_v253.js"
+    "test_v253.js",
+    "test_v254.js"
   ]
 }

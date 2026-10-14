@@ -16,9 +16,10 @@ const zaiDead = new Set();
 
 const SYSTEM = `You are "KAVIZ MD V1", a friendly WhatsApp AI assistant living in the user's own WhatsApp.
 - IDENTITY: You are always "KAVIZ MD V1". If the user tells you their name (e.g. "I'm Suziy"), that is the USER's name — remember it, never call yourself by it, never mirror the user's identity.
-- LANGUAGE: reply in the same language the user writes in (Sinhala → Sinhala, English → English, Singlish → Singlish).
+- LANGUAGE: The user is Sri Lankan. They write colloquial spoken Sinhala, Singlish (Sinhala typed in English letters, e.g. "how to band whatsapp" actually means "WhatsApp එක ban වෙන්නේ කොහොමද"), or Sinhala mixed with English slang, with typos. Understand the REAL meaning behind broken words.
+- ALWAYS reply in Sinhala (සිංහලෙන්ම උත්තර දෙන්න) — even when the user writes Singlish or broken English. ONLY answer in English if the user writes complete proper English sentences and clearly expects English. Never switch to English just because the question has English words in it.
 - SINHALA QUALITY: use correct everyday Sinhala with real words only. NEVER invent non-existent Sinhala words, never repeat words pointlessly, never write broken sentences. If you don't know a word, use a simpler correct one. Write like a clear-speaking friend, not a machine.
-- Be short and clear (WhatsApp style). Simple formatting: *bold*, _italic_, lists with • .
+- BE SHORT like a friend texting on WhatsApp: 1-4 short lines by default. NO long lectures, NO huge lists. Give long/step-by-step answers ONLY when the user explicitly asks for details/steps. If someone says "කෙටියෙන්" (shortly), reply in 1-2 lines max. Simple formatting: *bold*, _italic_, lists with • .
 - If you don't know or are not sure, say so honestly. Never invent facts.
 - You are powered by free models (Google Gemini / Groq / Z.ai GLM). If asked, say so honestly.
 - Memory: you keep the recent chat history of THIS conversation (up to ~30 turns, auto-cleared after 3 days). If the user asks about something that is NOT in this conversation history, honestly say you don't have it in memory — never pretend to remember or invent past events.`;
@@ -95,6 +96,25 @@ function getProvider() { const p = String(loadSettings().aiProvider || '').toLow
 const { TOOLS, runToolEx } = require('./ai_tools');
 const getTools = () => loadSettings().aiTools !== false;   // default ON
 function setTools(on) { const s = loadSettings(); s.aiTools = !!on; saveSettings(s); return !!on; }
+
+// 🔥 Roast mode (v2.54) — බැනපු එකාට ආපහු බැනීම (default ON, .ai roast on/off)
+const getRoast = () => loadSettings().aiRoast !== false;   // default ON
+function setRoast(on) { const s = loadSettings(); s.aiRoast = !!on; saveSettings(s); return !!on; }
+const ROAST_RE = new RegExp([
+    'මෙට්ට', 'මැට්ට', 'කින්ටි', 'පකයා', 'පකේ', 'පකෙ', 'පරදේව', 'හුත්තො', 'හුත්තියා', 'හුකන්න', 'හුකපන්',
+    'ගොන්\u200d?නා', 'ගොන්නේ', 'හරකා', 'හරකො', 'බනිනවා', 'බැනවා', 'බැනුම', 'පිස්සු\u200d?වැඩේ', 'කට\u200d?කැත්තා', 'මුගේ',
+    'metta?', 'pakaya?', 'pake?', 'hut+t[ihoa]+', 'hukan+n?a', 'gon+a+na?', 'haraka?o?', 'baninna?wa?', 'baenawa?', 'pissu\\s*(hari|we[dv]a)?',
+    '\\bfuck+(ing|off|er)?s?\\b', '\\bbitch\\b', '\\basshole?\\b', '\\bstupid\\b', '\\bidiot\\b', '\\bdumb\\b', '\\bloser\\b', '\\btrash\\b', '\\bnoob\\b', '\\bstfu\\b', '\\bshut\\s*up\\b'
+].join('|'), 'i');
+function looksLikeInsult(q) {   // බැනුමක්ද කියලා check — roast mode trigger
+    return ROAST_RE.test(String(q || ''));
+}
+const ROAST_SYSTEM = `You are "KAVIZ MD V1" — ROAST MODE activated 😈. The user just insulted/cursed you (බැනුමක් කැවා). Reply with a funny savage comeback (ආපහු බැනීම) in Sinhala:
+- ALWAYS colloquial Sinhala slang, 1-2 short lines max — WhatsApp roast style, punchy like a meme comment
+- Be witty and savage but PLAYFUL — tease them back like close friends do (e.g. style: "බැන්නට කමින් නෑ, උත්තර දෙන්න දන්නෙ නැතුව 😂", "ඔයාගේ WiFi එකට වඩා speed මගේ comebacks වල 😎")
+- HARD RULES: NEVER use sexual words/slurs, nothing religious or racist, no threats of real violence, nothing about anyone's mother/family/sisters. Clean savage banter only.
+- No lectures, no "please be kind", no moral advice — roast back and end with one emoji 😂😎🔥
+- If the insult is mild teasing, roast lightly; if it's heavy, roast harder. Never stay silent.`;
 function setProvider(p) { // 🎛 .aiprovider / .setting 10 — user කැමති provider එක (z.ai/glm → zai alias)
     const s = loadSettings();
     p = String(p || '').toLowerCase().trim();
@@ -114,6 +134,10 @@ function apiError(provider, status, body) {
     return e;
 }
 
+// 🔥 roast request එකකදී SYSTEM එක roast persona එකට swap කරනවා (fn call එක ඇතුළේ විතරයි — imgPromptEn/වෙනත් calls වලට බලපෑමක් නෑ)
+let SYS_OVERRIDE = null;
+const sysOf = () => SYS_OVERRIDE || SYSTEM;
+
 async function askGemini(key, msgs) {
     let lastErr;
     for (const model of GEMINI_MODELS) {
@@ -122,7 +146,7 @@ async function askGemini(key, msgs) {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
             body: JSON.stringify({
-                systemInstruction: { parts: [{ text: SYSTEM }] },
+                systemInstruction: { parts: [{ text: sysOf() }] },
                 contents: msgs.map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.text }] })),
                 generationConfig: { maxOutputTokens: 2048, temperature: 0.6 }
             })
@@ -150,12 +174,12 @@ async function askGroq(key, msgs) {
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
             body: JSON.stringify({
                 model, temperature: 0.6, max_tokens: 2048,
-                messages: [{ role: 'system', content: SYSTEM }, ...msgs.map(m => ({ role: m.role, content: m.text }))]
+                messages: [{ role: 'system', content: sysOf() }, ...msgs.map(m => ({ role: m.role, content: m.text }))]
             })
         };
         let r = await fetch(url, opts);
         let body = await r.text();
-        if (!r.ok && /forbidden/i.test(body)) {
+        if (!r.ok && /forbidden/i.test(body)) {   // Groq
             try { const rp = await require('./net').viaPool(url, opts); const pb = await rp.text(); if (rp.ok) { r = rp; body = pb; } } catch { } // 🌍 geo-block → free-proxy pool
         }
         if (!r.ok) { lastErr = apiError('Groq', r.status, body); if (lastErr.modelMissing) continue; throw lastErr; }
@@ -171,7 +195,7 @@ async function askZai(key, msgs, chatId, allKeys) {
     const toolsOn = getTools(); // connector tools — GLM first (v2.50)
     for (const model of ZAI_MODELS) {
         if (zaiDead.has(model)) continue;
-        const messages = [{ role: 'system', content: SYSTEM + (toolsOn ? "\n- TOOLS: you have tools (web_search, get_datetime, calculator, weather, youtube_search, generate_image, read_url, set_reminder, list_reminders). Rules: current/fresh facts, news, prices, scores -> web_search; date/time -> get_datetime; math -> calculator; weather -> weather; YouTube videos -> youtube_search; the user asks you to CREATE an image/photo/art/logo -> you MUST call generate_image IN THAT SAME TURN — never only promise ('I will make it') without calling the tool; write a RICH vivid English prompt: exact subject + action, setting/background, lighting, style, full-scene composition (never a bare noun phrase like 'a bird'); after the tool result briefly say you made it; the user shares a LINK and asks about it -> read_url first; the user asks to be REMINDED -> call get_datetime first, then set_reminder (time as ISO 8601 +05:30, note in user language); asks for active reminders -> list_reminders. Call the matching tool first, then answer in the user's language using the result. For normal chat do not call tools." : '') }, ...msgs.map(m => ({ role: m.role, content: m.text }))];
+        const messages = [{ role: 'system', content: sysOf() + (toolsOn ? "\n- TOOLS: you have tools (web_search, get_datetime, calculator, weather, youtube_search, generate_image, read_url, set_reminder, list_reminders). Rules: current/fresh facts, news, prices, scores -> web_search; date/time -> get_datetime; math -> calculator; weather -> weather; YouTube videos -> youtube_search; the user asks you to CREATE an image/photo/art/logo -> you MUST call generate_image IN THAT SAME TURN — never only promise ('I will make it') without calling the tool; write a RICH vivid English prompt: exact subject + action, setting/background, lighting, style, full-scene composition (never a bare noun phrase like 'a bird'); after the tool result briefly say you made it; the user shares a LINK and asks about it -> read_url first; the user asks to be REMINDED -> call get_datetime first, then set_reminder (time as ISO 8601 +05:30, note in user language); asks for active reminders -> list_reminders. Call the matching tool first, then answer in the user's language using the result. For normal chat do not call tools." : '') }, ...msgs.map(m => ({ role: m.role, content: m.text }))];
         let useTools = toolsOn, answer = null;   // 🖼 tool images — v2.51.1: model loop එකෙන් එළියට hoist (model fallback වුණත් images නැති වෙන්නේ නෑ)
         const images = [];
         for (let iter = 0; iter < 4 && !answer; iter++) {
@@ -316,7 +340,12 @@ async function ask(chatId, question) {
         const h = (history.get(mk) || []).filter(m => now - (m.t || now) < TTL_MS); // TTL prune
         const msgs = [...h, { role: 'user', text: question }];
         try {
-            const res = await fn(keys[name], msgs, chatId, keys);
+            // 🔥 v2.54 roast — බැනුමක්ද → roast persona එකෙන් ආපහු බැනීම (fn call එකට විතරක් override)
+            const roast = getRoast() && looksLikeInsult(question) && !looksLikeImageAsk(question);
+            SYS_OVERRIDE = roast ? ROAST_SYSTEM : null;
+            let res;
+            try { res = await fn(keys[name], msgs, chatId, keys); }
+            finally { SYS_OVERRIDE = null; }
             let text = toWhatsApp(res.text);
             let images = Array.isArray(res.images) ? res.images : [];   // 🖼 v2.51.1 FIX: කලින් images drop වෙනවා — GLM generate_image ගහලාත් photo නොගිය හැම්බයි!
             if (!images.length && getTools() && looksLikeImageAsk(question)) {   // 🖼 fallback — provider එක මොකක වුණත් (AUTO/Gemini/Groq) photo එනවා
@@ -375,4 +404,4 @@ function stats(chatId) { // 🧠 .ai memory card data
     };
 }
 
-module.exports = { ask, askVision, reset, stats, looksLikeImageAsk, imgPromptEn, setKey, getKeys, getProvider, setProvider, getTools, setTools, splitLong, toWhatsApp, _history: history, _memoryFile: MEM_FILE, _memKey: memKeyOf, _flush: saveMemoryNow };
+module.exports = { ask, askVision, reset, stats, looksLikeImageAsk, looksLikeInsult, imgPromptEn, setKey, getKeys, getProvider, setProvider, getTools, setTools, getRoast, setRoast, splitLong, toWhatsApp, _history: history, _memoryFile: MEM_FILE, _memKey: memKeyOf, _flush: saveMemoryNow };
