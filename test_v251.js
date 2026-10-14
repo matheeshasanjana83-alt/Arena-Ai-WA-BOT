@@ -16,8 +16,8 @@ const live = (name, cond) => { if (cond) { livePass++; console.log('  🌐 ' + n
     const rem = require('./reminders');
     const T = require('./ai_tools');
     const ai = require('./ai');
-    ok('01 pkg 2.51.0', pkg.version === '2.51.0');
-    ok('02 manifest 2.51.0', man.version === '2.51.0');
+    ok('01 pkg 2.51.x', /^2\.51\./.test(pkg.version));
+    ok('02 manifest 2.51.x', /^2\.51\./.test(man.version));
     ok('03 manifest files += reminders/test_v251', man.files.includes('reminders.js') && man.files.includes('test_v251.js'));
     ok('04 tools = 9', T.TOOLS.length === 9);
     ok('05 runToolEx fn', typeof T.runToolEx === 'function');

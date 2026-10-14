@@ -1,6 +1,6 @@
 {
-  "version": "2.51.0",
-  "notes": "👁 VISION + 🎨 IMAGE GEN + 📖 LINK READ + ⏰ REMINDERS (v2.51.0): AI Tools 5→9 — AI ම හිතලා පාවිච්චි කරනවා: photo හදලා දෙනවා (CogView) · දෙන link එකේ page එක කියවනවා · කියපු වෙලාවට reminder දානවා (.remind වලටත් OK) · photo/PDF එකකට reply + .ai = Gemini vision එකෙන් බලලා කියනවා.",
+  "version": "2.51.1",
+  "notes": "🖼 PHOTO FIX (v2.51.1): .ai එකෙන් හරස් හදලා දෙන්න කිව්වම photo එන්නේ නැති බැගෙ හරියා හරි කළා — images එක් මයි ask() ඇතුළදී drop වෙනවා. දැන්: GLM tool image → photo + caption දෙකම යනවා · AUTO/Gemini/Groq වලටත෍ image request හඳනක්ට auto-fallback එකෙන් photo යනවා · GLM ට promise-only replies එරෙහි MUST-call rule.",
   "removed": [
     "movies.js",
     "test_v218.js",
@@ -69,6 +69,7 @@
     "ai_tools.js",
     "test_v250.js",
     "reminders.js",
-    "test_v251.js"
+    "test_v251.js",
+    "test_v2511.js"
   ]
 }

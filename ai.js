@@ -170,8 +170,9 @@ async function askZai(key, msgs, chatId) {
     const toolsOn = getTools(); // connector tools — GLM first (v2.50)
     for (const model of ZAI_MODELS) {
         if (zaiDead.has(model)) continue;
-        const messages = [{ role: 'system', content: SYSTEM + (toolsOn ? "\n- TOOLS: you have tools (web_search, get_datetime, calculator, weather, youtube_search, generate_image, read_url, set_reminder, list_reminders). Rules: current/fresh facts, news, prices, scores -> web_search; date/time -> get_datetime; math -> calculator; weather -> weather; YouTube videos -> youtube_search; the user asks you to CREATE an image/photo/art/logo -> generate_image with a vivid detailed English prompt, then briefly say you made it; the user shares a LINK and asks about it -> read_url first; the user asks to be REMINDED -> call get_datetime first, then set_reminder (time as ISO 8601 +05:30, note in user language); asks for active reminders -> list_reminders. Call the matching tool first, then answer in the user's language using the result. For normal chat do not call tools." : '') }, ...msgs.map(m => ({ role: m.role, content: m.text }))];
-        let useTools = toolsOn, answer = null; let images = [];   // 🖼 tool images (v2.51)
+        const messages = [{ role: 'system', content: SYSTEM + (toolsOn ? "\n- TOOLS: you have tools (web_search, get_datetime, calculator, weather, youtube_search, generate_image, read_url, set_reminder, list_reminders). Rules: current/fresh facts, news, prices, scores -> web_search; date/time -> get_datetime; math -> calculator; weather -> weather; YouTube videos -> youtube_search; the user asks you to CREATE an image/photo/art/logo -> you MUST call generate_image IN THAT SAME TURN with a vivid detailed English prompt — never only promise ('I will make it') without calling the tool; after the tool result briefly say you made it; the user shares a LINK and asks about it -> read_url first; the user asks to be REMINDED -> call get_datetime first, then set_reminder (time as ISO 8601 +05:30, note in user language); asks for active reminders -> list_reminders. Call the matching tool first, then answer in the user's language using the result. For normal chat do not call tools." : '') }, ...msgs.map(m => ({ role: m.role, content: m.text }))];
+        let useTools = toolsOn, answer = null;   // 🖼 tool images — v2.51.1: model loop එකෙන් එළියට hoist (model fallback වුණත් images නැති වෙන්නේ නෑ)
+        const images = [];
         for (let iter = 0; iter < 4 && !answer; iter++) {
             const payload = {
                 model, temperature: 0.6, max_tokens: 2048,
@@ -269,6 +270,30 @@ function toWhatsApp(t) {
 /** memory store key — AUTO mode = shared legacy key / fixed provider = per-model fresh store (v2.50) */
 const memKeyOf = (chatId, prov) => (prov ? `${chatId}|${prov}` : chatId);
 
+// ── 🖼 v2.51.1 — image-ask detection + guaranteed photo path (AUTO/Gemini/Groq වලටත් photo යනවා) ──
+const IMG_NOUN = /(?:photo|photu|pictur|image|images|img\b|pic\b|pics\b|art\b|logo\b|wallpaper|drawing|painting|වෝල්පේපර|රූප|පින්තූර|පින්තුර|චිත්‍ර|පික්චර)/i;
+const IMG_MAKE = /(?:හදලා|හදන්න|හදනවා|හදාගන්න|හදාලා|හදල|අඳින්න|අඳලා|ඇඳන්න|ඇඳලා|ගහන්න|දාන්න|දෙන්න|make|creat|generat|draw|paint|design|build)/i;
+const IMG_NOT = /(?:කොහොමද|මොකද|මොකක්ද|මොනවද|කීයද|විදිහ|විදිය|හැටි|කරන්නේ|හදන්නේ|කරන්නද|හදන්නද|tutorial|app\b|apps\b|software|photoshop)/i;
+function looksLikeImageAsk(q) {   // photo/රූප වචනයෙක් + හදන ක්‍රියාපදයෙක් දෙකම ගැටිලා නම් විතරක් image request
+    q = String(q || '');
+    return IMG_NOUN.test(q) && IMG_MAKE.test(q) && !IMG_NOT.test(q);
+}
+async function imgPromptEn(question, keys) {   // සිංහල request එකක් නම් first-key provider එකෙන් English prompt එකක් අරගනවා
+    const q = String(question || '').replace(/"""/g, '').replace(/\s+/g, ' ').trim().slice(0, 300);
+    if (!q) return 'an image';
+    if (!/[^\x00-\x7F]/.test(q)) return q;   // English already → direct
+    const FNS = { gemini: askGemini, groq: askGroq, zai: askZai };
+    for (const p of PROVIDERS) {
+        if (!keys[p]) continue;
+        try {
+            const r = await FNS[p](keys[p], [{ role: 'user', text: 'Convert this image request into ONE vivid detailed English image-generation prompt. Reply with ONLY the prompt text itself (no quotes, no explanation, no extra words).\n\nRequest: ' + q }], 'img-prompt');
+            const t = String(r.text || '').replace(/\s+/g, ' ').trim().replace(/^["']|["']$/g, '').slice(0, 500);
+            if (t && !/error|HTTP \d/i.test(t.slice(0, 60))) return t;
+        } catch { }
+    }
+    return q;   // translate fail → raw question එකම prompt විදිහට
+}
+
 /** ask with memory; user's preferred provider first (AUTO = Gemini -> Groq -> Z.ai).
  *  🧠 per-model memory (v2.50): කැමති model එකක් select කරලා නම් ඒ model ගේම store එක — AUTO නම් shared. */
 async function ask(chatId, question) {
@@ -291,13 +316,24 @@ async function ask(chatId, question) {
         const msgs = [...h, { role: 'user', text: question }];
         try {
             const res = await fn(keys[name], msgs, chatId);
-            const text = toWhatsApp(res.text);
+            let text = toWhatsApp(res.text);
+            let images = Array.isArray(res.images) ? res.images : [];   // 🖼 v2.51.1 FIX: කලින් images drop වෙනවා — GLM generate_image ගහලාත් photo නොගිය හැම්බයි!
+            if (!images.length && getTools() && looksLikeImageAsk(question)) {   // 🖼 fallback — provider එක මොකක වුණත් (AUTO/Gemini/Groq) photo එනවා
+                try {
+                    const prompt = await imgPromptEn(question, keys);
+                    const buf = await require('./ai_tools')._generateImage(prompt, keys.zai);
+                    if (buf && buf.length > 2000) {
+                        images = [buf];
+                        if (!text || /බෑ|බැහැ|නොහැකි|can\s?['’´`]t|cannot|unable|sorry|සමාව/i.test(text)) text = '🖼 හදලා දුන්නා!';
+                    }
+                } catch { }
+            }
             const t = Date.now();
             h.push({ role: 'user', text: question, t }, { role: 'assistant', text, t });
             while (h.length > MAX_TURNS * 2) h.shift();
             history.set(mk, h);
             scheduleSave();
-            return { text, model: res.model };
+            return { text, model: res.model, images };
         } catch (e) { errors.push(e.message); }
     }
     throw new Error(errors.join('\n'));
@@ -338,4 +374,4 @@ function stats(chatId) { // 🧠 .ai memory card data
     };
 }
 
-module.exports = { ask, askVision, reset, stats, setKey, getKeys, getProvider, setProvider, getTools, setTools, splitLong, toWhatsApp, _history: history, _memoryFile: MEM_FILE, _memKey: memKeyOf, _flush: saveMemoryNow };
+module.exports = { ask, askVision, reset, stats, looksLikeImageAsk, imgPromptEn, setKey, getKeys, getProvider, setProvider, getTools, setTools, splitLong, toWhatsApp, _history: history, _memoryFile: MEM_FILE, _memKey: memKeyOf, _flush: saveMemoryNow };

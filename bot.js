@@ -1000,7 +1000,7 @@ AI එකට ඕන වෙලාවට ම මේවා පාවිච්චි
 on/off: *.ai tools on* / *.ai tools off*` }, { quoted: msg });
         }
         const on = ai.setTools(tm[1].toLowerCase() === 'on');
-        return send(jid, { text: `🧰 AI tools ${on ? '✅ ON' : '⛔ OFF'} — වැඩ කරන්නේ GLM (Z.ai) එකට විතරයි` }, { quoted: msg });
+        return send(jid, { text: `🧰 AI tools ${on ? '✅ ON' : '⛔ OFF'} — \n✦ search/weather/YT/reminders — GLM (Z.ai) එකටම\n✦ 🎨 image gen — ඔක්කොමට (auto fallback)` }, { quoted: msg });
     }
     if (/^(reset|new|clear)$/i.test(question)) { ai.reset(jid); return send(jid, { text: '🆕 කතාව reset කළා. අලුතෙන් අහන්න!' }, { quoted: msg }); }
     // 👁 v2.51 — photo/PDF එකකට reply කරලා .ai → Gemini vision එකෙන් කියවනවා
