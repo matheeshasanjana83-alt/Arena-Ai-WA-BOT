@@ -102,8 +102,9 @@ const ai = require('./ai');
     ok('19 bot: help mentions .ai memory', botSrc.includes('*.ai memory*'));
     ok('20 bot: settings panel AI MEMORY line', botSrc.includes('*AI MEMORY:*'));
     ok('21 ai.js: atomic write (tmp+rename)', fs.readFileSync(path.join(__dirname, 'ai.js'), 'utf8').includes("renameSync(tmp, MEM_FILE)"));
+    ok('23 SYSTEM: memory honesty line', /never pretend to remember/.test(fs.readFileSync(path.join(__dirname, 'ai.js'), 'utf8')));
     const pkg = require('./package.json');
-    ok('22 version 2.47.0', pkg.version === '2.47.0');
+    ok('22 version 2.47.0', pkg.version === '2.47.1');
 
     console.log(`\n${pass} passed, ${fail} failed`);
     process.exitCode = fail ? 1 : 0;

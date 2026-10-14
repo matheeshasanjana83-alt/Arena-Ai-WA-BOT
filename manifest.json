@@ -1,6 +1,6 @@
 {
-  "version": "2.47.0",
-  "notes": "🧠 AI MEMORY (v2.47.0): .ai එකේ මතකය දැන් ai_memory.json එකේ save වෙනවා — bot restart/redeploy වුණත් කතාව මතක තියෙනවා. Turns 10→30. දවස් 3ට පරණ messages auto-clear (ARENA_AI_MEMORY_DAYS=3 · ARENA_AI_TURNS=30). අලුත්: .ai memory — status card · .ai reset — clear. Atomic writes + 30min sweep → memory full වෙන්නේ නෑ.",
+  "version": "2.47.1",
+  "notes": "🧠 AI MEMORY (v2.47.0→v2.47.1): .ai මතකය ai_memory.json එකේ save — restart/redeploy වුණත් තියෙනවා. දවස් 3ට පරණ messages auto-clear (ARENA_AI_MEMORY_DAYS · ARENA_AI_TURNS). v2.47.1: bot එක මතක ගැන ඇත්ත කියනවා — history එකේ නැති දේවල් ගැන බොරුවට 'මතක තියෙනවා' කියන්නේ නෑ. .ai memory — status · .ai reset — clear.",
   "removed": [
     "movies.js",
     "test_v218.js",
