@@ -13,13 +13,14 @@
  *                                ({key, kind, n, rowNo}); bot.js bridges bare numbers via
  *                                bridgeReply(jid, quotedId, digits) → .moviedex … grammar.
  *    .moviedex <n> (movie)     → info card + quality list (1080/720/480/360p + sizes)
- *    .moviedex <n> (series)    → info card + Episodes List (📦 season rows + Season N Episode M)
+ *    .moviedex <n> (series)    → info card + FULL episode menu — big lists AUTO-SPLIT into consecutive
+ *                                fully-visible texts (NO pagination, NO 'next' — WhatsApp Read-more
+ *                                collapse cuts >~135-line bubbles, so chunks stay ≤50 rows)
  *    .moviedex <n> <row#>      → season → 🧳 quality options · episode → 🎬 quality list
  *    .moviedex <n> <row#> <q#> → 🧳 SEASON PACK = files, one per message (cap 50/run + next)
  *                                · 🎬 episode file · 🍿 movie file
  *    … link suffix             → 🔗 mirror share link instead of a WhatsApp file
- *    … next                    → continue season-pack file runs (episode menu has NO pagination —
- *                                ALL episodes always arrive in ONE menu)
+ *    … next                    → season-pack file-run continue ONLY (menu has no pages)
  *
  *  Delivery pipeline (verified live):
  *    play-info/v2 → streams[].signCookie → base64 urlprefix = DASH dir on
@@ -786,7 +787,7 @@ if (!tokenUsable(mbUserToken)) scheduleMbRegister(tokenUsable(MB_BOOTSTRAP_TOKEN
 
 const SESSION_TTL = 15 * 60e3;
 const UI_TTL = 10 * 60e3;
-const EP_PAGE_ROWS = 999999;    // NO pagination — user demand: 'next' ගහන්න ඕන නැතුව ඔක්කොම episodes එකම menu එකට. Giant lists (>9000 chars) auto-split into poster + full TEXT message so nothing is ever cut
+const EP_CHUNK_ROWS = 50;       // rows per auto-sent chunk — WhatsApp Read-more collapse cuts previews at ~135 lines ("135 | Sea …" screenshot ×2), 60-row page proven fully visible; bigger menus AUTO-SPLIT into consecutive texts, ZERO commands (user: 'next කියලා දන්න බෑ, ඔක්කොම එකම menu එකට')
 const SEASON_FILE_CAP = 50;     // episode files per pack run ('next' continues)
 const EP_SEND_GAP = 5000;       // pause between episode sends
 const PACK_LINK_CAP = 40;       // mirror links per pack message
@@ -915,39 +916,66 @@ function tvRows(seasons) {
 
 const epLabel = (r) => `Season ${r.season} Episode ${r.ep}`;
 
-function seriesText(m, n, rows, pageIdx) {
-    const out = [`🍀 *${cut(m.name, 58)}*${m.year ? ` (${m.year})` : ''}`,
+function seriesHeadLines(m) {
+    return [`🍀 *${cut(m.name, 58)}*${m.year ? ` (${m.year})` : ''}`,
         `📅 ${m.date || m.year || '—'}${m.duration ? '  ·  ⏱ ' + m.duration : ''}  ·  ⭐ ${m.rating || '—'} IMDb`,
         m.genres?.length ? `🎭 ${m.genres.join(', ')}` : '',
         m.country ? `🌍 ${m.country}` : '',
-        '', `📝 _${String(m.desc || '—').trim().slice(0, 320)}_`, ''];
-    const start = pageIdx * EP_PAGE_ROWS;
-    const page = rows.slice(start, start + EP_PAGE_ROWS);
-    if (!page.length) out.push('ℹ️ තව episodes නෑ');
-    page.forEach((r, i) => {
-        const no = start + i + 1;
-        out.push(r.kind === 'season'
-            ? `*${no}* | 📦 Download Season ${r.season} (All Episodes)`
-            : `*${no}* | ${epLabel(r)}`);
-    });
-    const more = start + EP_PAGE_ROWS < rows.length;
-    out.push('', MV_FOOT);
-    if (more) out.push(`> *.moviedex ${n} next* — ඊළඟ page`);
+        '', `📝 _${String(m.desc || '—').trim().slice(0, 320)}_`];
+}
+
+const rowLine = (r, no) => r.kind === 'season'
+    ? `*${no}* | 📦 Download Season ${r.season} (All Episodes)`
+    : `*${no}* | ${epLabel(r)}`;
+
+/** one fully-visible chunk of the episode list — global row numbers, part header from 2nd part, footer on last */
+function seriesChunk(m, n, rows, from) {
+    const parts = Math.ceil(rows.length / EP_CHUNK_ROWS);
+    const part = Math.floor(from / EP_CHUNK_ROWS) + 1;
+    const out = [];
+    if (part > 1) out.push(`🍀 *${cut(m.name, 58)}* — Episodes (${part}/${parts})`, '');
+    rows.slice(from, from + EP_CHUNK_ROWS).forEach((r, i) => out.push(rowLine(r, from + i + 1)));
+    if (part === parts) out.push('', MV_FOOT);
     return out.filter(Boolean).join('\n');
 }
 
-async function sendSeriesCard(send, jid, msg, m, n, rows, pageIdx = 0) {
-    const text = seriesText(m, n, rows, pageIdx);
-    if (text.length > 9000) {   // 1000+ ep mega series — caption-cap never silently cuts the list: poster card + FULL list as its own text message
-        try { if (m.poster) await send(jid, { image: { url: m.poster }, caption: `🍀 *${cut(m.name, 58)}* — full episode menu 👇` }, { quoted: msg }); } catch { }
-        return await send(jid, { text }, { quoted: msg });
+/** small menu (≤ EP_CHUNK_ROWS rows): header + ALL rows in one text (poster caption path) */
+function seriesText(m, n, rows) {
+    const out = seriesHeadLines(m);
+    rows.forEach((r, i) => out.push(rowLine(r, i + 1)));
+    out.push('', MV_FOOT);
+    return out.filter(Boolean).join('\n');
+}
+
+async function sendSeriesCard(send, jid, msg, m, n, rows, s) {
+    if (rows.length <= EP_CHUNK_ROWS) {   // small menu — ONE bubble (poster + full list caption), proven fully visible
+        const text = seriesText(m, n, rows);
+        try {
+            if (!m.poster) throw new Error('no poster');
+            return await send(jid, { image: { url: m.poster }, caption: text }, { quoted: msg });
+        } catch {
+            return await send(jid, { text }, { quoted: msg });
+        }
     }
+    // big menu — poster card (SHORT caption) + ALL rows auto-sent as chunk texts: every bubble fully visible,
+    // no Read-more collapse, no 'next' commands. Every bubble registers in the cards ring so replies route.
+    const parts = Math.ceil(rows.length / EP_CHUNK_ROWS);
+    const head = `${seriesHeadLines(m).filter(Boolean).join('\n')}\n\n📺 *Full episode menu* — පහලින් 👇 (${parts})`;
+    let first;
     try {
         if (!m.poster) throw new Error('no poster');
-        return await send(jid, { image: { url: m.poster }, caption: text }, { quoted: msg });   // full menu, no slice
+        first = await send(jid, { image: { url: m.poster }, caption: head }, { quoted: msg });
     } catch {
-        return await send(jid, { text }, { quoted: msg });
+        first = await send(jid, { text: head }, { quoted: msg });
     }
+    if (s) setUi(s, first, 'tv', n);
+    for (let from = 0; from < rows.length; from += EP_CHUNK_ROWS) {
+        try {
+            const sent = await send(jid, { text: seriesChunk(m, n, rows, from) }, { quoted: msg });
+            if (s) setUi(s, sent, 'tv', n);
+        } catch { }
+    }
+    return first;
 }
 
 function seasonOptText(m, n, rowNo, season, rows) {
@@ -1208,20 +1236,16 @@ async function handle(c, ctx) {
                     s.tv[n] = { at: Date.now(), seasons: [] };
                     return true;
                 }
-                tv = { at: Date.now(), seasons, pageIdx: 0 };
+                tv = { at: Date.now(), seasons };
                 s.tv[n] = tv;
                 const rows = tvRows(seasons);
-                const sent = await sendSeriesCard(send, jid, msg, full, n, rows, 0);
+                const sent = await sendSeriesCard(send, jid, msg, full, n, rows, s);
                 setUi(s, sent, 'tv', n);
                 return true;
             }
             const rows = tvRows(tv.seasons);
-            if (wantNext && !(pick[3] && isNum(pick[3]))) {
-                const maxPage = Math.max(0, Math.ceil(rows.length / EP_PAGE_ROWS) - 1);
-                tv.pageIdx = Math.min((tv.pageIdx || 0) + 1, maxPage);
-                const sentPg = await sendSeriesCard(send, jid, msg, full, n, rows, tv.pageIdx);
-                setUi(s, sentPg, 'tv', n);
-                return true;
+            if (wantNext && !(pick[3] && isNum(pick[3]))) {   // no pages anymore — menu arrives whole, chunks auto-sent
+                return send(jid, { text: `ℹ️ ඔක්කොම episodes දැන්ම menu එකේ තියෙනවා — *next* ඕන නෑ 😊\n> season pack run එකක් continue කරනවා නම් විතරයි next ගහන්නෙ` }, { quoted: msg });
             }
             if (pick[3] && isNum(pick[3])) {
                 const rowNo = +pick[3];
@@ -1298,7 +1322,7 @@ async function handle(c, ctx) {
                 return true;
             }
             // plain pick → (re)send episodes list
-            const sentList = await sendSeriesCard(send, jid, msg, full, n, rows, tv.pageIdx || 0);
+            const sentList = await sendSeriesCard(send, jid, msg, full, n, rows, s);
             setUi(s, sentList, 'tv', n);
             return true;
         }
@@ -1352,4 +1376,4 @@ async function handle(c, ctx) {
     return true;
 }
 
-module.exports = { handle, bridgeReply, hasSession, setUi, mbSearch, mbDetails, mbSeasons, mbPlay, dashFrom, parseMpd, dashDownload, chunkCount, expandTpl, streamQualities, mergedQualities, downloadDash, transcode360, tvRows, listText, cardText, seriesText, seasonOptText, epFileName, epCaption, packStat, mbDirectRows, mbDirectUrl, combinedRows, directDownload, mbRegisterAccount, __deliver: deliverStream, _sessions: sessions, _testSession: (jid, s) => sessions.set(jid, s) };
+module.exports = { handle, bridgeReply, hasSession, setUi, mbSearch, mbDetails, mbSeasons, mbPlay, dashFrom, parseMpd, dashDownload, chunkCount, expandTpl, streamQualities, mergedQualities, downloadDash, transcode360, tvRows, listText, cardText, seriesText, seriesChunk, sendSeriesCard, seasonOptText, epFileName, epCaption, packStat, mbDirectRows, mbDirectUrl, combinedRows, directDownload, mbRegisterAccount, __deliver: deliverStream, _sessions: sessions, _testSession: (jid, s) => sessions.set(jid, s) };
