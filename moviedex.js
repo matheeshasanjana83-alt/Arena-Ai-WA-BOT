@@ -18,7 +18,8 @@
  *    .moviedex <n> <row#> <q#> → 🧳 SEASON PACK = files, one per message (cap 50/run + next)
  *                                · 🎬 episode file · 🍿 movie file
  *    … link suffix             → 🔗 mirror share link instead of a WhatsApp file
- *    … next                    → continue pack / episodes page
+ *    … next                    → continue season-pack file runs (episode menu has NO pagination —
+ *                                ALL episodes always arrive in ONE menu)
  *
  *  Delivery pipeline (verified live):
  *    play-info/v2 → streams[].signCookie → base64 urlprefix = DASH dir on
@@ -785,7 +786,7 @@ if (!tokenUsable(mbUserToken)) scheduleMbRegister(tokenUsable(MB_BOOTSTRAP_TOKEN
 
 const SESSION_TTL = 15 * 60e3;
 const UI_TTL = 10 * 60e3;
-const EP_PAGE_ROWS = 60;        // rows per message — back to v2.26-era pagination (user: giant one-shot menu gets WhatsApp-collapsed, "full episode ටික එන්නෙ නෑ"); ≤60 rows still = one message
+const EP_PAGE_ROWS = 999999;    // NO pagination — user demand: 'next' ගහන්න ඕන නැතුව ඔක්කොම episodes එකම menu එකට. Giant lists (>9000 chars) auto-split into poster + full TEXT message so nothing is ever cut
 const SEASON_FILE_CAP = 50;     // episode files per pack run ('next' continues)
 const EP_SEND_GAP = 5000;       // pause between episode sends
 const PACK_LINK_CAP = 40;       // mirror links per pack message
@@ -937,9 +938,13 @@ function seriesText(m, n, rows, pageIdx) {
 
 async function sendSeriesCard(send, jid, msg, m, n, rows, pageIdx = 0) {
     const text = seriesText(m, n, rows, pageIdx);
+    if (text.length > 9000) {   // 1000+ ep mega series — caption-cap never silently cuts the list: poster card + FULL list as its own text message
+        try { if (m.poster) await send(jid, { image: { url: m.poster }, caption: `🍀 *${cut(m.name, 58)}* — full episode menu 👇` }, { quoted: msg }); } catch { }
+        return await send(jid, { text }, { quoted: msg });
+    }
     try {
         if (!m.poster) throw new Error('no poster');
-        return await send(jid, { image: { url: m.poster }, caption: text.slice(0, 9999) }, { quoted: msg });   // v2.27: full menu fits
+        return await send(jid, { image: { url: m.poster }, caption: text }, { quoted: msg });   // full menu, no slice
     } catch {
         return await send(jid, { text }, { quoted: msg });
     }
