@@ -26,6 +26,15 @@ litterbox/catbox, x0.at, transfer.archivete.am, filebin, eporner (v2.17). (gofil
 
 🔒 Private: ඔයා යවන messages විතරයි. වෙන අය commands යැව්වත් ignore.
 
+v2.57.0 — 📦 /abc/ FILE HOST (web එකෙන් file download)
+  • Pair site එකම අලුත් file host එකක්වෙලා: GET /abc → upload කරපු file list එක, GET /abc/<name> → file එක download
+  • Panel එකේ /abc/ folder එකේ තියෙන හැම file එකක්ම serve වෙනවා (දැනට: matheeshasanjana83-alt/abc —
+    ASITHA MD V6 files + abc-asitha-md-v6.zip)
+  • 🛡 Path-traversal safe: ../ ..\ %2e%2e encoded tricks ඔක්කොම reject — abc/ folder එකෙන් පිට කිසිම file එකක්
+    පෙනෙන්නේ නෑ · hidden files (.) block · content-type map · zip = auto download
+  • Bot code වෙනස් වුනේ නෑ — KAVIZ commands/AI/anti-bug ඔක්කොම කලින් වගේම
+  • Tests: test_v257 41/41 · v256 95/95 · v255 44/44 · v253 35/35 · v252 17/17 · v2511 24/24 · v251 43/43
+
 v2.56.0 — 🔥 ROAST TRAINED + SINHALA FIXED (screenshots bug fix)
   • Groq model order: openai/gpt-oss-120b FIRST — කලින් llama-3.3-70b එකෙන් එන සිංහල කැඩිලා
     ("සම තිට්ටිකිරිම කන කරන්න" වගේ garble + එකම reply ×5 repeat loop) — gpt-oss සිංහල + instructions වඩා හොඳයි

@@ -1,8 +1,10 @@
 /**
  * pairsite.js — KAVIZ MD V1 v2.29 web pairing site (zero dependencies).
  *
- * One HTTP server on the panel port that serves THREE things:
+ * One HTTP server on the panel port that serves FIVE things:
  *   GET  /                      → pair page (number එක දාන්න → pairing code)
+ *   GET  /abc                   → 📦 v2.57 uploaded-files list (abc/ folder)
+ *   GET  /abc/<name>            → 📦 v2.57 download one file (path-traversal safe)
  *   GET  /status                → old JSON status (panel health check — v2.28 behavior kept)
  *   GET  /pair?number=…&key=…   → request a pairing code (JSON)
  *
@@ -162,6 +164,67 @@ async function requestPair(rawNum, key, deps) {
     return { ok: true, code: String(code).match(/.{1,4}/g).join('-'), number: num };
 }
 
+/* ─────────────────── 📦 v2.57: /abc/ file host (path-traversal safe) ─────────────────── */
+const ABC_DIR = path.join(__dirname, 'abc');
+const ABC_TYPES = {
+    '.js': 'text/javascript; charset=utf-8', '.json': 'application/json; charset=utf-8',
+    '.md': 'text/plain; charset=utf-8', '.txt': 'text/plain; charset=utf-8',
+    '.zip': 'application/zip', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
+    '.enc': 'application/octet-stream', '.env': 'application/octet-stream'
+};
+function abcList() {
+    try { return fs.readdirSync(ABC_DIR).filter(f => !f.startsWith('.')).sort(); } catch { return []; }
+}
+/** name → basename only; kills ../ ..\ encoded tricks (Linux + win backslash both) */
+function safeAbcName(name) {
+    let s = String(name || '');
+    try { s = decodeURIComponent(s); } catch { }
+    if (/[\/\\]|\.\./.test(s)) return '';
+    s = path.basename(s);
+    return (s === '.' || s === '..') ? '' : s;   // basename('.') = '.' → reject
+}
+function serveAbc(r, name) {
+    const safe = safeAbcName(name);
+    if (!safe || safe.startsWith('.')) { r.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }); return r.end('not found'); }
+    let data = null;
+    try {
+        const full = path.join(ABC_DIR, safe);
+        if (fs.statSync(full).isFile()) data = fs.readFileSync(full);
+    } catch { }
+    if (!data) { r.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }); return r.end('not found'); }
+    const ext = path.extname(safe).toLowerCase();
+    const head = { 'Content-Type': ABC_TYPES[ext] || 'application/octet-stream', 'Content-Length': data.length, 'Cache-Control': 'no-cache' };
+    if (ext === '.zip') head['Content-Disposition'] = 'attachment; filename="' + safe.replace(/"/g, '') + '"';
+    r.writeHead(200, head);
+    return r.end(data);
+}
+function abcPage() {
+    const rows = abcList().map(f => {
+        let sz = 0; try { sz = fs.statSync(path.join(ABC_DIR, f)).size; } catch { }
+        const kb = sz >= 1024 ? (sz / 1024).toFixed(1) + ' KB' : sz + ' B';
+        return '<tr><td><a href="/abc/' + encodeURIComponent(f) + '">' + esc(f) + '</a></td><td class="s">' + kb + '</td></tr>';
+    }).join('') || '<tr><td colspan="2" class="s">(empty)</td></tr>';
+    return `<!DOCTYPE html>
+<html lang="si"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex">
+<title>KAVIZ MD — Files</title>
+<style>
+  body{background:#0b0e14;color:#e8ecf4;font-family:system-ui,'Noto Sans',sans-serif;display:flex;justify-content:center;padding:32px 16px;margin:0}
+  .card{width:100%;max-width:520px;background:#141824;border:1px solid #232a3d;border-radius:14px;padding:22px}
+  h1{font-size:18px;margin:0 0 4px}.sub{color:#8b93a7;font-size:12.5px;margin-bottom:16px}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  td{padding:9px 6px;border-top:1px solid #232a3d}
+  a{color:#ffb454;text-decoration:none;word-break:break-all}a:hover{text-decoration:underline}
+  .s{color:#8b93a7;font-size:12px;text-align:right;white-space:nowrap}
+  .home{display:inline-block;margin-top:16px;color:#8b93a7;font-size:12.5px}
+</style></head><body><div class="card">
+<h1>📦 Uploaded Files</h1>
+<div class="sub">KAVIZ MD V1 — /abc/ file host</div>
+<table>${rows}</table>
+<a class="home" href="/">← Pair page</a>
+</div></body></html>`;
+}
+
 /** start the server — deps: { status:()=>obj, getSock:()=>sock|null, log:(t)=>void } */
 function start(deps) {
     const d = { port: parseInt(process.env.SERVER_PORT || process.env.PORT || '3000', 10), ...deps };
@@ -189,6 +252,8 @@ function start(deps) {
                 return json(r, out.ok ? 200 : 400, out);
             }
             if (url.pathname === '/') { r.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); return r.end(page(KEY)); }
+            if (url.pathname === '/abc' || url.pathname === '/abc/') { r.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); return r.end(abcPage()); }
+            if (url.pathname.startsWith('/abc/')) return serveAbc(r, url.pathname.slice(5));
             r.writeHead(404, { 'Content-Type': 'text/plain' }); r.end('not found');
         } catch (e) { try { json(r, 500, { ok: false, error: e.message }); } catch { } }
     });
@@ -198,4 +263,4 @@ function start(deps) {
     return srv;
 }
 
-module.exports = { start, requestPair, normNumber, pairKey, _page: page };
+module.exports = { start, requestPair, normNumber, pairKey, _page: page, _abcPage: abcPage, _serveAbc: serveAbc, _safeAbcName: safeAbcName, ABC_DIR };

@@ -1,6 +1,6 @@
 {
-  "version": "2.56.0",
-  "notes": "v2.56.0: ROAST TRAINED + SINHALA FIXED — ① Groq gpt-oss-120b first (llama-3.3-70b සිංහල කැඩුවා — \"සම තිට්ටිකිරිම\" garble ×5 loop) ② ROAST_SYSTEM trained: anti-refusal banter framing (refuse/apologize FORBIDDEN), Sinhala-script-only, unique comeback rule, gibberish-mock rule ③ 🛡 quality guards: refusal/English-leak/repeat reply → ඊළඟ provider auto-retry → Roast bank (30 canned savage Sinhala lines, anti-repeat ring 8) — bot silent වෙන්නෙ නෑ ④ Singlish detection: kari/ponnaya/pukata/hukanna/kimba/pusha/gawura/yako/miyo/balla/ammata/thoge + යකො/යකෝ/මියෝ/බල්ලා/මෝඩ... ⑤ lang-guard: short/Sinhala/Singlish messages → English reply retry (\"Hey! How can I help you today?\" bug) → last-reply fallback (silence නෙවෙයි) ⑥ memory poison purge: refusal + repeated-garble history cleanup on boot ⑦ roast temperature 0.95 · SYSTEM: Singlish glossary + ALWAYS-means-ALWAYS Sinhala + no-garble rule ⑧ test_v256 91+ checks; v255 44/44, v253 35/35, v2511 24/24, v251 43/43, test.js 163/20 == baseline externals",
+  "version": "2.57.0",
+  "notes": "v2.57.0: /abc/ FILE HOST — pairsite GET /abc (uploaded-files list) + GET /abc/<name> (download, path-traversal safe: basename+slash/backslash/dotdot reject, hidden-file block, content-type map, zip attachment) — abc/ folder = matheeshasanjana83-alt/abc (ASITHA MD V6) files uploaded to panel /abc/ + abc-asitha-md-v6.zip; KAVIZ code untouched otherwise",
   "removed": [
     "movies.js",
     "test_v218.js",
@@ -21,7 +21,8 @@
     "test_v238.js",
     "test_v239.js",
     "test_v254.js",
-    "test_v255.js"
+    "test_v255.js",
+    "test_v256.js"
   ],
   "files": [
     "bot.js",
@@ -75,6 +76,7 @@
     "test_v2511.js",
     "test_v252.js",
     "test_v253.js",
-    "test_v256.js"
+    "test_v256.js",
+    "test_v257.js"
   ]
 }
