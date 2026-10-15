@@ -785,7 +785,7 @@ if (!tokenUsable(mbUserToken)) scheduleMbRegister(tokenUsable(MB_BOOTSTRAP_TOKEN
 
 const SESSION_TTL = 15 * 60e3;
 const UI_TTL = 10 * 60e3;
-const EP_PAGE_ROWS = 200;       // rows per message — v2.27: FULL menu (all seasons + episodes) in ONE message for any normal series
+const EP_PAGE_ROWS = 60;        // rows per message — back to v2.26-era pagination (user: giant one-shot menu gets WhatsApp-collapsed, "full episode ටික එන්නෙ නෑ"); ≤60 rows still = one message
 const SEASON_FILE_CAP = 50;     // episode files per pack run ('next' continues)
 const EP_SEND_GAP = 5000;       // pause between episode sends
 const PACK_LINK_CAP = 40;       // mirror links per pack message
