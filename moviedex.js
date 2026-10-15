@@ -788,7 +788,8 @@ if (!tokenUsable(mbUserToken)) scheduleMbRegister(tokenUsable(MB_BOOTSTRAP_TOKEN
 
 const SESSION_TTL = 15 * 60e3;
 const UI_TTL = 10 * 60e3;
-const EP_PAGE_ROWS = 999999;    // NO pagination, NO chunking — ONE message with the FULL menu (user final word: 'කලින් ඔවා 4 බෙදලා නෙමෙ තිබ්බෙ full menu එකම තිබ්බා' — both 60-row pages AND 50-row chunks rejected; Read-more fold on phones accepted)
+const EP_PAGE_ROWS = 999999;    // NO pagination, NO chunking — ONE message with the FULL menu (user final word: 'කලින් ඔවා 4 බෙදලා නෙමෙ තිබ්බෙ full menu එකම තිබ්බා' — both 60-row pages AND 50-row chunks rejected)
+const MENU_FOLD_LINES = 135;    // WhatsApp phone preview cuts at ~135 lines ('*135 | Sea…' screenshot) — the packed menu below stays WELL under this so the WHOLE list is visible even on phones
 const SEASON_FILE_CAP = 50;     // episode files per pack run ('next' continues)
 const EP_SEND_GAP = 5000;       // pause between episode sends
 const PACK_LINK_CAP = 40;       // mirror links per pack message
@@ -925,14 +926,38 @@ function seriesHeadLines(m) {
         '', `📝 _${String(m.desc || '—').trim().slice(0, 320)}_`];
 }
 
-const rowLine = (r, no) => r.kind === 'season'
-    ? `*${no}* | 📦 Download Season ${r.season} (All Episodes)`
-    : `*${no}* | ${epLabel(r)}`;
+/** packed episode lines — consecutive episodes of ONE season, 4 per line as *N* E<ep>.
+ *  Row numbers stay the global 1..N picks (reply grammar unchanged); short tokens keep every
+ *  line ≤ ~45 visible chars so WhatsApp never soft-wraps them into extra lines. */
+function packEpLines(rows, from, to) {
+    const runLen = to - from;
+    const perLine = runLen > 700 ? 2 : runLen > 300 ? 3 : 4;
+    const out = [];
+    for (let i = from; i < to; i += perLine) {
+        const cells = [];
+        for (let j = i; j < Math.min(i + perLine, to); j++) cells.push(`*${j + 1}* E${rows[j].ep}`);
+        out.push(cells.join(' · '));
+    }
+    return out;
+}
 
-/** FULL episode menu text — header + ALL rows numbered 1..N + footer (ONE message, never split) */
+/** FULL episode menu text — header + ALL rows numbered 1..N + footer (ONE message, never split).
+ *  Compact packing keeps a 174-ep series at ~60 lines / ~2.5KB — inside the ~135-line phone
+ *  preview fold, so the menu is fully visible WITHOUT Read-more on phone AND desktop. */
 function seriesText(m, n, rows) {
     const out = seriesHeadLines(m);
-    rows.forEach((r, i) => out.push(rowLine(r, i + 1)));
+    for (let i = 0; i < rows.length; i++) {
+        const r = rows[i];
+        if (r.kind === 'season') {
+            out.push(`*${i + 1}* | 📦 Download Season ${r.season} (All Episodes)`);
+        } else {
+            let j = i;
+            while (j < rows.length && rows[j].kind === 'ep' && rows[j].season === r.season) j++;
+            out.push(`▸ Season ${r.season} · Episodes ${rows[i].ep}-${rows[j - 1].ep}`);
+            out.push(...packEpLines(rows, i, j));
+            i = j - 1;
+        }
+    }
     out.push('', MV_FOOT);
     return out.filter(Boolean).join('\n');
 }
