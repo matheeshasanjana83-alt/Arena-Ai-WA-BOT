@@ -1,6 +1,6 @@
 {
-  "version": "2.57.0",
-  "notes": "v2.57.0: /abc/ FILE HOST — pairsite GET /abc (uploaded-files list) + GET /abc/<name> (download, path-traversal safe: basename+slash/backslash/dotdot reject, hidden-file block, content-type map, zip attachment) — abc/ folder = matheeshasanjana83-alt/abc (ASITHA MD V6) files uploaded to panel /abc/ + abc-asitha-md-v6.zip; KAVIZ code untouched otherwise",
+  "version": "2.56.0",
+  "notes": "v2.56.0: KAVIZ-only restore \u2014 roast mode + OUT-GUARD anti-bug + sinhala-first AI live; abc/ (ASITHA MD V6) stays an EXTERNAL file-host only (pairsite /abc/ links), bot never runs it; package.json start restored to node launcher.js after abc/start.js was mistakenly launched on the panel",
   "removed": [
     "movies.js",
     "test_v218.js",
