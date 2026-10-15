@@ -43,7 +43,8 @@ const read = (f) => fs.readFileSync(f, 'utf8');
     if (/require\(['"]\.\/movies['"]\)/.test(botSrc)) throw new Error('bot.js still requires ./movies');
     if (/movies\.handle|movies\.bridgeReply|movies\.hasSession/.test(botSrc)) throw new Error('bot.js still calls movies.*');
     // bare-number bridge still wired for .menu categories (must not break menu replies)
-    if (!botSrc.includes("'.menu ' + text")) throw new Error('menu number bridge broken');
+    // v2.41: bridge lives in the panels[] table ('.menu ' prefix + menuState) — the direct "'.menu ' + text" concat was refactored away
+    if (!botSrc.includes("'.menu '") || !botSrc.includes('menuState')) throw new Error('menu number bridge broken');
     console.log('[4] bot.js zero moviepro refs + .menu number bridge intact: OK \u2705');
 
     // 5) no other module references movies.js

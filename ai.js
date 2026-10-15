@@ -475,7 +475,17 @@ async function ask(chatId, question) {
         setLastRoast(chatId, text);
         return { text, model: 'Roast bank 🔥' };
     }
-    if (lastText) return { text: lastText, model: (lastModel || 'AI') + ' · lang-guard' };   // silence වඩා last reply
+    if (lastText) {   // silence වඩා last reply — ඒත් turn එක memory එකටම යන්න ඕන: lang-guard turns were NEVER stored → conversation memory gaps (test_v247 02 caught it)
+        if (mkUsed) {
+            const h = (history.get(mkUsed) || []).filter(m => Date.now() - (m.t || Date.now()) < TTL_MS);
+            const t = Date.now();
+            h.push({ role: 'user', text: question, t }, { role: 'assistant', text: lastText, t });
+            while (h.length > MAX_TURNS * 2) h.shift();
+            history.set(mkUsed, h);
+            scheduleSave();
+        }
+        return { text: lastText, model: (lastModel || 'AI') + ' · lang-guard' };
+    }
     throw new Error(errors.join('\n'));
 }
 

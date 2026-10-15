@@ -106,7 +106,7 @@ const ai = require('./ai');
     ok('23 SYSTEM: memory honesty line', /never pretend to remember/.test(aiSrc));
     ok('24 SYSTEM: identity lock', /never call yourself by it/.test(aiSrc));
     ok('25 SYSTEM: Sinhala quality rules', /NEVER invent non-existent Sinhala words/.test(aiSrc));
-    ok('26 temperature 0.6', !aiSrc.includes('temperature: 0.7') && aiSrc.includes('temperature: 0.6'));
+    ok('26 temperature 0.6 (v2.56: dynamic tempOf() — normal 0.6, roast override 0.95)', !aiSrc.includes('temperature: 0.7') && aiSrc.includes('TEMP_OVERRIDE != null ? TEMP_OVERRIDE : 0.6'));
     const pkg = require('./package.json');
     ok('22 version >= 2.47.0', parseInt(pkg.version.split('.').join(''), 10) >= 2470);
 

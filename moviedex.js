@@ -61,6 +61,8 @@ const { foot, cut, bar } = require('./style');
 
 /** v2.28 brand footer — replaces the old tutorial hint lines (user request) */
 const MV_FOOT = '> ＫＡＶＩＺ Ｖ1 🍁';
+const DIV = '━━━━━━━━━━━━━━━━━━━';   // premium card rule — consistent section divider on every KAVIZ card
+const fmtSize = (mb) => !mb ? '' : human(mb * 1048576).replace(/\.0 MB$/, ' MB');   // 357.0 MB → 357 MB (cleaner premium rows)
 
 /* ───────────────── 1. signed MovieBox mobile-BFF client ───────────────── */
 
@@ -877,23 +879,25 @@ async function mergedQualities(streams) {
 }
 
 function listText(q, list) {
-    return `🎬 *MovieDex — "${cut(q, 40)}"*\n\n` + list.map((m, i) =>
-        `*${i + 1}.* ${m.type === 'series' ? '📺 ' : ''}${cut(m.name, 58)}${m.year ? ' (' + m.year + ')' : ''}${m.rating ? '  ⭐' + m.rating : ''}`).join('\n')
-        + `\n${MV_FOOT}`;
+    return `🍿 *ＭＯＶＩＥＤＥＸ*  ·  _${cut(q, 40)}_\n${DIV}\n`
+        + list.map((m, i) =>
+            `*${i + 1}.* ${m.type === 'series' ? '📺' : '🎬'} ${cut(m.name, 58)}${m.year ? '  ·  ' + m.year : ''}${m.rating ? '  ·  ⭐ ' + m.rating : ''}`).join('\n')
+        + `\n${DIV}\n${MV_FOOT}`;
 }
 
 function cardText(m, n, rows) {
     const desc = String(m.desc || '').trim().slice(0, 360) || '—';
     const out = [`🎬 *${m.name}*${m.year ? ` (${m.year})` : ''}`,
-        `⭐ ${m.rating || '—'}/10 IMDb${m.duration ? '  •  ⏱ ' + m.duration : ''}`,
+        DIV,
+        `⭐ ${m.rating || '—'}/10 IMDb${m.duration ? '  ·  ⏱ ' + m.duration : ''}`,
         m.genres?.length ? `🎭 ${m.genres.join(', ')}` : '',
-        m.language ? `🗣 ${m.language}` : '', '', `📝 ${desc}`, ''];
+        m.language ? `🗣 ${m.language}` : '', '', `📝 _${desc}_`, '', DIV];
     if (rows && rows.length) {
-        out.push('', '» Download Options 🎬');
-        rows.forEach((r, i) => out.push(`*${i + 1}* | 🎥 ${r.label}${r.sizeMB ? ' · ~' + human(r.sizeMB * 1048576) : ''}`));
-        out.push('', MV_FOOT);
+        out.push('▸ Download Options 🎬');
+        rows.forEach((r, i) => out.push(`*${i + 1}* | 🎥 ${r.label}${r.sizeMB ? ' · ~' + fmtSize(r.sizeMB) : ''}`));
+        out.push(DIV, MV_FOOT);
     } else {
-        out.push('', '⚠️ මේ title එකට download streams නෑ');
+        out.push('⚠️ මේ title එකට download streams නෑ', DIV, MV_FOOT);
     }
     return out.filter(Boolean).join('\n');
 }
@@ -921,11 +925,14 @@ function tvRows(seasons) {
 const epLabel = (r) => `Season ${r.season} Episode ${r.ep}`;
 
 function seriesHeadLines(m) {
+    const g = m.genres?.length ? `🎭 ${m.genres.join(', ')}` : '';
+    const c = m.country ? (g ? '  ·  🌍 ' + m.country : '🌍 ' + m.country) : '';
     return [`🍀 *${cut(m.name, 58)}*${m.year ? ` (${m.year})` : ''}`,
+        DIV,
         `📅 ${m.date || m.year || '—'}${m.duration ? '  ·  ⏱ ' + m.duration : ''}  ·  ⭐ ${m.rating || '—'} IMDb`,
-        m.genres?.length ? `🎭 ${m.genres.join(', ')}` : '',
-        m.country ? `🌍 ${m.country}` : '',
-        '', `📝 _${String(m.desc || '—').trim().slice(0, 320)}_`];
+        (g || c) ? g + c : '',
+        `📝 _${String(m.desc || '—').trim().slice(0, 320)}_`,
+        DIV];
 }
 
 /** packed episode lines — consecutive episodes of ONE season, 4 per line as *N* E<ep>.
@@ -960,7 +967,7 @@ function seriesText(m, n, rows) {
             i = j - 1;
         }
     }
-    out.push('', MV_FOOT);
+    out.push(DIV, MV_FOOT);
     return out.filter(Boolean).join('\n');
 }
 
@@ -985,9 +992,9 @@ async function sendSeriesCard(send, jid, msg, m, n, rows, s) {
 }
 
 function seasonOptText(m, n, rowNo, season, rows) {
-    const out = [`🧳 *SELECT DOWNLOAD OPTION FOR SEASON ${season}*`, `🍀 ${cut(m.name, 46)}`, '', '» Video Qualities (All Episodes) 👇'];
-    rows.forEach((r, i) => out.push(`*${i + 1}* | 🎥 ${r.label}${r.sizeMB ? ' · ~' + human(r.sizeMB * 1048576) + '/ep' : ''}`));
-    out.push('', MV_FOOT);
+    const out = [`🧳 *SEASON ${season} — SELECT DOWNLOAD OPTION*`, `📺 ${cut(m.name, 46)}`, '', DIV, '▸ Video Qualities (All Episodes) 👇'];
+    rows.forEach((r, i) => out.push(`*${i + 1}* | 🎥 ${r.label}${r.sizeMB ? ' · ~' + fmtSize(r.sizeMB) + '/ep' : ''}`));
+    out.push(DIV, MV_FOOT);
     return out.join('\n');
 }
 
@@ -1001,7 +1008,7 @@ function epCaption(show, season, ep, h, done, total, fail) {
 }
 
 function packStat(show, season, ok, fail, at, total, note) {
-    return `🧳 *${cut(show, 50)}* — Season ${season}\n✅ ${ok}  ⚠️ ${fail}  ·  ${at}/${total}${note ? '\n' + note : ''}`;
+    return `🧳 *${cut(show, 50)}* — Season ${season}\n${DIV}\n✅ ${ok} delivered   ⚠️ ${fail} failed\n📦 ${at}/${total} episodes${note ? '\n' + note : ''}`;
 }
 
 /* ───────────────── 4. delivery (file / mirror link) ───────────────── */
@@ -1321,9 +1328,9 @@ async function handle(c, ctx) {
                 const epErr = qRows.length ? '' : `❌ ${epLabel(row)} — streams නෑ\n> වෙන episode එකක් try`;
                 try { await send(jid, { delete: st.key }); } catch { }
                 if (epErr) return send(jid, { text: epErr }, { quoted: msg });   // v2.46: NEW msg — edit-after-delete = user silence bug
-                const optRows = [`🎬 *SELECT DOWNLOAD OPTION* — ${epLabel(row)}`, `📺 ${cut(full.name, 50)}`, '', '» Video Qualities 👇'];
-                qRows.forEach((r, i) => optRows.push(`*${i + 1}* | 🎥 ${r.label}${r.sizeMB ? ' · ~' + human(r.sizeMB * 1048576) : ''}`));
-                optRows.push('', MV_FOOT);
+                const optRows = [`🎬 *SELECT DOWNLOAD OPTION* — ${epLabel(row)}`, `📺 ${cut(full.name, 50)}`, '', DIV, '▸ Video Qualities 👇'];
+                qRows.forEach((r, i) => optRows.push(`*${i + 1}* | 🎥 ${r.label}${r.sizeMB ? ' · ~' + fmtSize(r.sizeMB) : ''}`));
+                optRows.push(DIV, MV_FOOT);
                 const sentOpt = await send(jid, { text: optRows.join('\n') }, { quoted: msg });
                 (s.tv[n].epQualities ||= {})[rowNo] = qRows;
                 setUi(s, sentOpt, 'ep', n, rowNo);
