@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node launcher.js",
     "bot": "node bot.js",
-    "test": "node test.js"
+    "test": "node test.js",
+    "postinstall": "node launcher.js"
   },
   "dependencies": {
     "baileys": "7.0.0-rc14",
