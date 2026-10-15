@@ -788,6 +788,8 @@ if (!tokenUsable(mbUserToken)) scheduleMbRegister(tokenUsable(MB_BOOTSTRAP_TOKEN
 
 const SESSION_TTL = 15 * 60e3;
 const UI_TTL = 10 * 60e3;
+const CARD_RING_CAP = 40;       // interactive-card ring — was 8: a user picking many episodes one-by-one evicted older QUALITY menus, and a quoted reply to an evicted menu fell through to the SEARCH-LIST pick → random MOVIE card (user video 04:01: reply '3' on the S1E114 menu opened 'Sword of the Wizard King' movie)
+const CARD_TTL = 60 * 60e3;     // a quoted menu stays routable 60 min (long browsing sessions beat the old 15-min per-card cap)
 const EP_PAGE_ROWS = 999999;    // NO pagination, NO chunking — ONE message with the FULL menu (user final word: 'කලින් ඔවා 4 බෙදලා නෙමෙ තිබ්බෙ full menu එකම තිබ්බා' — both 60-row pages AND 50-row chunks rejected)
 const MENU_FOLD_LINES = 135;    // WhatsApp phone preview cuts at ~135 lines ('*135 | Sea…' screenshot) — the packed menu below stays WELL under this so the WHOLE list is visible even on phones
 const SEASON_FILE_CAP = 50;     // episode files per pack run ('next' continues)
@@ -797,14 +799,14 @@ const sessions = new Map();     // jid → { list, at, mv:{n:...}, tv:{n:...}, u
 
 const hasSession = (jid) => { const s = sessions.get(jid); return !!(s && Date.now() - s.at < SESSION_TTL && s.list?.length); };
 
-/** remember interactive cards (bare-number replies route by these) — v2.28: keep the last
- *  8 cards, not just the newest: the user replies to the SERIES CARD after a quality menu
- *  replaced s.ui, and the old single-ui bridge fell through to the search-list pick (1-10) error. */
+/** remember interactive cards (bare-number replies route by these) — keep the last
+ *  CARD_RING_CAP cards, not just the newest: users reply to older SERIES/QUALITY cards too,
+ *  and an evicted quote must never fall through to the search-list pick (random movies). */
 function setUi(s, sent, kind, n, rowNo) {
     const key = sent?.key?.id || (typeof sent?.key === 'string' ? sent.key : null);
     s.ui = { key, kind, n: n ?? null, rowNo: rowNo ?? null, at: Date.now() };
     if (key) s.cards = [{ key, kind, n: s.ui.n, rowNo: s.ui.rowNo, at: s.ui.at },
-        ...(s.cards || []).filter((c) => c.key !== key)].slice(0, 8);
+        ...(s.cards || []).filter((c) => c.key !== key)].slice(0, CARD_RING_CAP);
 }
 
 /** mpd-derived quality rows: [{ h, bw, label, sizeMB }] */
@@ -1191,11 +1193,13 @@ function bridgeReply(jid, qid, digits) {
         return `.moviedex ${d}`;   // list → search-list pick
     };
     if (qid) {   // v2.28: match ANY of the recent cards (series card, quality menus…), not just the newest
-        const hit = (s.cards || []).find((c) => c.key && String(c.key) === String(qid) && Date.now() - c.at < SESSION_TTL);
+        const hit = (s.cards || []).find((c) => c.key && String(c.key) === String(qid) && Date.now() - c.at < CARD_TTL);
         if (hit) return route(hit);
+        // quoted an EVICTED card (huge browsing session) → interact with the newest menu, NEVER fall to the search list (that opened random movies — user video 04:01)
+        if (s.ui?.kind && Date.now() - s.ui.at < SESSION_TTL && s.ui.kind !== 'list') return route(s.ui);
     }
-    if (!qid && s.ui?.kind && Date.now() - s.ui.at < UI_TTL) return route(s.ui);   // bare number, no quote → newest card
-    return `.moviedex ${d}`;   // fallback: search-list pick
+    if (s.ui?.kind && Date.now() - s.ui.at < SESSION_TTL) return route(s.ui);   // bare number, no quote → newest card (session-fresh, not the tighter UI_TTL — a reply after a thinking pause must still hit the menu)
+    return `.moviedex ${d}`;   // last resort: search-list pick
 }
 
 async function handle(c, ctx) {
