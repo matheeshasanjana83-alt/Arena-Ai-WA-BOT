@@ -181,14 +181,18 @@ const mk = (text, fromMe = true, jid = ME) => ({ key: { id: 'IN' + (++n), remote
     // ───────── v2.10: photo menu + categories + auto react ─────────
     {
         r = await run(mk('.menu')); const mm = r.find(x => x.image);
-        t('.menu → photo + info box + categories', !!mm && /BOT INFO/.test(mm.caption) && /CATEGORIES/.test(mm.caption) && /RAM/.test(mm.caption) && /\*1\* ┃ 📥 Download/.test(mm.caption));
+        t('.menu → photo + info box + categories', !!mm && /INFO/.test(mm.caption) && /CATEGORIES/.test(mm.caption) && /RAM/.test(mm.caption) && /\*1\* ┃ 📥 Download/.test(mm.caption));
         const menuId = 'OUT' + n;   // fake send ids
-        const q1 = mk('1'); q1.message = { extendedTextMessage: { text: '1', contextInfo: { stanzaId: menuId } } };
-        r = await run(q1); t('menu එකට reply කරලා 1 → Download category', r.some(x => /DOWNLOAD/.test(x.text || '')));
-        r = await run(mk('2')); t('menu එකෙන් පස්සේ 2 විතරක් → YouTube category', r.some(x => /\*🎬 YOUTUBE\*/.test(x.text || '')));
-        r = await run(mk('9')); t('9 → AI category', r.some(x => /\*🤖 AI\*/.test(x.text || '')));
-        r = await run(mk('13')); t('13 → status card (photo)', r.some(x => x.image && /KAVIZ MD V1/.test(x.caption)));
-        r = await run(mk('99')); t('වැරදි number → error', r.some(x => /අතර number/.test(x.text || '')));
+        const qm = (t2) => { const m2 = mk(t2); m2.message = { extendedTextMessage: { text: t2, contextInfo: { stanzaId: menuId } } }; return m2; };   // quote the menu card
+        r = await run(qm('1')); t('menu එකට reply කරලා 1 → Download category', r.some(x => /DOWNLOAD/.test(x.text || '')));
+        r = await run(qm('2')); t('menu එකට reply කරලා 2 → YouTube category', r.some(x => /\*🎬 YOUTUBE\*/.test(x.text || '')));
+        r = await run(mk('2')); t('🔒 v2.58: menu එකට reply නොකර bare 2 → silence (user bug fix)', r.length === 0);
+        r = await run(mk('9')); t('🔒 v2.58: bare 9 → silence', r.length === 0);
+        r = await run(qm('10')); t('menu එකට reply කරලා 10 → AI category', r.some(x => /\*🤖 AI\*/.test(x.text || '')));
+        r = await run(mk('13')); t('🔒 v2.58: bare 13 → silence', r.length === 0);
+        r = await run(qm('14')); t('menu එකට reply කරලා 14 → status card (photo)', r.some(x => x.image && /KAVIZ MD V1/.test(x.caption)));
+        r = await run(mk('99')); t('🔒 v2.58: bare 99 → silence (error msg එකත් නෑ)', r.length === 0);
+        r = await run(qm('99')); t('menu එකට reply කරලා 99 → error', r.some(x => /අතර number/.test(x.text || '')));
         const other = mk('1'); other.message = { extendedTextMessage: { text: '1', contextInfo: { stanzaId: 'SOMETHING_ELSE' } } };
         r = await run(other); t('වෙන message එකකට reply කරපු "1" → ignore', r.length === 0);
         r = await run(mk('3', false, '94770000000@s.whatsapp.net')); t('🔒 යාලුවා "3" → ignore', r.length === 0);

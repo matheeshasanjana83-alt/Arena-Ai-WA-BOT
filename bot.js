@@ -302,13 +302,11 @@ async function onMessages({ messages, type }, send, del = async () => { }) {
                 let text = getText(msg.message);
                 if (accessible && /^\d{1,3}$/.test(text)) {                      // number reply → .mode / .setting / .menu panel · .moviedex card (v2.41: 3 panels)
                     const jid0 = replyJid(msg.key), qid = msg.message?.extendedTextMessage?.contextInfo?.stanzaId;
-                    const fresh = (x) => x && (qid ? qid === x.id : Date.now() - x.at < 180e3);
-                    const panels = [[settingState.get(jid0), '.setting '], [menuState.get(jid0), '.menu '], [modeState.get(jid0), '.mode ']].filter(([x]) => fresh(x));
-                    if (panels.length) {
-                        const exact = qid && panels.find(([x]) => x.id === qid);
-                        text = (exact || panels.sort((a, b) => (b[0].at || 0) - (a[0].at || 0))[0])[1] + text;   // exact quote wins, else the newest panel
+                    if (qid) {                                                   // 🔒 v2.58 REPLY-ONLY: number එක card එකට QUOTE කරලා ම එන්න ඕන — bare number (no quote) → කිසිම දෙයක් නෑ (user bug 05:15: menu එකට reply නොකර '1' ගැහුවාම DOWNLOAD open වුණා)
+                        const panels = [[settingState.get(jid0), '.setting '], [menuState.get(jid0), '.menu '], [modeState.get(jid0), '.mode ']].filter(([x]) => x && qid === x.id);
+                        if (panels.length) text = panels[0][1] + text;           // exact quote of the panel card wins
+                        else { const b = moviedex.bridgeReply(jid0, qid, text); if (b) text = b; }   // moviedex card quotes — v2.28/29 routing (ring 40 · TTL 60m · never search while menu fresh)
                     }
-else { const b = moviedex.bridgeReply(jid0, qid, text); if (b) text = b; }
                 }
                 if (!text.startsWith('.')) { maybeAiReply({ msg, jid: replyJid(msg.key), text, owner, send }); continue; }   // 🤖 AI chat (v2.41 — own modes, works even when bot commands are private)
                 if (!accessible) continue;                                       // 🌐 others: bot commands locked by bot mode
@@ -783,6 +781,7 @@ function maybeAiReply({ msg, jid, text, owner, send }) {
     try {
         if (!text || text.length > 2000) return;
         if (antibug.lockedDown()) return;                     // 🌩️ v2.55: bug storm → AI silent 5 min (echo/amplifier guard)
+        if (/^\d{1,3}$/.test(text.trim())) return;            // 🔢 v2.58: bare number = stray menu pick (numbers are QUOTE-ONLY now) — AI silent, quota නාස්තියක් නෑ
         const isGroup = jid.endsWith('@g.us');
         if (isGroup) {   // groups: @mention the bot or reply to a bot message only — any-text flood නෑ
             const ci = msg.message?.extendedTextMessage?.contextInfo;

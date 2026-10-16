@@ -130,18 +130,23 @@ console.log('\n— E2E: .mode panel —');
 fs.writeFileSync(SETF, JSON.stringify({ chats: 'private', aiChat: false }, null, 2));
 SENT.length = 0;
 await run(mk('.mode'));
+const MID = 's' + SENT.length;   // panel card id (fake send ids — last send = the panel)
 ok('panel sent (no arg)', /BOT MODE PANEL/.test(lastText()));
 ok('panel shows current: PRIVATE + AI OFF', lastText().includes('PRIVATE') && lastText().includes('OFF'));
 SENT.length = 0;
-await run(mk('1'));   // plain digit → newest panel = .mode → public
-ok('reply 1 → mode public', guard.chatMode() === 'public');
+await run(mk('1'));   // 🔒 v2.58: bare digit (no quote) → NOTHING (user bug: menu එකට reply නොකර '1' ගැහුවාම panel open වුණා)
+ok('v2.58: bare 1 (no quote) → silence', SENT.length === 0);
+await run(mk('1', { ctx: { stanzaId: MID } }));   // panel card එකට reply → public
+ok('quoted 1 → mode public', guard.chatMode() === 'public');
 ok('confirm + panel refresh (2 sends)', SENT.length >= 2 && /✅/.test(String(SENT[0].content.text)) && /BOT MODE PANEL/.test(lastText()));
+const MID2 = 's' + SENT.length;   // refreshed panel card id
 SENT.length = 0;
-await run(mk('6'));
-ok('reply 6 → AI chat OFF', guard.aiChatOn() === false);
+await run(mk('6', { ctx: { stanzaId: MID2 } }));
+ok('quoted 6 → AI chat OFF', guard.aiChatOn() === false);
+const MID3 = 's' + SENT.length;
 SENT.length = 0;
-await run(mk('15'));
-ok('reply 15 → aiMode all + chat ON', guard.aiMode() === 'all' && guard.aiChatOn() === true);
+await run(mk('15', { ctx: { stanzaId: MID3 } }));
+ok('quoted 15 → aiMode all + chat ON', guard.aiMode() === 'all' && guard.aiChatOn() === true);
 SENT.length = 0;
 await run(mk('.mode self'));
 ok('legacy .mode self → private', guard.chatMode() === 'private');

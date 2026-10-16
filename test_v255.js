@@ -23,7 +23,7 @@ ok('01 pkg 2.55.x+', /^2\.5[5-9]\./.test(pkg.version));
 ok('02 manifest 2.55.x+', /^2\.5[5-9]\./.test(man.version));
 ok('03 manifest files += test_v255', man.files.includes('test_v255.js') || man.files.includes('test_v256.js'));
 ok('04 manifest removed += test_v254', (man.removed || []).includes('test_v254.js'));
-ok('05 manifest notes mention OUT-GUARD', /OUT-GUARD|gpt-oss-120b|file host|\/abc\//i.test(man.notes || ''));
+ok('05 manifest notes = current version changelog', String(man.notes || '').includes('v' + require('./package.json').version));   // single-note convention (d211e86) — pin follows the version, not a feature keyword
 
 // ── OUT-GUARD: sanitizeOut ──
 console.log('— sanitizeOut (outbound guarantee) —');

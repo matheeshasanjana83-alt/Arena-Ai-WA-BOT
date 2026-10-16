@@ -26,6 +26,13 @@ litterbox/catbox, x0.at, transfer.archivete.am, filebin, eporner (v2.17). (gofil
 
 🔒 Private: ඔයා යවන messages විතරයි. වෙන අය commands යැව්වත් ignore.
 
+v2.58.0 — 🔢 NUMBERS = QUOTE-ONLY (bug fix)
+  • Menu / Settings / Mode panels + MovieDex cards — number එකක් වැඩ කරන්නේ card එකට REPLY (quote) කරලා ම යවපුවම විතරයි
+  • Bug: menu එකට reply නොකර '1' විතරක් ගැහුවාම (3 min ඇතුළත) DOWNLOAD category open වුණා — දැන් bare number එකකට කිසිම response එකක් නෑ
+  • AI chat එකත් bare 1-3 digit messages වලට silent (quota නාස්තියක් නෑ)
+  • Quote කරපු number flows ඔක්කොම කලින් වගේම — MovieDex ring 40 · TTL 60 min · menu fresh නම් search-pick වෙන්නේ නෑ
+  • Tests: test.js menu E2E +2 bare-silence · v241 mode E2E quoted picks · v257 41/41
+
 v2.57.0 — 📦 /abc/ FILE HOST (web එකෙන් file download)
   • Pair site එකම අලුත් file host එකක්වෙලා: GET /abc → upload කරපු file list එක, GET /abc/<name> → file එක download
   • Panel එකේ /abc/ folder එකේ තියෙන හැම file එකක්ම serve වෙනවා (දැනට: matheeshasanjana83-alt/abc —
