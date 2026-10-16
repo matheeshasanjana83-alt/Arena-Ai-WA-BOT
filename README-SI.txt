@@ -26,6 +26,17 @@ litterbox/catbox, x0.at, transfer.archivete.am, filebin, eporner (v2.17). (gofil
 
 🔒 Private: ඔයා යවන messages විතරයි. වෙන අය commands යැව්වත් ignore.
 
+v2.59.0 — 📥 NEW DOWNLOAD COMMANDS (mediafire/mega/gdrive/video/song)
+  • අලුත් site-locked download commands: .mediafire <link> (🔥 MediaFire) · .mega <link> (🟢 MEGA) ·
+    .gdrive <link> (🔵 Google Drive) — හැම එකක්ම තමන්ගේ site එකේ links වලට විතරයි
+  • වැරදි link එකක් (අනිත් site එකක්) දැම්මොත් bot එක කියනවා මොන site එකේ link එක ඕනේද කියලා —
+    ඕනෑම site එකක් වලට *.download <link>* එකම වැඩ (universal)
+  • .video (yt) / .song (yt) — YouTube video/audio download commands 📥 DOWNLOAD menu එකටත් add වෙලා
+  • 📥 DOWNLOAD menu එකේ දැන් ඔක්කොම පේනවා: .download · .mediafire · .mega · .gdrive · .video · .song ·
+    .dl (multi) · .mirror · .gitclone
+  • Site-locked commands වල progress bubble එකේ site එකේ නම පේනවා (⏳ 🔥 MediaFire — Download වෙනවා...)
+  • Tests: test_v259 37/37 · v241 75/75 · v256 95/95 · v257 32/32 · quote-only 19/19 · bridge 17/17 · menu 45/45
+
 v2.58.0 — 🔢 NUMBERS = QUOTE-ONLY (bug fix)
   • Menu / Settings / Mode panels + MovieDex cards — number එකක් වැඩ කරන්නේ card එකට REPLY (quote) කරලා ම යවපුවම විතරයි
   • Bug: menu එකට reply නොකර '1' විතරක් ගැහුවාම (3 min ඇතුළත) DOWNLOAD category open වුණා — දැන් bare number එකකට කිසිම response එකක් නෑ

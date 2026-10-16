@@ -1,6 +1,6 @@
 {
-  "version": "2.58.0",
-  "notes": "v2.58.0: NUMBERS = QUOTE-ONLY — menu/.setting/.mode panels + moviedex cards respond ONLY to a number sent as a REPLY (quote) to the card; bare '1' typed without replying does NOTHING now (user bug 05:15: menu එකට reply නොකර '1' ගැහුවාම DOWNLOAD open වුණා). AI chat also silent on bare 1-3 digit texts (quota save). Quoted flows unchanged (ring 40 · TTL 60m · never search while menu fresh)",
+  "version": "2.59.0",
+  "notes": "v2.59.0: NEW DOWNLOAD COMMANDS — .mediafire <link> (🔥 MediaFire), .mega <link> (🟢 MEGA), .gdrive <link> (🔵 Google Drive) — site-locked (වැරදි link එකක් දැම්මොත් හරි site එක කියලා කියනවා) + .video (yt) / .song (yt) DOWNLOAD menu එකට add කළා. Site-locked commands වල progress bubble එකේ site name එක පේනවා. .download universal command එකම වැඩ (ඕනෑම site එකක්)",
   "removed": [
     "movies.js",
     "test_v218.js",
@@ -76,6 +76,7 @@
     "test_v252.js",
     "test_v253.js",
     "test_v256.js",
-    "test_v257.js"
+    "test_v257.js",
+    "test_v259.js"
   ]
 }

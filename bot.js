@@ -128,7 +128,8 @@ function getText(m) {
 
 const HELP = `*◈ KAVIZ MD V1 ◈* — commands
 
-📥 *.download <link>* (*.dl*) · *.mirror <link>* · *.gitclone user/repo*
+📥 *.download <link>* (*.dl*) · *.mediafire* · *.mega* · *.gdrive* · *.video* (yt) · *.song* (yt)
+📥 *.mirror <link>* · *.gitclone user/repo*
 🍿 *.moviedex* <movie/series name> — movie & 📺 TV download
 🎬 *.yts* <නම> · *.song* <නම/link> · *.video* <නම/link> [2160..144]
 📱 *.tiktok* · *.fb* · *.ig* · *.x* <link>
@@ -408,6 +409,15 @@ async function onMessages({ messages, type }, send, del = async () => { }) {
                 if (await runJob(() => tools.handle(c, { send, jid, msg, rest, sock: SOCK, me: ME, react }))) continue;
                 if (await runJob(() => features.handle(c, { send, jid, msg, rest, sock: SOCK, me: ME, download, react }))) continue;
                 if (await runJob(() => moviedex.handle(c, { send, jid, msg, rest, react }))) continue;
+
+                // 🆕 v2.59: site-locked downloaders — .mediafire / .mega / .gdrive
+                if (SITE_DL[c]) {
+                    const link = (text.match(/https?:\/\/\S+/) || [])[0];
+                    if (!link) { await send(jid, { text: `${SITE_DL[c].tag} — *${c} <link>*\n\nඋදා: \`${SITE_DL[c].ex}\`\n${foot('Anyone-with-link files විතරයි වැඩ')}` }, { quoted: msg }); continue; }
+                    if (!SITE_DL[c].re.test(link)) { await send(jid, { text: `❌ මේක *${SITE_DL[c].label}* link එකක් නෙවෙයි\n\n✦ ${SITE_DL[c].host} link එකක් එවන්න\n✦ ඕනෑම site එකක්: *.download <link>*` }, { quoted: msg }); continue; }
+                    await dlQueue(() => runJob(() => handleDownload(send, jid, msg, link, SITE_DL[c].tag)));   // one download at a time
+                    continue;
+                }
                 if (!['.download', '.dl', '.dn'].includes(c)) continue;
 
                 const links = (text.match(/https?:\/\/\S+/g) || []).slice(0, 5);   // 🛡️ max 5 per command
@@ -445,7 +455,14 @@ const reactTo = (key, emoji) => {   // ⏳ → ✅/❌ pro-bot feedback (respect
     if (!reactOn() || !key?.id) return;
     try { SOCK?.sendMessage(key.remoteJid, { react: { text: emoji, key } }).catch(() => { }); } catch { }
 };
-const HEAVY = new Set(['.download', '.dl', '.dn', '.moviedex', '.mdx', '.song', '.play', '.yta', '.video', '.ytv', '.yt', '.fb', '.facebook', '.faceboock', '.fbvid', '.ig', '.insta', '.x', '.twitter', '.tiktok', '.tt', '.mirror', '.link', '.tourl', '.url', '.gitclone', '.ai', '.ask', '.gpt', '.imagine', '.img', '.s', '.sticker', '.take', '.tts', '.say', '.ss', '.setcookies', '.setlogo', '.update']);
+const HEAVY = new Set(['.download', '.dl', '.dn', '.mediafire', '.mega', '.gdrive', '.moviedex', '.mdx', '.song', '.play', '.yta', '.video', '.ytv', '.yt', '.fb', '.facebook', '.faceboock', '.fbvid', '.ig', '.insta', '.x', '.twitter', '.tiktok', '.tt', '.mirror', '.link', '.tourl', '.url', '.gitclone', '.ai', '.ask', '.gpt', '.imagine', '.img', '.s', '.sticker', '.take', '.tts', '.say', '.ss', '.setcookies', '.setlogo', '.update']);
+// 🆕 v2.59: site-locked download commands — each one downloads ONLY its own site (menu: 📥 DOWNLOAD).
+// resolve() already scrapes all 3 hosts → router just validates the link + brands the progress bubble.
+const SITE_DL = {
+    '.mediafire': { label: 'MediaFire', tag: '🔥 MediaFire', host: 'mediafire.com', re: /https?:\/\/([^/]*\.)?mediafire\.com\//i, ex: '.mediafire https://www.mediafire.com/file/xxx/file.zip/file' },
+    '.mega': { label: 'MEGA', tag: '🟢 MEGA', host: 'mega.nz', re: /https?:\/\/([^/]*\.)?mega(\.co)?\.nz\//i, ex: '.mega https://mega.nz/file/xxxx#key' },
+    '.gdrive': { label: 'Google Drive', tag: '🔵 Google Drive', host: 'drive.google.com', re: /https?:\/\/[^/]*(drive\.google\.com|docs\.google\.com|drive\.usercontent\.google\.com)\//i, ex: '.gdrive https://drive.google.com/file/d/FILE_ID/view' },
+};
 async function handleMaxMB(send, jid, msg, arg) {
     const free = freeDisk(process.env.DL_TMP || require('os').tmpdir());
     const freeTxt = free == null ? '' : `\n💾 Disk free: ${human(free)}`;
@@ -469,7 +486,7 @@ async function handleReact(send, jid, msg, arg) {
 }
 
 const CATS = [
-    ['📥', 'Download', `*📥 DOWNLOAD*\n\n✦ *.download <link>* — file එක එවනවා\n✦ *.dl link1 link2* — links 5 දක්වා\n✦ *.mirror <link>* — 🔗 direct share link\n✦ *.gitclone user/repo* — repo → zip\n\n> 📏 max {MAX} / file · *.maxmb* වෙනස් කරන්න`],
+    ['📥', 'Download', `*📥 DOWNLOAD*\n\n✦ *.download <link>* — file එක එවනවා (*.dl*)\n✦ *.mediafire <link>* — 🔥 MediaFire\n✦ *.mega <link>* — 🟢 MEGA\n✦ *.gdrive <link>* — 🔵 Google Drive\n✦ *.video <link/නම>* — 🎬 YouTube video (*.yt*)\n✦ *.song <link/නම>* — 🎧 YouTube audio (*.play*)\n✦ *.dl link1 link2* — links 5 දක්වා\n✦ *.mirror <link>* — 🔗 direct share link\n✦ *.gitclone user/repo* — repo → zip\n\n> 📏 max {MAX} / file · *.maxmb* වෙනස් කරන්න`],
     ['🎬', 'YouTube', `*🎬 YOUTUBE*\n\n✦ *.yts <නම>* — search\n✦ *.song <නම / link>* — audio (*.play*)\n✦ *.video <නම / link>* — video (*.yt*)\n✦ *.video <link> 1080* — quality pick\n\n> 2160p → 144p · quality නැත්නම් best`],
     ['🍿', 'MovieDex', `*🍿 MOVIEDEX* — movies + 📺 series\n\n✦ *.moviedex <නම>* — search (*.mdx*)\n✦ අංකය reply — card → options\n✦ *.moviedex <n> <q#>* — 🍿 movie file\n✦ series: season 🧳 pack files · episode 🎬 files\n✦ *.moviedex <n> <q#> link* — 🔗 share link\n\n> DASH 1080p/720p/480p · ffmpeg mux · *.maxmb* limit`],
     ['📱', 'Social', `*📱 SOCIAL*\n\n✦ *.tiktok <link>* — watermark නෑ (*.tt*)\n✦ *.fb <link>* — Facebook (*.facebook*)\n✦ *.ig <link>* — Instagram\n✦ *.x <link>* — X / Twitter`],
@@ -1122,8 +1139,8 @@ async function handleUpdate(send, jid, msg, force) {
     catch { reactTo(msg.key, '❌'); }
 }
 
-async function handleDownload(send, jid, msg, link) {
-    const status = await send(jid, { text: `⏳ Download වෙනවා...\n${link}` }, { quoted: msg });
+async function handleDownload(send, jid, msg, link, siteTag) {
+    const status = await send(jid, { text: `⏳ ${siteTag ? siteTag + ' — ' : ''}Download වෙනවා...\n${link}` }, { quoted: msg });
     let last = 0;
     const edit = async (t) => { try { await send(jid, { text: t, edit: status.key }); } catch { } };
     const onProgress = (loaded, total, speed) => {
@@ -1163,7 +1180,7 @@ async function handleDownload(send, jid, msg, link) {
 
 process.on('unhandledRejection', (e) => log('unhandled: ' + (e?.message || e)));
 process.on('uncaughtException', (e) => log('uncaught: ' + e.message));
-module.exports = { _agentTick: agentTick, AGENT_MSG, handleDownload, getText, onMessages, replyJid, ME, aliveCaption, OWNER_CMDS, modeCaption, handleForward, maybeAiReply, _aiLast: aiLast, _setMediaDownloader: (f) => { mediaDownloader = f; }, _setSock: (x) => { SOCK = x; } };
+module.exports = { _agentTick: agentTick, AGENT_MSG, handleDownload, getText, onMessages, replyJid, ME, aliveCaption, OWNER_CMDS, modeCaption, handleForward, maybeAiReply, _aiLast: aiLast, SITE_DL, _setMediaDownloader: (f) => { mediaDownloader = f; }, _setSock: (x) => { SOCK = x; } };
 if (require.main === module) {
     console.log('🚀 KAVIZ MD V1 starting...');
     require('./media').checkUpdate(true).catch(() => { });   // yt-dlp fresh → FB "Cannot parse data" / YT format errors fix (max 1 check/hour)
