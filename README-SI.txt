@@ -26,6 +26,17 @@ litterbox/catbox, x0.at, transfer.archivete.am, filebin, eporner (v2.17). (gofil
 
 🔒 Private: ඔයා යවන messages විතරයි. වෙන අය commands යැව්වත් ignore.
 
+v2.61.0 — 🎬 MOVIEDEX DEEP EPISODES FIX (118+ පස්සෙ episodes)
+  • Episode 118ට පස්සේ ඒවාටත් දැන් quality menu එක එනවා (කලින් "streams නෑ" වෙනවා —
+    Black Clover E124/E125 වගේ)
+  • E123 වගේ episodes වල 360p/1080p/480p ආයෙත් menu එකට එනවා (කලින් 720p විතරයි පෙන්නුවේ)
+  • හේතුව: MovieBox resource API එක episodes 20 බැගින් pages වල යවනවා — bot එක page 6ක්
+    විතරයි බැලුවේ (rows 120) — 118+ පස්සේ rows page 7+ ඉඳන් තමයි. දැන් totalCount එක
+    ඉවර වෙනකම් walk කරනවා (මුල් episodes fastම, safety cap 15 pages)
+  • Subtitles section එකත් deep episodes වලට වැඩ කරනවා (E124 = 12 භාෂා live verify)
+  • Note: සමහර episodes වලට MovieBox එකේම 720p නෑ (BC E120/124/125) — ඒවට 1080p+480p+360p
+    options පෙන්නනවා
+
 v2.60.0 — 🗨 MOVIEDEX SUBTITLES (quality menu එකෙන්ම)
   • Episode + movie quality menus වල දැන් ▸ Subtitles section එකක් — MovieBox එකේම multi-language
     .srt tracks (Black Clover S1E1 = 14 භාෂා · Deadpool = 14 · en/bn/ar/es/fil/fr/hi/in_id/ms/pa/pt/ru/ur/zh…)

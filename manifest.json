@@ -1,6 +1,6 @@
 {
-  "version": "2.60.0",
-  "notes": "v2.60.0: MOVIEDEX SUBTITLES — episode + movie quality menus now show a ▸ Subtitles section (MovieBox get-ext-captions: the app's own multi-language .srt tracks — Black Clover S1E1 = 14 langs, Deadpool = 14). Numbering continues past the quality rows (4 qualities → subs 5..N) — the same reply grammar picks a subtitle: reply number → .srt document sent (VTT auto-converted to SRT, 'Show S01E01 - si (සිංහල).srt' naming) · '<q#> link' suffix → direct subtitle URL. No subs in the API → no section (menu unchanged). Season packs skipped",
+  "version": "2.61.0",
+  "notes": "v2.61.0: MOVIEDEX DEEP EPISODES FIX — the resource endpoint ignores se/ep and serves rows ep-sorted 20/page; the old fixed 6-page walk (120 rows) never reached episodes past ~#120 (Black Clover: E124/125 → streams නෑ, E123 → 720p only, no 360p). mbResourceItems now walks until the response totalCount is covered (hit → early-exit keeps early eps at 1 request/resolution; 15-page safety cap for 300+ row seasons). LIVE verified: BC E124/125 → 1080p+480p+360p menus + 12 subtitle langs (720p genuinely absent upstream), E118-123 → full 1080/720/480/360 ladder, E1 unchanged (1s). Subtitle tracks ride the same rid → deep episodes keep their Subtitles section",
   "removed": [
     "movies.js",
     "test_v218.js",
@@ -78,6 +78,7 @@
     "test_v256.js",
     "test_v257.js",
     "test_v259.js",
-    "test_v260.js"
+    "test_v260.js",
+    "test_v261.js"
   ]
 }

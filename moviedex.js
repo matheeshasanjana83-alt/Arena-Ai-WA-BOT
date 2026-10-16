@@ -50,6 +50,15 @@
  *             keeps the size). ③ separate phase timing logs (chunks / mux / re-encode) so
  *             the next "slow" report pinpoints the exact phase. NOTE: WhatsApp upload is
  *             NOT the bottleneck (53MB in ~6s measured); the DASH CDN download is.
+ *   v2.61 — DEEP EPISODES FIX (user screenshot: Black Clover E124/125 → "streams නෑ", E123
+ *             quality menu = 720p only, no 360p): the resource endpoint ignores se/ep and
+ *             serves rows ep-sorted 20/page — the fixed 6-page walk (120 rows) never saw
+ *             anything past ep ~#120, so every later episode had NO quality menu and mid-list
+ *             eps lost the 360p/1080p/480p rows living on page 7+. mbResourceItems now walks
+ *             until the response's totalCount is covered (hit → early-exit, 15-page safety
+ *             cap). LIVE verified: BC E124/125 → 360p menu (720p genuinely absent upstream),
+ *             E118-123 → 360p+720p+480p+1080p full ladder, E1 unchanged/fast. Subtitle
+ *             tracks ride the same rows (rid) → deep eps get their ▸ Subtitles section too.
  */
 const crypto = require('crypto');
 const fs = require('fs');
@@ -660,17 +669,25 @@ async function mbDirectUrl(sid, se, ep, rid) {
     return link;
 }
 
-/** resource items for (se,ep) across all resolutions · movies: se=0, ep=0 */
+/** resource items for (se,ep) across all resolutions · movies: se=0, ep=0
+ *  v2.61: the endpoint IGNORES se/ep server-side (rows sorted by ep, 20/page) — the old fixed
+ *  6-page walk (120 rows) never reached episodes past ~#120: quality menu → "streams නෑ", and
+ *  mid-list eps lost the 360p/1080p/480p rows living on page 7+ (Black Clover symptom: E123
+ *  showed only 720p, E124/125 nothing). Walk until the response's totalCount is covered —
+ *  hit → early-exit keeps early eps fast; MB_RES_PAGES caps pathological 300+ row seasons. */
+const MB_RES_PAGES = 15;   // 300 rows per resolution — beyond any season MovieBox indexes
 async function mbResourceItems(sid, se, ep) {
     const wantSe = Number(se || 0), wantEp = Number(ep || 0);
     const out = [];
     await Promise.all([1080, 720, 480, 360].map(async (r) => {
-        for (let page = 1; page <= 6; page++) {
+        for (let page = 1, total = 0; page <= MB_RES_PAGES; page++) {
             const j = await mbApi(`/wefeed-mobile-bff/subject-api/resource?subjectId=${sid}&se=${wantSe}&page=${page}&perPage=20&all=0&pagerMode=0&resolution=${r}`, undefined, 2).catch(() => null);   // perPage>20 → 400 "exceed limit"
             const items = (j?.data?.list) || [];
             const hit = items.filter(i => Number(i.se || 0) === wantSe && Number(i.ep || 0) === wantEp && Number(i.size || 0) > 0);
             if (hit.length) { out.push(...hit); return; }
             if (!items.length) return;
+            if (!total) total = Number(j?.data?.totalCount ?? j?.data?.pager?.totalCount ?? 0) || 0;   // server-side row count for this resolution
+            if (total && page * 20 >= total) return;   // every row covered — don't walk the trailing empty page
         }
     }));
     return out;
