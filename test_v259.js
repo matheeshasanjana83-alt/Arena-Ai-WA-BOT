@@ -5,7 +5,7 @@
  *  [2] REAL bot.onMessages E2E — usage msg (no link), wrong-site msg, routing order (tools/features/moviedex first)
  *  [3] universal .download path intact — local HTTP file → document sent (offline, no external network)
  *  [4] source pins — router wiring, HEAVY, DOWNLOAD menu lists all 5 commands, HELP, branded progress
- *  [5] version pins 2.59.0
+ *  [5] version pins (follows package.json — current at time of bump)
  */
 process.env.ARENA_NO_DELAY = '1'; process.env.ARENA_NO_REACT = '1';
 process.env.ARENA_RATE_MIN = '1000'; process.env.ARENA_RATE_HOUR = '10000';
@@ -130,9 +130,9 @@ const run = (m) => bot.onMessages({ messages: [m], type: 'notify' }, send, del);
 
     // ═══ [5] version pins ═══
     console.log('\n[5] version pins');
-    await ok('package.json 2.59.0', () => assert.strictEqual(require('./package.json').version, '2.59.0'));
-    await ok('manifest.json 2.59.0', () => assert.strictEqual(JSON.parse(fs.readFileSync('manifest.json')).version, '2.59.0'));
-    await ok('manifest notes mention the new commands', () => assert.ok(JSON.parse(fs.readFileSync('manifest.json')).notes.includes('.mediafire') && JSON.parse(fs.readFileSync('manifest.json')).notes.includes('.gdrive')));
+    await ok('package.json 2.60.0 (current)', () => assert.strictEqual(require('./package.json').version, '2.60.0'));
+    await ok('manifest.json 2.60.0 (current)', () => assert.strictEqual(JSON.parse(fs.readFileSync('manifest.json')).version, '2.60.0'));
+    await ok('manifest notes = current changelog', () => assert.ok(JSON.parse(fs.readFileSync('manifest.json')).notes.includes('v2.60.0')));
 
     // restore settings
     if (SET_BACK != null) fs.writeFileSync(SETF, SET_BACK); else fs.rmSync(SETF, { force: true });

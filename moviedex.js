@@ -692,6 +692,113 @@ async function mbDirectRows(sid, se, ep) {
     }));
 }
 
+/** v2.60 — MovieBox ext-captions (the app's own multi-language subtitle tracks).
+ *  GET get-ext-captions?subjectId&resourceId → data.extCaptions[{url,lan,lanName,size}]
+ *  Junk filters copied from MovieBox-Tui adapt.rs: deprecation-stub hash, ≤50-byte stubs,
+ *  lan=in tiny stubs, url dedupe. Pure parse split out for tests. */
+function parseCaptions(j) {
+    const caps = ((j?.data || {}).extCaptions) || j?.extCaptions || [];
+    const out = [], seen = new Set();
+    for (const c of caps) {
+        const url = String(c.url || '');
+        if (!url || url.includes('aa348f2541d13ffe') || seen.has(url)) continue;
+        const size = Number(c.size) || 0;
+        if (size > 0 && size <= 50) continue;
+        const lan = String(c.lan || '').trim().toLowerCase();
+        if (lan === 'in' && size <= 100) continue;
+        seen.add(url);
+        out.push({ lan, name: String(c.lanName || '').trim() || lan || 'Unknown', url, size });
+    }
+    return out;
+}
+
+async function mbCaptions(sid, rid, tries = 3) {
+    const j = await mbApi(`/wefeed-mobile-bff/subject-api/get-ext-captions?subjectId=${sid}&resourceId=${rid}`, undefined, tries);
+    return parseCaptions(j);
+}
+
+/** pretty label — native names for the common MovieBox lan codes (falls back to lanName) */
+const SUB_NATIVE = { si: 'සිංහල', en: 'English', ta: 'தமிழ்', hi: 'हिन्दी', bn: 'বাংলা', te: 'తెలుగు', ml: 'മലയാളം', kn: 'ಕನ್ನಡ', mr: 'मराठी', pa: 'ਪੰਜਾਬੀ', gu: 'ગુજરાતી', ur: 'اردو', ar: 'العربية', es: 'Español', fr: 'Français', pt: 'Português', ru: 'Русский', zh: '中文', ja: '日本語', ko: '한국어', th: 'ไทย', tr: 'Türkçe', de: 'Deutsch', it: 'Italiano', ms: 'Malay', fil: 'Filipino', tl: 'Filipino', id: 'Indonesia', in_id: 'Bahasa Indonesia', ne: 'नेपाली', my: 'မြန်မာ', vi: 'Tiếng Việt', fa: 'فارسی', pl: 'Polski', uk: 'Українська', nl: 'Nederlands' };
+function subLabel(sb) {
+    const code = sb.lan || (sb.name || '').slice(0, 4).toLowerCase();
+    const native = SUB_NATIVE[code] || sb.name || code;
+    return code ? `${code} (${native})` : (native || 'subtitle');
+}
+
+/** .srt filename — "Show S01E02 - si (සිංහල).srt" / "Title (2024) - en (English).srt" */
+function subFileName(show, sub, isEp, season, ep) {
+    const base = String(show || 'MovieDex').replace(/[\\/:*?"<>|.]/g, '').slice(0, 60);
+    const epTag = isEp ? ` S${String(season || 0).padStart(2, '0')}E${String(ep || 0).padStart(2, '0')}` : '';
+    const ext = /\.vtt(\?|$)/i.test(sub.url || '') ? 'vtt' : 'srt';
+    return `${base}${epTag} - ${subLabel(sub)}.${ext}`;
+}
+
+/** WebVTT → SRT (MovieBox serves some tracks as .vtt): WEBVTT/NOTE/STYLE/REGION blocks out,
+ *  stamps → HH:MM:SS,mmm (SRT form, short MM:SS.mmm padded), cue settings (align/line/…)
+ *  stripped, inline tags stripped, VTT cue-ids dropped and cues re-numbered 1..N. */
+function vttToSrt(vtt) {
+    const lines = String(vtt).replace(/^\uFEFF/, '').split(/\r?\n/);
+    const isTs = (l) => /^(\d{1,2}:)?\d{1,2}:\d{2}[.,]\d{1,3}\s*-->/.test(l);
+    const fixStamp = (t) => {
+        t = t.trim().replace(/\s+(?:align|line|position|size|vertical):[^\s]*/gi, '');
+        t = t.trim().replace(/[.,](\d{1,3})/, (_, ms) => ',' + String(ms).padEnd(3, '0').slice(0, 3));
+        if (/^\d{1,2}:\d{2},/.test(t)) t = '00:' + t;   // MM:SS,mmm → 00:MM:SS,mmm
+        return t;
+    };
+    const out = [];
+    let n = 0, inBlock = false;
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].replace(/<[^>]+>/g, '').trimEnd();
+        if (inBlock) { if (!line.trim()) inBlock = false; continue; }
+        if (/^WEBVTT/i.test(line) || /^(NOTE|STYLE|REGION)\b/i.test(line)) { inBlock = true; continue; }
+        if (isTs(line)) {
+            const [a, b] = line.split('-->');
+            out.push(++n, `${fixStamp(a)} --> ${fixStamp(b)}`);
+            continue;
+        }
+        if (/^\d+$/.test(line.trim())) {   // VTT cue-id — only a real id if the next non-empty line is a stamp
+            let j = i + 1; while (j < lines.length && !lines[j].trim()) j++;
+            if (j < lines.length && isTs(lines[j])) continue;
+        }
+        if (!line.trim()) { if (out.length && out[out.length - 1] !== '') out.push(''); continue; }
+        out.push(line);
+    }
+    return out.join('\n').replace(/\n{3,}/g, '\n\n').replace(/\n+$/, '\n').trim() + '\n';
+}
+
+/** sub row → WhatsApp document (tmp file path shape, same as the universal downloader) */
+async function deliverSub(send, jid, msg, show, sub, isEp, season, ep, linkMode, react) {
+    const status = await send(jid, { text: `🗨 ${subLabel(sub)} · subtitle download…` }, { quoted: msg });
+    const edit = async (t) => { try { await send(jid, { text: t, edit: status.key }); } catch { } };
+    try {
+        const r = await fetch(sub.url, { headers: { 'User-Agent': 'okhttp/4.12.0', Accept: '*/*' }, signal: AbortSignal.timeout(45000) });
+        if (!r.ok) { try { await r.body?.cancel(); } catch { } throw new Error('subtitle server එකෙන් HTTP ' + r.status); }
+        const buf = Buffer.from(await r.arrayBuffer());
+        if (!buf.length) throw new Error('subtitle file එක හිස්');
+        const head = buf.slice(0, 300).toString('utf8');
+        if (/^\s*(<!DOCTYPE|<html)/i.test(head)) throw new Error('subtitle link එක expire වෙලා');
+        const name = subFileName(show, sub, isEp, season, ep);
+        let body = buf, mime = 'application/x-subrip';
+        if (/^\uFEFF?\s*WEBVTT/.test(head)) { body = Buffer.from(vttToSrt(buf.toString('utf8')), 'utf8'); }
+        else if (/^\uFEFF?\s*<?\?xml|<tt\s/i.test(head)) { mime = 'application/ttml+xml'; }   // ttml — keep raw, player-side
+        if (linkMode) {
+            await edit(`🔗 *${name}*\n${sub.url}\n${foot(`${human(buf.length)} · ${subLabel(sub)} · direct link`)}`);
+            react?.('✅');
+            return;
+        }
+        const tmp = path.join(process.env.DL_TMP || os.tmpdir(), 'mdxsub-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6));
+        fs.writeFileSync(tmp, body);
+        try {
+            await send(jid, { document: { url: tmp }, fileName: name, mimetype: mime, caption: `🗨 *${cut(String(show || 'MovieDex'), 70)}*\n${foot(`${subLabel(sub)} · ${human(body.length)} · ${name.endsWith('.vtt') ? 'VTT' : 'SRT'}`)}` }, { quoted: msg });
+        } finally { try { fs.rmSync(tmp, { force: true }); } catch { } }
+        try { await send(jid, { delete: status.key }); } catch { }
+        react?.('✅');
+    } catch (e) {
+        react?.('❌');
+        await edit(`❌ ${cut(String(e.message || ''), 150)}\n> ටිකකින් ආයෙත් try · වෙන භාෂාවක්`);
+    }
+}
+
 /** legacy DASH rows + direct rows merged (direct wins per height) — the v2.46 menu source */
 async function combinedRows(sid, se, ep, streams) {
     const [dashRows, directRows] = await Promise.all([
@@ -885,7 +992,7 @@ function listText(q, list) {
         + `\n${DIV}\n${MV_FOOT}`;
 }
 
-function cardText(m, n, rows) {
+function cardText(m, n, rows, subs) {
     const desc = String(m.desc || '').trim().slice(0, 360) || '—';
     const out = [`🎬 *${m.name}*${m.year ? ` (${m.year})` : ''}`,
         DIV,
@@ -895,6 +1002,10 @@ function cardText(m, n, rows) {
     if (rows && rows.length) {
         out.push('▸ Download Options 🎬');
         rows.forEach((r, i) => out.push(`*${i + 1}* | 🎥 ${r.label}${r.sizeMB ? ' · ~' + fmtSize(r.sizeMB) : ''}`));
+        if (subs?.length) {
+            out.push('', '▸ Subtitles 👇');
+            subs.forEach((sb, i) => out.push(`*${rows.length + i + 1}* | 🗨 ${subLabel(sb)}`));
+        }
         out.push(DIV, MV_FOOT);
     } else {
         out.push('⚠️ මේ title එකට download streams නෑ', DIV, MV_FOOT);
@@ -902,8 +1013,8 @@ function cardText(m, n, rows) {
     return out.filter(Boolean).join('\n');
 }
 
-async function sendCard(send, jid, msg, m, n, rows) {
-    const text = cardText(m, n, rows);
+async function sendCard(send, jid, msg, m, n, rows, subs) {
+    const text = cardText(m, n, rows, subs);
     try {
         if (!m.poster) throw new Error('no poster');
         return await send(jid, { image: { url: m.poster }, caption: text.slice(0, 1000) }, { quoted: msg });
@@ -1078,10 +1189,16 @@ async function deliverStream(send, jid, msg, { st, qrow, fname, capTitle, capMet
     }
 }
 
-/** .moviedex <n> <q#> [link] → movie file — v2.30: card-time merged rows + fresh re-resolve */
-async function movieFileCmd(send, jid, msg, m, qi, cardRows, streams, linkMode, react) {
+/** .moviedex <n> <q#> [link] → movie file — v2.30: card-time merged rows + fresh re-resolve
+ *  v2.60: q# beyond the quality rows = subtitle pick → .srt document */
+async function movieFileCmd(send, jid, msg, m, qi, cardRows, streams, subs, linkMode, react) {
     const status = await send(jid, { text: `🎯 quality ${qi} · resolve…` }, { quoted: msg });
     const edit = async (t) => { try { await send(jid, { text: t, edit: status.key }); } catch { } };
+    if (subs?.length && qi > (cardRows || []).length && qi <= (cardRows || []).length + subs.length) {
+        const sb = subs[qi - (cardRows || []).length - 1];
+        try { await send(jid, { delete: status.key }); } catch { }
+        return deliverSub(send, jid, msg, m.name, sb, false, 0, 0, linkMode, react);
+    }
     const cardRow = (cardRows || [])[qi - 1];
     if (!cardRow) return edit(`❌ ${qi} — quality නෑ (1-${(cardRows || []).length || '?'})`);
     let qrow = cardRow;   // fresh dash beats cached; card row is the fallback
@@ -1098,11 +1215,31 @@ async function movieFileCmd(send, jid, msg, m, qi, cardRows, streams, linkMode, 
     });
 }
 
+/** v2.60 — episode quality menu text with an optional ▸ Subtitles section.
+ *  Numbering CONTINUES through the subs (quality 1-4 → subs 5+) — the same pick grammar
+ *  (.moviedex <n> <row> <q>) routes by index, so dispatch checks qi > qRows.length → sub. */
+function epOptText(show, row, qRows, subs) {
+    const out = [`🎬 *SELECT DOWNLOAD OPTION* — ${epLabel(row)}`, `📺 ${cut(show, 50)}`, '', DIV, '▸ Video Qualities 👇'];
+    (qRows || []).forEach((r, i) => out.push(`*${i + 1}* | 🎥 ${r.label}${r.sizeMB ? ' · ~' + fmtSize(r.sizeMB) : ''}`));
+    if (subs?.length) {
+        out.push('', '▸ Subtitles 👇');
+        subs.forEach((sb, i) => out.push(`*${(qRows || []).length + i + 1}* | 🗨 ${subLabel(sb)}`));
+    }
+    out.push(DIV, MV_FOOT);
+    return out.join('\n');
+}
+
 /** .moviedex <n> <row#> <q#> [link] → single episode file (qRows = the quality list shown on the card)
- *  v2.30: fresh play-info + merged rows at send time; chosen row (with its dash) goes straight in */
-async function episodeFileCmd(send, jid, msg, m, row, qi, qRows, linkMode, react) {
+ *  v2.30: fresh play-info + merged rows at send time; chosen row (with its dash) goes straight in
+ *  v2.60: q# beyond the quality rows = subtitle pick → .srt document (subs = the card's subtitle rows) */
+async function episodeFileCmd(send, jid, msg, m, row, qi, qRows, subs, linkMode, react) {
     const status = await send(jid, { text: `🎯 ${epLabel(row)} · resolve…` }, { quoted: msg });
     const edit = async (t) => { try { await send(jid, { text: t, edit: status.key }); } catch { } };
+    if (subs?.length && qi > (qRows || []).length && qi <= (qRows || []).length + subs.length) {
+        const sb = subs[qi - (qRows || []).length - 1];
+        try { await send(jid, { delete: status.key }); } catch { }   // resolve bubble not needed for a 30KB srt
+        return deliverSub(send, jid, msg, m.name, sb, true, row.season, row.ep, linkMode, react);
+    }
     const chosen = (qRows || [])[qi - 1];
     if (!chosen) return edit(`❌ ${qi} — quality නෑ (1-${(qRows || []).length || '?'})`);
     try {
@@ -1309,7 +1446,7 @@ async function handle(c, ctx) {
                 }
                 // episode row → quality list / file
                 if (pick[4] && isNum(pick[4])) {
-                    await episodeFileCmd(send, jid, msg, full, row, +pick[4], (s.tv[n].epQualities || {})[rowNo], linkMode, react);
+                    await episodeFileCmd(send, jid, msg, full, row, +pick[4], (s.tv[n].epQualities || {})[rowNo], (s.tv[n].epSubs || {})[rowNo], linkMode, react);
                     return true;
                 }
                 if (pick[4] && /^l/i.test(pick[4])) {
@@ -1328,10 +1465,15 @@ async function handle(c, ctx) {
                 const epErr = qRows.length ? '' : `❌ ${epLabel(row)} — streams නෑ\n> වෙන episode එකක් try`;
                 try { await send(jid, { delete: st.key }); } catch { }
                 if (epErr) return send(jid, { text: epErr }, { quoted: msg });   // v2.46: NEW msg — edit-after-delete = user silence bug
-                const optRows = [`🎬 *SELECT DOWNLOAD OPTION* — ${epLabel(row)}`, `📺 ${cut(full.name, 50)}`, '', DIV, '▸ Video Qualities 👇'];
-                qRows.forEach((r, i) => optRows.push(`*${i + 1}* | 🎥 ${r.label}${r.sizeMB ? ' · ~' + fmtSize(r.sizeMB) : ''}`));
-                optRows.push(DIV, MV_FOOT);
-                const sentOpt = await send(jid, { text: optRows.join('\n') }, { quoted: msg });
+                // 🆕 v2.60: subtitle tracks — rid comes from the direct rows we already probed (no extra resource call)
+                let subs = [];
+                try {
+                    const srid = qRows.find(r => r.direct)?.direct?.rid;
+                    if (srid) subs = await mbCaptions(full.sid, srid, 2).catch(() => []);
+                } catch { }
+                if (subs.length) console.log(`[moviedex] 🗨 ${epLabel(row)}: ${subs.length} subtitle tracks`);
+                (s.tv[n].epSubs ||= {})[rowNo] = subs;
+                const sentOpt = await send(jid, { text: epOptText(full.name, row, qRows, subs) }, { quoted: msg });
                 (s.tv[n].epQualities ||= {})[rowNo] = qRows;
                 setUi(s, sentOpt, 'ep', n, rowNo);
                 return true;
@@ -1345,10 +1487,10 @@ async function handle(c, ctx) {
         /* ── MOVIE flow ── */
         if (pick[3] && isNum(pick[3])) {
             const mv = s.mv?.[n];
-            if (!mv || !mv.streams?.length) {
+            if (!mv || (!mv.streams?.length && !(mv.qualities || []).length && !(mv.subs || []).length)) {
                 return send(jid, { text: `⏳ quality list load වෙලා නෑ — මුලින්ම *.moviedex ${n}* ගහන්න` }, { quoted: msg });
             }
-            await movieFileCmd(send, jid, msg, full, +pick[3], mv.qualities || [], mv.streams, linkMode, react);
+            await movieFileCmd(send, jid, msg, full, +pick[3], mv.qualities || [], mv.streams, mv.subs || [], linkMode, react);
             return true;
         }
         if (pick[4] || pick[5]) return send(jid, { text: `🔗 quality අංකය එකත් ඕනෙ — *.moviedex ${n} 1 link*` }, { quoted: msg });
@@ -1362,9 +1504,16 @@ async function handle(c, ctx) {
         let rows = [];
         try { rows = await combinedRows(full.sid, 0, 0, streams); } catch { }   // v2.46: direct rows (resource-position) + dash
         console.log(`[moviedex] 📺 movie probe done: ${rows.length} rows (${rows.filter(r => r.direct).length} direct) in ${Math.round((Date.now() - mp0) / 1000)}s`);
-        (s.mv ||= {})[n] = { streams, qualities: rows, at: Date.now() };
+        // 🆕 v2.60: subtitle tracks — rid from the direct rows we already probed
+        let subs = [];
+        try {
+            const srid = rows.find(r => r.direct)?.direct?.rid;
+            if (srid) subs = await mbCaptions(full.sid, srid, 2).catch(() => []);
+        } catch { }
+        if (subs.length) console.log(`[moviedex] 🗨 movie: ${subs.length} subtitle tracks`);
+        (s.mv ||= {})[n] = { streams, qualities: rows, subs, at: Date.now() };
         try { await send(jid, { delete: st.key }); } catch { }
-        const sent = await sendCard(send, jid, msg, full, n, rows);
+        const sent = await sendCard(send, jid, msg, full, n, rows, subs);
         setUi(s, sent, 'movie', n);
         return true;
     }
@@ -1391,4 +1540,4 @@ async function handle(c, ctx) {
     return true;
 }
 
-module.exports = { handle, bridgeReply, hasSession, setUi, mbSearch, mbDetails, mbSeasons, mbPlay, dashFrom, parseMpd, dashDownload, chunkCount, expandTpl, streamQualities, mergedQualities, downloadDash, transcode360, tvRows, listText, cardText, seriesText, sendSeriesCard, seasonOptText, epFileName, epCaption, packStat, mbDirectRows, mbDirectUrl, combinedRows, directDownload, mbRegisterAccount, __deliver: deliverStream, _sessions: sessions, _testSession: (jid, s) => sessions.set(jid, s) };
+module.exports = { handle, bridgeReply, hasSession, setUi, mbSearch, mbDetails, mbSeasons, mbPlay, dashFrom, parseMpd, dashDownload, chunkCount, expandTpl, streamQualities, mergedQualities, downloadDash, transcode360, tvRows, listText, cardText, seriesText, sendSeriesCard, seasonOptText, epFileName, epCaption, packStat, mbDirectRows, mbDirectUrl, combinedRows, directDownload, mbRegisterAccount, mbCaptions, parseCaptions, subLabel, subFileName, vttToSrt, deliverSub, __deliver: deliverStream, _sessions: sessions, _testSession: (jid, s) => sessions.set(jid, s) };

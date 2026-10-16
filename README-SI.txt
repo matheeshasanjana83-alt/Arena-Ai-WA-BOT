@@ -26,6 +26,17 @@ litterbox/catbox, x0.at, transfer.archivete.am, filebin, eporner (v2.17). (gofil
 
 🔒 Private: ඔයා යවන messages විතරයි. වෙන අය commands යැව්වත් ignore.
 
+v2.60.0 — 🗨 MOVIEDEX SUBTITLES (quality menu එකෙන්ම)
+  • Episode + movie quality menus වල දැන් ▸ Subtitles section එකක් — MovieBox එකේම multi-language
+    .srt tracks (Black Clover S1E1 = 14 භාෂා · Deadpool = 14 · en/bn/ar/es/fil/fr/hi/in_id/ms/pa/pt/ru/ur/zh…)
+  • Numbering එක qualities වලින් පස්සේ continue වෙනවා (qualities 1-4 → subtitles 5..N) — reply කරපු
+    number එක subtitle එකක් නම් → .srt document එකක් විදියට එවනවා
+  • File name: "Black Clover S01E01 - si (සිංහල).srt" shape · VTT tracks auto-convert වෙනවා SRT එකට
+  • <q#> link suffix → subtitle එකේ direct URL එක (file එකක් නෙවෙයි)
+  • API එකේ subtitles නැති titles වලට section එකම නෑ — menu එක පරණ විදියටම
+  • Tests: test_v260 34/34 · v259 37/37 · v241 75/75 · v256 95/95 · v257 32/32 · quote-only 19/19 ·
+    bridge 17/17 · menu-full 45/45
+
 v2.59.0 — 📥 NEW DOWNLOAD COMMANDS (mediafire/mega/gdrive/video/song)
   • අලුත් site-locked download commands: .mediafire <link> (🔥 MediaFire) · .mega <link> (🟢 MEGA) ·
     .gdrive <link> (🔵 Google Drive) — හැම එකක්ම තමන්ගේ site එකේ links වලට විතරයි

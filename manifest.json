@@ -1,6 +1,6 @@
 {
-  "version": "2.59.0",
-  "notes": "v2.59.0: NEW DOWNLOAD COMMANDS — .mediafire <link> (🔥 MediaFire), .mega <link> (🟢 MEGA), .gdrive <link> (🔵 Google Drive) — site-locked (වැරදි link එකක් දැම්මොත් හරි site එක කියලා කියනවා) + .video (yt) / .song (yt) DOWNLOAD menu එකට add කළා. Site-locked commands වල progress bubble එකේ site name එක පේනවා. .download universal command එකම වැඩ (ඕනෑම site එකක්)",
+  "version": "2.60.0",
+  "notes": "v2.60.0: MOVIEDEX SUBTITLES — episode + movie quality menus now show a ▸ Subtitles section (MovieBox get-ext-captions: the app's own multi-language .srt tracks — Black Clover S1E1 = 14 langs, Deadpool = 14). Numbering continues past the quality rows (4 qualities → subs 5..N) — the same reply grammar picks a subtitle: reply number → .srt document sent (VTT auto-converted to SRT, 'Show S01E01 - si (සිංහල).srt' naming) · '<q#> link' suffix → direct subtitle URL. No subs in the API → no section (menu unchanged). Season packs skipped",
   "removed": [
     "movies.js",
     "test_v218.js",
@@ -77,6 +77,7 @@
     "test_v253.js",
     "test_v256.js",
     "test_v257.js",
-    "test_v259.js"
+    "test_v259.js",
+    "test_v260.js"
   ]
 }

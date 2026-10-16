@@ -20,8 +20,8 @@ const ok = (name, cond) => { if (cond) { pass++; console.log('  ✅ ' + name); }
 (async () => {
     console.log('— versions —');
     const pkg = require('./package.json'), man = require('./manifest.json');
-    ok('01 pkg 2.56.0', /^2\.5[6-9]\./.test(pkg.version));
-    ok('02 manifest 2.56.0', /^2\.5[6-9]\./.test(man.version));
+    ok('01 pkg 2.60.0', /^2\.6[0-9]\./.test(pkg.version));
+    ok('02 manifest 2.60.0', /^2\.6[0-9]\./.test(man.version));
     ok('03 manifest files += test_v256', man.files.includes('test_v256.js'));
     ok('04 manifest removed test_v255', (man.removed || []).includes('test_v255.js'));
 
