@@ -1,6 +1,6 @@
 {
-  "version": "2.61.0",
-  "notes": "v2.61.0: MOVIEDEX DEEP EPISODES FIX — the resource endpoint ignores se/ep and serves rows ep-sorted 20/page; the old fixed 6-page walk (120 rows) never reached episodes past ~#120 (Black Clover: E124/125 → streams නෑ, E123 → 720p only, no 360p). mbResourceItems now walks until the response totalCount is covered (hit → early-exit keeps early eps at 1 request/resolution; 15-page safety cap for 300+ row seasons). LIVE verified: BC E124/125 → 1080p+480p+360p menus + 12 subtitle langs (720p genuinely absent upstream), E118-123 → full 1080/720/480/360 ladder, E1 unchanged (1s). Subtitle tracks ride the same rid → deep episodes keep their Subtitles section",
+  "version": "2.62.0",
+  "notes": "v2.62.0: MOVIEDEX EPISODE NUMBERS + REAL SIZES (user screenshots: reply 123 opened Episode 122, every quality showed ~1 MB). OFF-BY-ONE: tvRows put the season-pack row FIRST so it stole pick #1 — every episode sat at pick N+1; now EPISODES FIRST (pick N = episode N on single-season shows, verified live shape BC 170+2) and each season pack row takes the number AFTER its episodes (BC pack = 171). REAL SIZES: the resource LIST size field went junk (~0.8MB identical preview byte-count on every row, verified live E1 1080p == E1 360p == 824720) — mbDirectRows now fetches the EXACT per-row size from resource-position/v2 (the download-time endpoint; E122 720p = 94475173 = 90.1MB) with a 10-min rid cache, and junk fallbacks are guarded out (bitrate <100kbps or <2MB → hidden instead of a fake ~1 MB). Season-pack maxMB guard works again with real sizes. Menus, subtitles (same rid), season packs all inherit via the single mbDirectRows choke point",
   "removed": [
     "movies.js",
     "test_v218.js",
@@ -79,6 +79,7 @@
     "test_v257.js",
     "test_v259.js",
     "test_v260.js",
-    "test_v261.js"
+    "test_v261.js",
+    "test_v262.js"
   ]
 }

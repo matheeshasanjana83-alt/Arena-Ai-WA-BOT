@@ -118,7 +118,7 @@ const FAKE_CAPS = {
     await mdx.handle('.moviedex', ctx(J1));   // c = the command word — rest carries the picks (same as the bot router)
     const doc = SENT.find(x => x.content?.document);
     await ok('series: q3 (past 2 qualities) → subtitle document', () => assert.ok(!!doc, 'sent=' + SENT.length + ' types=' + SENT.map(x => Object.keys(x.content)[0]).join(',')));
-    await ok('document name = Black Clover S01E01 - si (සිංහල).srt', () => assert.strictEqual(doc?.content?.fileName, 'Black Clover S01E01 - si (සිංහල).srt'));
+    await ok('document name = Black Clover S01E02 - si (සිංහල).srt (v2.62: row 2 = E2 — episodes first)', () => assert.strictEqual(doc?.content?.fileName, 'Black Clover S01E02 - si (සිංහල).srt'));
     await ok('caption has language label', () => assert.ok(/si \(සිංහල\)/.test(String(doc?.content?.caption || ''))));
     await ok('resolve bubble deleted after doc (file speaks)', () => assert.ok(!!SENT[SENT.length - 1]?.content?.delete));
 
@@ -153,8 +153,8 @@ const FAKE_CAPS = {
     srv.close();
 
     console.log('\n[6] version pins');
-    await ok('package.json 2.61.0', () => assert.strictEqual(require('./package.json').version, '2.61.0'));
-    await ok('manifest.json 2.61.0 + notes mention subtitles/deep-episodes', () => { const m = JSON.parse(fs.readFileSync('manifest.json')); assert.strictEqual(m.version, '2.61.0'); assert.ok(/SUBTITLES|DEEP EPISODES/i.test(m.notes)); });
+    await ok('package.json 2.62.0', () => assert.strictEqual(require('./package.json').version, '2.62.0'));
+    await ok('manifest.json 2.62.0 + notes mention subtitles/deep-episodes', () => { const m = JSON.parse(fs.readFileSync('manifest.json')); assert.strictEqual(m.version, '2.62.0'); assert.ok(/SUBTITLES|DEEP EPISODES/i.test(m.notes)); });
     await ok('moviedex.js exports subtitle helpers', () => ['mbCaptions', 'parseCaptions', 'subLabel', 'subFileName', 'vttToSrt', 'deliverSub'].every(k => assert.ok(fs.readFileSync('moviedex.js', 'utf8').includes(k + ',') || fs.readFileSync('moviedex.js', 'utf8').includes(' ' + k + ','), k)));
 
     console.log(`\n═══ v2.60 moviedex subtitles: ${pass} passed, ${fail} failed ═══`);

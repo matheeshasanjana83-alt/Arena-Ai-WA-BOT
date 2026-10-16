@@ -26,6 +26,19 @@ litterbox/catbox, x0.at, transfer.archivete.am, filebin, eporner (v2.17). (gofil
 
 🔒 Private: ඔයා යවන messages විතරයි. වෙන අය commands යැව්වත් ignore.
 
+v2.62.0 — 🔢 EPISODE NUMBERS FIX + 💾 REAL SIZES
+  • Episode අංකය ගහපුවම දැන් හරි episode එකම එනවා — "123" reply කළාම Season 1 Episode 123
+    (කලින් Episode 122 වෙනවා — season pack row එක අංක 1 ගත්ත නිසා හැම episode එකක්ම 1කින් පස්සට
+    තිබුණා). දැන් menu එකේ අංකය = episode අංකය (single-season shows)
+  • 📦 Season pack row එක episodes ඉවර වුණාට පස්සේ යනවා (BC: pack = 171) — pack එකට ඒ අංකය reply කරන්න
+  • Quality sizes දැන් ඇත්ත sizes — කලින් හැම එකක්ම "~1 MB" පෙන්නුවේ MovieBox API එක size field එක
+    junk කරලා නිසා (හැම row එකක්ම 0.8MB preview size එක). දැන් resource-position/v2 එකෙන් exact
+    size එක ගන්නවා (BC E122 720p = ~90 MB) — 10-min cache එකකුත් තියෙනවා
+  • Junk size එකක් ආවොත් size එක hide කරනවා (බොරු "~1 MB" කියන්නේ නෑ) — season pack maxMB guard
+    එකත් දැන් ඇත්ත sizes වලින් වැඩ කරනවා
+  • Tests: test_v262 28/28 · v261 21/21 · v260 34/34 · menu-full 49/49 (+ v241/v243/v244/v245/v246/
+    v256/v257/v259 · quote-only · bridge · test.js baseline)
+
 v2.61.0 — 🎬 MOVIEDEX DEEP EPISODES FIX (118+ පස්සෙ episodes)
   • Episode 118ට පස්සේ ඒවාටත් දැන් quality menu එක එනවා (කලින් "streams නෑ" වෙනවා —
     Black Clover E124/E125 වගේ)

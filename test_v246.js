@@ -77,7 +77,7 @@ ok(mv.includes('if (epErr) return send(jid, { text: epErr }, { quoted: msg });')
 ok(mv.includes('if (seasonErr) return send(jid, { text: seasonErr }, { quoted: msg });'), 'season probe: NEW msg (silence fix)');
 
 console.log('── exports + regressions ──');
-ok(mv.includes('mbDirectRows, mbDirectUrl, combinedRows, directDownload, mbRegisterAccount,'), 'new exports');
+ok(mv.includes('mbDirectRows, mbDirectUrl, mbPositionSize, mbSizePlausible, MB_POS_SIZE, combinedRows, directDownload, mbRegisterAccount,'), 'new exports (v2.62: position-size helpers added after mbDirectUrl)');
 ok(bot.includes("parseInt(process.env.ARENA_TEXT_TIMEOUT || '60000', 10)"), 'R: v2.45 text send timeout');
 ok(bot.includes('Math.min(20 * 60e3, 180e3 + Math.round(sz / 1.5 / 1048576 * 1000))'), 'R: v2.43 size-aware media timeout');
 ok(bot.includes('/logs?key='), 'R: v2.43 /logs route');

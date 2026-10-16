@@ -62,6 +62,13 @@ globalThis.fetch = async (url, opts) => {
         return Response.json({ code: 0, data: { list, totalCount } });
     }
     if (u.includes('/subject-api/play-info/v2?')) return Response.json({ code: 0, data: { streams: [] } });   // legacy DASH dead — same as live
+    if (u.includes('/subject-api/resource-position/v2?')) {   // v2.62: per-row exact-size call (rid R<res>E<ep> → res*90 MB)
+        const q = new URL(u);
+        const rid = String(q.searchParams.get('resourceId') || '');
+        const mres = /^R(\d+)E\d+$/.exec(rid);
+        const bytes = mres ? Number(mres[1]) * 90 * 1000 * 1000 : 0;
+        return Response.json({ code: 0, data: { list: [{ resourceId: rid, size: String(bytes), resolution: mres ? Number(mres[1]) : 0 }] } });
+    }
     if (u.includes('/subject-api/get-ext-captions?')) {
         return Response.json({ code: 0, data: { extCaptions: [
             { url: 'https://x/en.srt', lan: 'en', lanName: 'English', size: 24000 },
@@ -122,9 +129,9 @@ const mk = (text) => ({ key: { remoteJid: SELF, fromMe: true, id: 'm' + (++N) + 
         tv: { 1: { at: Date.now(), seasons: [{ se: 1, maxEp: 170 }] } },
         mv: {}, at: Date.now(),
     });
-    // row 125 = Season 1 Episode 124 (row 1 = season, ep N = row N+1)
+    // row 124 = Season 1 Episode 124 (v2.62: pick N = E N — episodes first, pack row last)
     SENT.length = 0;
-    await mdx.handle('.moviedex', { send, jid: J1, msg: mk('.moviedex 1 125'), rest: ['1', '125'], react: () => { } });
+    await mdx.handle('.moviedex', { send, jid: J1, msg: mk('.moviedex 1 124'), rest: ['1', '124'], react: () => { } });
     await ok('E124 menu arrives (no more "streams නෑ")', () => assert.ok(/SELECT DOWNLOAD OPTION.*Episode 124/s.test(lastText()), lastText().slice(0, 80)));
     await ok('E124 menu shows 360p', () => assert.ok(/360p/.test(lastText())));
     await ok('E124 menu carries the ▸ Subtitles section (rid resolved from deep rows)', () => assert.ok(/Subtitles/.test(lastText()) && /en \(English\)/.test(lastText())));
@@ -135,13 +142,13 @@ const mk = (text) => ({ key: { remoteJid: SELF, fromMe: true, id: 'm' + (++N) + 
     });
 
     SENT.length = 0;
-    await mdx.handle('.moviedex', { send, jid: J1, msg: mk('.moviedex 1 124'), rest: ['1', '124'], react: () => { } });
+    await mdx.handle('.moviedex', { send, jid: J1, msg: mk('.moviedex 1 123'), rest: ['1', '123'], react: () => { } });
     await ok('E123 menu now shows BOTH 720p AND 360p (was 720p only)', () => { assert.ok(/720p/.test(lastText()) && /360p/.test(lastText()), lastText().slice(0, 90)); });
     await ok('E123 menu shows the full 1080 ladder too', () => assert.ok(/1080p/.test(lastText())));
 
     console.log('\n[7] version pins');
-    await ok('package.json 2.61.0', () => assert.strictEqual(require('./package.json').version, '2.61.0'));
-    await ok('manifest.json 2.61.0 + notes mention deep episodes', () => { const m = JSON.parse(fs.readFileSync('manifest.json')); assert.strictEqual(m.version, '2.61.0'); assert.ok(/DEEP EPISODES/i.test(m.notes)); });
+    await ok('package.json 2.62.0', () => assert.strictEqual(require('./package.json').version, '2.62.0'));
+    await ok('manifest.json 2.62.0 + notes mention deep episodes', () => { const m = JSON.parse(fs.readFileSync('manifest.json')); assert.strictEqual(m.version, '2.62.0'); assert.ok(/DEEP EPISODES|EPISODE NUMBERS|REAL SIZES|SUBTITLES/i.test(m.notes)); });
     await ok('moviedex.js pins: MB_RES_PAGES + totalCount walk present, old page<=6 gone', () => {
         const src = fs.readFileSync('moviedex.js', 'utf8');
         assert.ok(src.includes('MB_RES_PAGES = 15'));
@@ -151,6 +158,6 @@ const mk = (text) => ({ key: { remoteJid: SELF, fromMe: true, id: 'm' + (++N) + 
     await ok('manifest files list includes test_v261.js', () => assert.ok(JSON.parse(fs.readFileSync('manifest.json')).files.includes('test_v261.js')));
 
     globalThis.fetch = _origFetch;
-    console.log(`\n═══ v2.61 deep episodes: ${pass} passed, ${fail} failed ═══`);
+    console.log(`\n═══ v2.61→62 deep episodes: ${pass} passed, ${fail} failed ═══`);
     process.exit(fail ? 1 : 0);
 })().catch(e => { console.error(e); globalThis.fetch = _origFetch; process.exit(1); });

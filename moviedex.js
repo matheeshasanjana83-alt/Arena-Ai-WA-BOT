@@ -693,8 +693,34 @@ async function mbResourceItems(sid, se, ep) {
     return out;
 }
 
+/** v2.62 — EXACT file size for one resource row, from resource-position/v2 (the same call the
+ *  download path makes). The resource LIST's `size` field went junk ~2026-10: every row reports
+ *  the same ~0.8MB preview byte-count (verified live: E1 1080p == E1 360p == "824720"), so menus
+ *  showed "~1 MB" on every quality. The position response's list[0].size is the real mp4 size
+ *  (E122 720p → 94475173 = 94.5MB). Small rid→bytes cache: menu probe + send-time re-resolve of
+ *  the SAME episode hit it, cutting the double fetch. */
+const MB_POS_SIZE = new Map();   // rid → { bytes, at }
+async function mbPositionSize(sid, rid, tries = 2) {
+    const c = MB_POS_SIZE.get(String(rid));
+    if (c && Date.now() - c.at < 10 * 60e3) return c.bytes;
+    const j = await mbApi(`/wefeed-mobile-bff/subject-api/resource-position/v2?subjectId=${sid}&resourceId=${rid}&failUrl=&failCode=&resourceNum=1&isVip=false`, undefined, tries);
+    const bytes = Number((((j.data || {}).list) || [])[0]?.size || 0) || 0;
+    if (bytes > 0) { MB_POS_SIZE.set(String(rid), { bytes, at: Date.now() }); if (MB_POS_SIZE.size > 500) MB_POS_SIZE.clear(); }
+    return bytes;
+}
+
+/** junk list-size guard — a real video never dips under ~100kbps or ~2MB; the preview
+ *  byte-count does (824720 B over 1434 s = 4.6 kbps). Only used when position/v2 failed. */
+function mbSizePlausible(sizeMB, durSec) {
+    if (!sizeMB || sizeMB <= 0) return false;
+    if (sizeMB < 2) return false;
+    if (durSec > 0 && (sizeMB * 1048576 * 8) / durSec < 100e3) return false;
+    return true;
+}
+
 /** v2.46 — quality rows from the registered-user resource path (REAL mp4 per resolution).
- *  row.direct = { sid, se, ep, rid, codec } — the signed URL is resolved FRESH at download time. */
+ *  row.direct = { sid, se, ep, rid, codec } — the signed URL is resolved FRESH at download time.
+ *  v2.62: sizes come from resource-position/v2 (exact); junk list sizes are guarded out. */
 async function mbDirectRows(sid, se, ep) {
     const items = await mbResourceItems(sid, se, ep);
     const byRes = new Map();
@@ -703,10 +729,19 @@ async function mbDirectRows(sid, se, ep) {
         if (!r || it.vipInfo?.requireMemberType === 1) continue;   // VIP-locked → honest skip (preview files are not the episode)
         if (!byRes.has(r)) byRes.set(r, it);
     }
-    return [...byRes.entries()].sort((a, b) => b[0] - a[0]).map(([r, it]) => ({
+    const rows = [...byRes.entries()].sort((a, b) => b[0] - a[0]).map(([r, it]) => ({
         h: r, bw: 0, label: `${r}p`, sizeMB: Math.round((Number(it.size) || 0) / 1048576),
+        durSec: Number(it.duration) || 0,
         transcode: false, direct: { sid, se: Number(se || 0), ep: Number(ep || 0), rid: String(it.resourceId), codec: String(it.codecName || '') },
     }));
+    await Promise.all(rows.map(async (row) => {
+        try {
+            const bytes = await mbPositionSize(sid, row.direct.rid);
+            if (bytes > 0) { row.sizeMB = Math.round(bytes / 1048576); return; }
+        } catch { }
+        if (!mbSizePlausible(row.sizeMB, row.durSec)) row.sizeMB = 0;   // junk → hide (honest menu beats a fake "~1 MB")
+    }));
+    return rows;
 }
 
 /** v2.60 — MovieBox ext-captions (the app's own multi-language subtitle tracks).
@@ -1040,12 +1075,16 @@ async function sendCard(send, jid, msg, m, n, rows, subs) {
     }
 }
 
-/** session rows for a series: 📦 season rows interleaved with episode rows */
+/** session rows for a series — v2.62: EPISODES FIRST, each season's 📦 pack row LAST.
+ *  User bug (2026-10-16 screenshots): reply "123" opened Season 1 Episode 122 — the old
+ *  pack-first order made the pack row steal pick #1, so every episode sat at pick N+1
+ *  (menu printed "*123* E122"). With eps first, pick N = episode N on single-season shows
+ *  (the reply grammar is unchanged — bridgeReply forwards the printed numbers verbatim). */
 function tvRows(seasons) {
     const rows = [];
     for (const se of seasons) {
-        rows.push({ kind: 'season', season: se.se, maxEp: se.maxEp });
         for (let e = 1; e <= se.maxEp; e++) rows.push({ kind: 'ep', season: se.se, ep: e });
+        rows.push({ kind: 'season', season: se.se, maxEp: se.maxEp });
     }
     return rows;
 }
@@ -1557,4 +1596,4 @@ async function handle(c, ctx) {
     return true;
 }
 
-module.exports = { handle, bridgeReply, hasSession, setUi, mbSearch, mbDetails, mbSeasons, mbPlay, dashFrom, parseMpd, dashDownload, chunkCount, expandTpl, streamQualities, mergedQualities, downloadDash, transcode360, tvRows, listText, cardText, seriesText, sendSeriesCard, seasonOptText, epFileName, epCaption, packStat, mbDirectRows, mbDirectUrl, combinedRows, directDownload, mbRegisterAccount, mbCaptions, parseCaptions, subLabel, subFileName, vttToSrt, deliverSub, __deliver: deliverStream, _sessions: sessions, _testSession: (jid, s) => sessions.set(jid, s) };
+module.exports = { handle, bridgeReply, hasSession, setUi, mbSearch, mbDetails, mbSeasons, mbPlay, dashFrom, parseMpd, dashDownload, chunkCount, expandTpl, streamQualities, mergedQualities, downloadDash, transcode360, tvRows, listText, cardText, seriesText, sendSeriesCard, seasonOptText, epFileName, epCaption, packStat, mbDirectRows, mbDirectUrl, mbPositionSize, mbSizePlausible, MB_POS_SIZE, combinedRows, directDownload, mbRegisterAccount, mbCaptions, parseCaptions, subLabel, subFileName, vttToSrt, deliverSub, __deliver: deliverStream, _sessions: sessions, _testSession: (jid, s) => sessions.set(jid, s) };
