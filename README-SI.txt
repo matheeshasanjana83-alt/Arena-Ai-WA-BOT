@@ -26,6 +26,13 @@ litterbox/catbox, x0.at, transfer.archivete.am, filebin, eporner (v2.17). (gofil
 
 🔒 Private: ඔයා යවන messages විතරයි. වෙන අය commands යැව්වත් ignore.
 
+v2.63.0 — 🛡️ MOVIEDEX REGION-BLOCK FIX (406)
+  • ".mdx" එකෙන් "MovieBox API fail: HTTP 406 Not Acceptable" ආවේ MovieBox එක server එකේ
+    datacenter IP එක block කරලා නිසා (406 "find no content" — login වැඩ, search වැඩ නෑ)
+  • Fix: MovieBox API calls දැන් direct fail උනොත් bot එකේම proxy pool එකෙන් auto route වෙනවා —
+    වැඩ කරන proxy එකක් STICKY විදියට තියාගන්නවා, direct ආයෙත් 30 min පස්සේ try කරලා බලනවා
+  • Login/registration එකත් ඒම path එකෙන්ම යනවා — CDN downloads direct ම (වේගයට බාධාවක් නෑ)
+  • pairsite /diag endpoint එකක් — MovieBox connectivity panel-side පරීක්ෂා කරන්න
 v2.62.0 — 🔢 EPISODE NUMBERS FIX + 💾 REAL SIZES
   • Episode අංකය ගහපුවම දැන් හරි episode එකම එනවා — "123" reply කළාම Season 1 Episode 123
     (කලින් Episode 122 වෙනවා — season pack row එක අංක 1 ගත්ත නිසා හැම episode එකක්ම 1කින් පස්සට

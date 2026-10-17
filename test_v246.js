@@ -41,7 +41,7 @@ ok(mv.includes('if (!tokenUsable(mbUserToken)) scheduleMbRegister('), 'boot-time
 ok(mv.includes('delete _vh.Authorization'), 'visitor-login anonymous');
 ok(mv.includes('mbAuthFailAt = Date.now(); mbUserToken'), 'auth-fail window + token wipe');
 ok(mv.includes('mbAuthFailAt = 0;'), 'auth-fail window reset on success');
-ok(/HTTP 441\|HTTP 401\|HTTP 406/.test(mv), '406 in auth-fail regex');
+ok(/HTTP 441\|HTTP 401/.test(mv) && !/HTTP 441\|HTTP 401\|HTTP 406/.test(mv), '406 OUT of auth-fail regex (v2.63: 406 = region-block, not auth)');
 ok(mv.includes('function mbPickToken'), 'mbPickToken (registered → bootstrap → visitor)');
 
 console.log('── direct-MP4 path ──');

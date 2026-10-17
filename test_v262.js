@@ -163,8 +163,8 @@ const mk = (text) => ({ key: { remoteJid: SELF, fromMe: true, id: 'm' + (++N) + 
     });
 
     console.log('\n[6] version + source pins');
-    await ok('package.json 2.62.0', () => assert.strictEqual(require('./package.json').version, '2.62.0'));
-    await ok('manifest.json 2.62.0 + notes mention episode numbers / real sizes', () => { const m = JSON.parse(fs.readFileSync('manifest.json')); assert.strictEqual(m.version, '2.62.0'); assert.ok(/EPISODE NUMBERS|REAL SIZES/i.test(m.notes)); });
+    await ok('package.json 2.63.0', () => assert.strictEqual(require('./package.json').version, '2.63.0'));
+    await ok('manifest.json 2.63.0 + notes mention episode numbers / real sizes', () => { const m = JSON.parse(fs.readFileSync('manifest.json')); assert.strictEqual(m.version, '2.63.0'); assert.ok(/EPISODE NUMBERS|REAL SIZES/i.test(m.notes)); });
     await ok('moviedex.js pins: episodes-first tvRows + position-size helpers present', () => {
         const src = fs.readFileSync('moviedex.js', 'utf8');
         assert.ok(src.includes('function mbPositionSize'));

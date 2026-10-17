@@ -1,6 +1,6 @@
 {
-  "version": "2.62.0",
-  "notes": "v2.62.0: MOVIEDEX EPISODE NUMBERS + REAL SIZES (user screenshots: reply 123 opened Episode 122, every quality showed ~1 MB). OFF-BY-ONE: tvRows put the season-pack row FIRST so it stole pick #1 — every episode sat at pick N+1; now EPISODES FIRST (pick N = episode N on single-season shows, verified live shape BC 170+2) and each season pack row takes the number AFTER its episodes (BC pack = 171). REAL SIZES: the resource LIST size field went junk (~0.8MB identical preview byte-count on every row, verified live E1 1080p == E1 360p == 824720) — mbDirectRows now fetches the EXACT per-row size from resource-position/v2 (the download-time endpoint; E122 720p = 94475173 = 90.1MB) with a 10-min rid cache, and junk fallbacks are guarded out (bitrate <100kbps or <2MB → hidden instead of a fake ~1 MB). Season-pack maxMB guard works again with real sizes. Menus, subtitles (same rid), season packs all inherit via the single mbDirectRows choke point",
+  "version": "2.63.0",
+  "notes": "v2.63.0: MOVIEDEX REGION-BLOCK FIX \u2014 '.mdx' \u2192 'MovieBox API fail: HTTP 406 Not Acceptable'. MovieBox soft-blocked the server's datacenter IP: every subject-api call answered 406 'find no content' while login still worked and the SAME call through a residential proxy worked (proven via pairsite /diag A/B). mbApi now runs a dispatcher plan [direct \u2192 proxy-pool \u00d73], keeps a STICKY working proxy, re-probes direct after a 30-min cooldown, and logins/registration ride the same path. New pairsite /diag MovieBox diagnostics endpoint (pair-key gated). Earlier features (DEEP EPISODES, EPISODE NUMBERS, REAL SIZES, SUBTITLES, season packs) unchanged.",
   "removed": [
     "movies.js",
     "test_v218.js",
@@ -80,6 +80,7 @@
     "test_v259.js",
     "test_v260.js",
     "test_v261.js",
-    "test_v262.js"
+    "test_v262.js",
+    "test_v263.js"
   ]
 }

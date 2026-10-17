@@ -251,6 +251,87 @@ function start(deps) {
                 else d.log && d.log(`🌐 pairsite: ${out.error}`);
                 return json(r, out.ok ? 200 : 400, out);
             }
+            if (url.pathname === '/diag') {   // 🩺 v2.63: MovieBox remote diagnostics (pair-key gated — runs INSIDE the panel network)
+                if (String(url.searchParams.get('key') || '') !== String(KEY)) return json(r, 403, { ok: false, error: 'wrong key' });
+                const out = { at: new Date().toISOString(), node: process.version };
+                // ① panel egress identity (IP + ASN/geo)
+                out.egress = {};
+                for (const svc of ['https://api.ipify.org?format=json', 'https://ipinfo.io/json']) {
+                    const k = svc.includes('ipify') ? 'ip' : 'info';
+                    try { out.egress[k] = await (await fetch(svc, { signal: AbortSignal.timeout(8000) })).json(); }
+                    catch (e) { out.egress[k] = String(e.message).slice(0, 60); }
+                }
+                // ② proxy pool state
+                try { out.pool = require('./proxypool').stats(); } catch (e) { out.pool = { err: String(e.message).slice(0, 60) }; }
+                // ③ per-host visitor-login probe (fresh identity each — is the edge blocking us per-host?)
+                const mv = require('./moviedex');
+                out.hosts = [];
+                for (const host of mv.MB_HOSTS) {
+                    const h = host.replace('https://', '');
+                    try {
+                        mv.mbIdentity();
+                        const u = host + '/wefeed-mobile-bff/user-api/visitor-login';
+                        const t0 = Date.now();
+                        const rr = await fetch(u, { method: 'POST', headers: mv.mbHeaders('POST', u, '{}'), body: '{}', signal: AbortSignal.timeout(10000) });
+                        const tt = await rr.text().catch(() => '');
+                        out.hosts.push({ h, s: rr.status, tok: rr.ok && tt.includes('"token"'), ms: Date.now() - t0 });
+                    } catch (e) { out.hosts.push({ h, err: String(e.message).slice(0, 60) }); }
+                }
+                // ④ fresh login + RAW search (the exact call that 406s for users)
+                try {
+                    out.login = { ok: await mv.mbLogin(2) };
+                    if (out.login.ok) {
+                        const u = mv.MB_HOSTS[0] + '/wefeed-mobile-bff/subject-api/search/v2';
+                        const body = JSON.stringify({ keyword: 'black clover', page: 1, perPage: 20, subjectType: 0 });
+                        const t0 = Date.now();
+                        const rr = await fetch(u, { method: 'POST', headers: mv.mbHeaders('POST', u, body), body, signal: AbortSignal.timeout(15000) });
+                        const tt = await rr.text().catch(() => '');
+                        out.rawSearch = { s: rr.status, body: tt.slice(0, 90), ms: Date.now() - t0 };
+                    }
+                } catch (e) { out.login = { err: String(e.message).slice(0, 110) }; }
+                // ⑤ the full user-facing search
+                try {
+                    const t0 = Date.now();
+                    const list = await mv.mbSearch('black clover', 3);
+                    out.mbSearch = { ok: true, rows: list.length, ms: Date.now() - t0, first: list[0] ? `${list[0].name} [${list[0].type}]` : null };
+                } catch (e) { out.mbSearch = { ok: false, err: String(e.message).slice(0, 130) }; }
+                // ⑥ proxy A/B — login + search through pool proxies (datacenter-IP-block theory, panel vantage)
+                try {
+                    const undici = require('undici');
+                    const pp = require('./proxypool');
+                    await pp.ensureReady(15000);
+                    out.proxyAB = [];
+                    for (const p of pp.candidates(3)) {
+                        const ps = String(p).replace(/^https?:\/\//, '').slice(0, 22);
+                        const row = { p: ps };
+                        try {
+                            mv.mbIdentity();
+                            const agent = new undici.ProxyAgent({ uri: /^https?:\/\//.test(p) ? p : 'http://' + p, connect: { timeout: 8000 } });
+                            const u = mv.MB_HOSTS[0] + '/wefeed-mobile-bff/user-api/visitor-login';
+                            const lh = mv.mbHeaders('POST', u, '{}'); delete lh.Authorization;   // anonymous login (mbLogin convention)
+                            const rr = await undici.fetch(u, { method: 'POST', headers: lh, body: '{}', dispatcher: agent, signal: AbortSignal.timeout(12000) });
+                            const tt = await rr.text().catch(() => '');
+                            row.login = rr.status;
+                            let ptok = null;
+                            try { ptok = (JSON.parse(tt)?.data || {}).token || null; } catch { }
+                            if (rr.ok && ptok) {
+                                pp.markGood(p);
+                                const su = mv.MB_HOSTS[0] + '/wefeed-mobile-bff/subject-api/search/v2';
+                                const body = JSON.stringify({ keyword: 'black clover', page: 1, perPage: 20, subjectType: 0 });
+                                const sh = mv.mbHeaders('POST', su, body);
+                                sh.Authorization = 'Bearer ' + ptok;   // the token THIS proxy IP was issued → clean region test
+                                const sr = await undici.fetch(su, { method: 'POST', headers: sh, body, dispatcher: agent, signal: AbortSignal.timeout(15000) });
+                                const st = await sr.text().catch(() => '');
+                                row.search = sr.status;
+                                row.hits = st.includes('"subjectId"') ? (st.match(/"subjectId"/g) || []).length : 0;
+                                row.body = st.slice(0, 60);
+                            } else pp.markBad(p);
+                        } catch (e) { row.err = String(e.message).slice(0, 50); pp.markBad(p); }
+                        out.proxyAB.push(row);
+                    }
+                } catch (e) { out.proxyAB = String(e.message).slice(0, 80); }
+                return json(r, 200, out);
+            }
             if (url.pathname === '/') { r.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); return r.end(page(KEY)); }
             if (url.pathname === '/abc' || url.pathname === '/abc/') { r.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); return r.end(abcPage()); }
             if (url.pathname.startsWith('/abc/')) return serveAbc(r, url.pathname.slice(5));
