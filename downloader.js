@@ -230,7 +230,17 @@ async function download(link, onProgress, { stream = false } = {}) {
     try {
         const info = await downloadHttp(r, dest, onProgress, stream);
         return [info.open ? info : { path: dest, ...info }];
-    } catch (e) { fs.rm(dest, { force: true }, () => { }); throw e; }
+    } catch (e) {
+        // 🌐 v2.65: eporner hands out per-request CDN mirrors — some (vid-*-nl-cdn…) refuse datacenter
+        // connections entirely. a fresh PAGE load can land on a different mirror → point the user there.
+        try {
+            const h = new URL(r.url).hostname;
+            if (/^vid-.*\.eporner\.com$/i.test(h) && /connect|timeout|block/i.test(e.message || ''))
+                e.message += '\n\n💡 මේ CDN mirror එක server එකෙන් connect වෙන්නේ නෑ. eporner *video page* link එකක් (eporner.com/video-…/) ආයෙත් එවන්න — ඒකෙන් අලුත් mirror එකක් අහුලගන්න පුළුවන්.';
+        } catch { }
+        fs.rm(dest, { force: true }, () => { });
+        throw e;
+    }
 }
 
 module.exports = { explainNetErr, download, human, maxBytes, maxMB, freeDisk, WA_MAX_MB, planRanges, downloadParallel, PAR_MIN, PAR_CHUNK, PAR_MAX, get MAX_BYTES() { return maxBytes(); } };

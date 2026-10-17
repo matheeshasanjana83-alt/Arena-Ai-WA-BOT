@@ -158,6 +158,9 @@ async function smartFetch(url, opts = {}) {
         } catch (e) {
             const c = errCode(e);
             errors.push({ kind, code: c, msg: e?.cause?.message || e.message });
+            // 🌐 v2.65: DoH IPs are cached 10 min — a CDN edge IP that dies mid-window would poison every
+            // retry (eporner CDN connect timeouts). on a doh-route connect failure → re-resolve next time.
+            if (kind === 'doh' && NET_ERR.test(c)) dohCache.delete(host + '/A');
             if (!NET_ERR.test(c) && kind === 'direct') throw e;   // not a network problem → don't mask it
         }
     }

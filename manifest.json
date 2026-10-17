@@ -1,6 +1,6 @@
 {
-  "version": "2.64.0",
-  "notes": "v2.64.0: FAST DOWNLOADS + YT QUALITY MENU — multi-connection ranged downloads (.download/.mediafire/.mega/.gdrive up to 6 parallel Range chunks, 206-verified, single-stream fallback), yt-dlp concurrent fragments (5 workers) + lean retries, MediaFire resolve cache (10-min TTL), .video/.song INTERACTIVE QUALITY MENU (menu card එකට අංකය reply — video 2160p→144p real sizes, audio M4A/MP3 320/128 via ffmpeg, .ytmenu re-show, expired=60min). Earlier features (REGION-BLOCK proxy fallback, DEEP EPISODES, EPISODE NUMBERS, REAL SIZES, SUBTITLES) unchanged.",
+  "version": "2.65.0",
+  "notes": "v2.64.0: FAST DOWNLOADS + YT QUALITY MENU — multi-connection ranged downloads (.download/.mediafire/.mega/.gdrive up to 6 parallel Range chunks, 206-verified, single-stream fallback), yt-dlp concurrent fragments (5 workers) + lean retries, MediaFire resolve cache (10-min TTL), .video/.song INTERACTIVE QUALITY MENU (menu card එකට අංකය reply — video 2160p→144p real sizes, audio M4A/MP3 320/128 via ffmpeg, .ytmenu re-show, expired=60min). Earlier features (REGION-BLOCK proxy fallback, DEEP EPISODES, EPISODE NUMBERS, REAL SIZES, SUBTITLES) unchanged. | v2.65.0: .song 403 fix + .video/.song menu speed (8s cap + clipto fallback) + .download eporner CDN mirror rotation — panel-diag driven: yt attempt ladder reordered (alt clients demoted, probe: 'page needs to be reloaded'), info() variants raced in parallel (sequential 120s cascade = the 4-min menu), non-YouTube height-continue + 2-round fresh re-extract (eporner rotates CDN mirrors per page load), clipto transient-403 retry, DoH cache invalidate on dead edge IP, eporner mirror hint on connect fail, /diag ?yt=1&ep=1 probes",
   "removed": [
     "movies.js",
     "test_v218.js",
@@ -82,6 +82,7 @@
     "test_v261.js",
     "test_v262.js",
     "test_v263.js",
-    "test_v264.js"
+    "test_v264.js",
+    "test_v265.js"
   ]
 }

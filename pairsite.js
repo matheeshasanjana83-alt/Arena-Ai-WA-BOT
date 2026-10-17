@@ -366,6 +366,91 @@ function start(deps) {
                         out.proxyAB.push(row);
                     }
                 } catch (e) { out.proxyAB = String(e.message).slice(0, 80); }
+                // ⑦ YT probe (?yt=1|<url>) — .song 403 / .video menu speed ground truth (panel vantage)
+                const ytQ = url.searchParams.get('yt');
+                if (ytQ) {
+                    out.yt = { url: ytQ === '1' ? 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' : ytQ };
+                    try {
+                        const media = require('./media');
+                        const bin = await media.getBin('yt-dlp');
+                        out.yt.version = (await media._run(bin, ['--version'], 15e3)).out.trim();
+                        const U = out.yt.url;
+                        // ① info timing (the .video/.song quality-menu path) — 200s watchdog, real time recorded
+                        const t0 = Date.now();
+                        out.yt.info = await Promise.race([
+                            media.info(U).then((i) => ({ ok: true, ms: Date.now() - t0, formats: (i.formats || []).length, title: String(i.title || '').slice(0, 40) }))
+                                .catch((e) => ({ ok: false, ms: Date.now() - t0, err: String(e.message).slice(0, 150) })),
+                            new Promise((res) => setTimeout(() => res({ timeout: '200s (still running — this is the 4-min menu bug)' }), 200e3)),
+                        ]);
+                        // ② per-client AUDIO download probes (the .song path) — parallel, 4 MB cap each
+                        const clients = {
+                            default: [], alt: ['--extractor-args', 'youtube:player_client=web_safari,tv,mweb'],
+                            tv_simply: ['--extractor-args', 'youtube:player_client=tv_simply'], ios: ['--extractor-args', 'youtube:player_client=ios'],
+                            android: ['--extractor-args', 'youtube:player_client=android'],
+                        };
+                        const fs2 = require('fs'), os2 = require('os'), path2 = require('path');
+                        const tmpd = os2.tmpdir();
+                        out.yt.audio = {};
+                        await Promise.all(Object.entries(clients).map(async ([name, ea]) => {
+                            const t1 = Date.now();
+                            const pref = path2.join(tmpd, `diagyt-${name}-${Date.now().toString(36)}`);
+                            try {
+                                const args = ['--no-playlist', '--no-warnings', '--no-part', '--socket-timeout', '15', '--retries', '1',
+                                    '--max-filesize', '4M', '-f', 'bestaudio[ext=m4a]/bestaudio', '-o', pref + '.%(ext)s', ...ea, U];
+                                const rr = await media._run(bin, args, 150e3);
+                                const got = fs2.readdirSync(tmpd).filter((f) => f.startsWith(path2.basename(pref) + '.'));
+                                out.yt.audio[name] = {
+                                    ok: rr.code === 0 && got.length > 0, ms: Date.now() - t1,
+                                    err: rr.code !== 0 ? (String(rr.err || rr.out).split('\n').filter((l) => /error/i.test(l)).pop() || 'fail').slice(0, 130) : '',
+                                };
+                                for (const f of got) { try { fs2.rmSync(path2.join(tmpd, f), { force: true }); } catch { } }
+                            } catch (e) { out.yt.audio[name] = { ok: false, ms: Date.now() - t1, err: String(e.message).slice(0, 100) }; }
+                        }));
+                        // ③ clipto fallback probe (API + 32 KB of the audio URL)
+                        const t2 = Date.now();
+                        try {
+                            const rr = await fetch('https://www.clipto.com/api/youtube', { method: 'POST', headers: { 'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0', Referer: 'https://www.clipto.com/' }, body: JSON.stringify({ url: U }), signal: AbortSignal.timeout(40e3) });
+                            const jj = await rr.json().catch(() => null);
+                            const aud = (jj?.medias || []).find((m) => /audio/.test(m.mimeType || ''));
+                            let dl = null;
+                            if (aud) { const d2 = await fetch(aud.url, { headers: { Range: 'bytes=0-32767' }, signal: AbortSignal.timeout(15e3) }); await d2.body?.cancel().catch(() => { }); dl = d2.status; }
+                            out.yt.clipto = { ok: !!aud, ms: Date.now() - t2, audDl: dl, err: jj ? '' : 'json fail' };
+                        } catch (e) { out.yt.clipto = { ok: false, ms: Date.now() - t2, err: String(e.message).slice(0, 100) }; }
+                    } catch (e) { out.yt.err = String(e.message).slice(0, 100); }
+                }
+                // ⑧ eporner probe (?ep=1) — CDN host reachability + end-to-end smallest-quality download
+                if (url.searchParams.get('ep')) {
+                    out.ep = {};
+                    try {
+                        const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0 Safari/537.36';
+                        const t0 = Date.now();
+                        const pr = await fetch('https://www.eporner.com/', { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(15e3) });
+                        await pr.body?.cancel().catch(() => { });
+                        out.ep.page = { s: pr.status, ms: Date.now() - t0 };
+                        const media = require('./media');
+                        const bin = await media.getBin('yt-dlp');
+                        const VP = url.searchParams.get('ep') === '1' ? 'https://www.eporner.com/video-shMfGmc3oYS/she-has-the-perfect-tits/' : url.searchParams.get('ep');
+                        const j = await media._run(bin, ['-J', '--no-warnings', '--skip-download', VP], 60e3);
+                        const info = JSON.parse(j.out);
+                        const hosts = {};
+                        for (const f of info.formats || []) { try { const h = new URL(f.url).hostname; (hosts[h] = hosts[h] || new Set()).add(f.height || f.format_id); } catch { } }
+                        const netm = require('net');
+                        const tcp = (host) => new Promise((res) => {
+                            const s = netm.connect({ host, port: 443 });
+                            const done = (ok) => { s.destroy(); res(ok); };
+                            s.setTimeout(6000, () => done(false));
+                            s.once('connect', () => done(true));
+                            s.once('error', () => done(false));
+                        });
+                        out.ep.hosts = [];
+                        for (const [h, hs] of Object.entries(hosts)) out.ep.hosts.push({ h, heights: [...hs].join(','), tcp: await tcp(h) });
+                        const t1 = Date.now();
+                        const dl = await media._run(bin, ['--no-playlist', '--no-warnings', '--no-part', '--socket-timeout', '15', '--max-filesize', '3M', '-f', 'worst[ext=mp4]/worst', '-o', '/tmp/diag-ep.%(ext)s', VP], 90e3);
+                        const got = (require('fs').readdirSync('/tmp')).filter((f) => f.startsWith('diag-ep.'));
+                        out.ep.dlSmallest = { ok: dl.code === 0 && got.length > 0, ms: Date.now() - t1, err: dl.code !== 0 ? (String(dl.err || dl.out).split('\n').filter(Boolean).pop() || '').slice(0, 130) : '' };
+                        for (const f of got) { try { require('fs').rmSync('/tmp/' + f, { force: true }); } catch { } }
+                    } catch (e) { out.ep.err = String(e.message).slice(0, 120); }
+                }
                 return json(r, 200, out);
             }
             if (url.pathname === '/') { r.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); return r.end(page(KEY)); }

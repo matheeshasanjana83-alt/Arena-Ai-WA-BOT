@@ -26,6 +26,21 @@ litterbox/catbox, x0.at, transfer.archivete.am, filebin, eporner (v2.17). (gofil
 
 🔒 Private: ඔයා යවන messages විතරයි. වෙන අය commands යැව්වත් ignore.
 
+v2.65.0 — 🎵 .SONG FIX + ⚡ MENU SPEED + 🌐 EPORNER CDN FIX
+  • 🎵 .song 403 fix — YouTube attempt ladder එක panel probe එකෙන් තහවුරු කරපු order එකට: direct →
+    cookies → proxy/pool → alt-clients (පරණ alt-first order එක දැන් fail — "page needs to be reloaded")
+  • ⚡ .video/.song quality menu එක 8s cap — yt-dlp info slow/bot-check නම් clipto.com API එකෙන්ම
+    menu rows (පරණ sequential fallback chain එක = "menu එකට විනාඩි 4" bug එක)
+  • ⚡ info JSON variants ඔක්කොම parallel race (හරියන එක ලේටස්ට් එකෙන් ගන්නවා) — hung proxy එකක්
+    ඉතුරු attempts delay කරන්නේ නෑ
+  • 🌐 eporner CDN mirror fix — සමහර mirrors (vid-*-nl-cdn…) server IPs block කරනවා: dead mirror එකකට
+    ගැහුවම ඊළඟ height/format එකට මාරු වෙලා round 2 එකේ fresh page load එකකින් අලුත් mirror එකක් ගන්නවා;
+    connect fail එකකදී "video page link එක එවන්න" hint එකකුත්
+  • 🌐 DoH edge-IP cache — connect fail එකකදී ඉබේම re-resolve (මැරුණු CDN IP එකක් 10 min බඳින එක නවතිනවා)
+  • clipto googlevideo transient 403/5xx → auto retry එකක්
+  • 🩺 /diag එකට ?yt=1 (player clients × audio probes) + ?ep=1 (CDN host TCP tests) — future debugging
+  • Tests: test_v265 new (race/ladder/cliptoRows/DoH invalidate) + full regression
+
 v2.64.0 — ⚡ FAST DOWNLOADS + 📋 YT QUALITY MENU
   • Downloads ⚡ වේගවත්: .download / .mediafire / .mega / .gdrive දැන් connections 6ක් පාවිච්චි
     කරලා parallel බාගන්නවා (server එක range support කරනවා නම් — 3-6× වේගයක්; support නැත්නම්

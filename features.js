@@ -128,6 +128,42 @@ function ytMenuText(title, rows, mode, meta) {
     return `${head}\n\n${mode === 'audio' ? 'Format' : 'Quality'} එකක් තෝරන්න — මේ message එකට *අංකය reply* කරන්න:\n\n${list}\n\n${foot('මිනිත්තු 60 ඇතුලත reply කරන්න')}`;
 }
 
+// ── v2.65 menu rows from the clipto.com API (fallback when yt-dlp info is slow/bot-walled) ──
+// same row shape as ytRows → the SAME bridge builds ".video <url> <h>" / ".song <url> m4a|320k|128k"
+function cliptoRows(j, mode, capMB = 9e9) {
+    const medias = j?.medias || [];
+    if (!medias.length) return [];   // API gave nothing → caller falls through (best download / .ytmenu error)
+    const dur = medias.map((m) => m.duration).find((d) => d > 0) || j?.duration || 0;
+    const sizeOf = (m) => (m.bitrate && dur ? Math.round((m.bitrate / 8) * dur) : (m.size || 0));
+    if (mode === 'audio') {
+        const aud = medias.filter((m) => m.type === 'audio' || /audio\//.test(m.mimeType || '')).sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
+        return [
+            { label: 'M4A original', pick: 'm4a', size: sizeOf(aud[0] || {}) || (dur ? Math.round(dur * 16 * 1024) : null) },
+            { label: 'MP3 320kbps', pick: '320k', size: dur ? Math.round(dur * 40 * 1024) : null },
+            { label: 'MP3 128kbps', pick: '128k', size: dur ? Math.round(dur * 16 * 1024) : null },
+        ];
+    }
+    const byH = new Map();   // height → biggest-bitrate mp4 entry
+    for (const m of medias) {
+        if (!m.height || !/video\/mp4/.test(m.mimeType || '')) continue;
+        if (m.ext && m.ext !== 'mp4') continue;
+        const cur = byH.get(m.height);
+        if (!cur || (m.bitrate || 0) > (cur.bitrate || 0)) byH.set(m.height, m);
+    }
+    const rows = [];
+    for (const h of [2160, 1440, 1080, 720, 480, 360, 240, 144]) {
+        const m = byH.get(h);
+        if (!m) continue;
+        const prog = /mp4a/.test(m.mimeType || '') && m.audioQuality;   // itag-18 style progressive (audio inside)
+        let size = sizeOf(m);
+        if (size && !prog) size += Math.round(dur * 16 * 1024);         // video-only → rough audio add
+        if (size && size > capMB * 1048576) continue;
+        rows.push({ label: h + 'p', pick: String(h), size: size || null, h });
+        if (rows.length >= 6) break;
+    }
+    return rows;
+}
+
 // ── v2.64 menu routing (moviedex-card pattern): menu card id → { url, rows… }; bot.js quotes bridge here
 const YT_TTL = 60 * 60e3, YT_CAP = 40;
 const ytMenus = new Map();   // card message id → { jid, url, title, mode, rows, at }
@@ -174,6 +210,15 @@ async function ffmpegMerge(vp, ap) {
     return out;
 }
 
+/** clipto googlevideo URLs occasionally 403 once (edge/token race) → ONE fresh retry heals it */
+async function fetchToFileRetry(url, prefix, opts) {
+    try { return await media.fetchToFile(url, prefix, opts); }
+    catch (e) {
+        if (!/^HTTP (403|429|[45]\d\d)/.test(String(e.message || ''))) throw e;
+        return await media.fetchToFile(url, prefix + 'r', opts);
+    }
+}
+
 /** clipto.com download → { path, size, height, title }  (caller deletes the file) */
 async function cliptoFetch(url, mode, height) {
     const j = await cliptoInfo(url);
@@ -184,7 +229,7 @@ async function cliptoFetch(url, mode, height) {
         const m4a = (j.medias || []).filter((m) => m.ext === 'm4a' || /audio\/mp4/.test(m.mimeType || ''))
             .sort((a, b) => parseInt(b.quality) - parseInt(a.quality))[0];
         if (!m4a) throw new Error('API එකේ audio format එකක් නෑ');
-        const p = await media.fetchToFile(m4a.url, 'kz-aud', { referer: ref, maxBytes: capMB * 1048576, ext: 'm4a' });
+        const p = await fetchToFileRetry(m4a.url, 'kz-aud', { referer: ref, maxBytes: capMB * 1048576, ext: 'm4a' });
         return { path: p, size: fs.statSync(p).size, title };
     }
     const vids = (j.medias || []).filter((m) => m.height && /video\/mp4/.test(m.mimeType || ''));
@@ -192,7 +237,7 @@ async function cliptoFetch(url, mode, height) {
     const sorted = [...new Set(vids.map((v) => v.height))].sort((a, b) => b - a);   // desc: 2160...144
     const target = height ? (sorted.find((h) => h <= height) || sorted[sorted.length - 1]) : sorted[0];
     const v = vids.find((x) => x.height === target);
-    const vp = await media.fetchToFile(v.url, 'kz-vid', { referer: ref, maxBytes: capMB * 1048576, ext: 'mp4' });
+    const vp = await fetchToFileRetry(v.url, 'kz-vid', { referer: ref, maxBytes: capMB * 1048576, ext: 'mp4' });
     if (/mp4a/.test(v.mimeType || '')) return { path: vp, size: fs.statSync(vp).size, height: target, title };   // progressive (audio inside)
     // video-only (720p+) → merge best m4a audio with ffmpeg
     let out = null;
@@ -200,7 +245,7 @@ async function cliptoFetch(url, mode, height) {
         const m4a = (j.medias || []).filter((m) => m.ext === 'm4a' || /audio\/mp4/.test(m.mimeType || ''))
             .sort((a, b) => parseInt(b.quality) - parseInt(a.quality))[0];
         if (m4a) {
-            const ap = await media.fetchToFile(m4a.url, 'kz-aud2', { referer: ref, maxBytes: 30 * 1048576, ext: 'm4a' });
+            const ap = await fetchToFileRetry(m4a.url, 'kz-aud2', { referer: ref, maxBytes: 30 * 1048576, ext: 'm4a' });
             out = await ffmpegMerge(vp, ap);
             fs.rmSync(ap, { force: true });
         }
@@ -234,11 +279,25 @@ async function ytCommand(send, jid, msg, query, mode, label = 'YouTube', react) 
             url = v.url; title = v.title; meta = v.timestamp || '';
         }
         // 📋 v2.64 quality menu — no quality in the command → info JSON → available rows (real sizes) → card
+        // ⚡ v2.65: info race hard-capped (default 8s, YT_MENU_DEADLINE env) → clipto.com fallback rows
+        // (panel probe: clipto = 1.3s) — the old path waited on the FULL yt-dlp fallback chain = "menu 4 min"
         if ((mode === 'video' && !height) || (mode === 'audio' && !aBit)) {
             await s.edit(`${title ? `*${cut(title, 60)}*\n` : ''}🔎 quality හොයනවා…`);
             let info = null;
-            try { info = await ytInfo(url); } catch { }
-            const rows = info ? ytRows(info, mode, mode === 'audio' ? 9e9 : MAXV()) : [];
+            try {
+                info = await Promise.race([
+                    ytInfo(url),
+                    new Promise((_, rej) => setTimeout(() => rej(Object.assign(new Error('menu deadline'), { code: 'MENU_DEADLINE' })), parseInt(process.env.YT_MENU_DEADLINE || '8', 10) * 1000)),
+                ]);
+            } catch (e) { }   // deadline / fail → clipto rows below (ytInfo keeps loading in bg → cache for the pick)
+            let rows = info ? ytRows(info, mode, mode === 'audio' ? 9e9 : MAXV()) : [];
+            if (!rows.length && /youtube\.com|youtu\.be/i.test(url)) {
+                try {
+                    const cj = await cliptoInfo(url);
+                    rows = cliptoRows(cj, mode, mode === 'audio' ? 9e9 : MAXV());
+                    if (cj?.title) title = title || cj.title;
+                } catch (e) { }
+            }
             if (rows.length) {
                 title = title || info?.title || '';
                 if (info?.duration) meta = meta || fmtDur(info.duration);
@@ -294,8 +353,12 @@ async function ytMenuResend(send, jid, msg, rest) {
     const mode = /audio|song/i.test(arg) ? 'audio' : 'video';
     if (!url) return send(jid, { text: `📋 *.ytmenu <link> <video|song>*` }, { quoted: msg });
     try {
-        const info = await ytInfo(url);
-        const rows = ytRows(info, mode, mode === 'audio' ? 9e9 : MAXV());
+        let info = null;
+        try { info = await ytInfo(url); } catch { }
+        let rows = info ? ytRows(info, mode, mode === 'audio' ? 9e9 : MAXV()) : [];
+        if (!rows.length && /youtube\.com|youtu\.be/i.test(url)) {
+            try { rows = cliptoRows(await cliptoInfo(url), mode, mode === 'audio' ? 9e9 : MAXV()); } catch { }
+        }
         if (!rows.length) throw new Error('formats නෑ');
         const st = await send(jid, { text: ytMenuText(info?.title || '', rows, mode, info?.duration ? fmtDur(info.duration) : '') }, { quoted: msg });
         ytRemember(jid, st, url, info?.title || '', mode, rows);
@@ -546,4 +609,4 @@ async function handle(c, { send, jid, msg, rest, sock, me, download, react }) {
     return true;
 }
 
-module.exports = { handle, CMDS, GROUP_CMDS, ytCommand, ytMenuBridge, ytRemember, parseYtArgs, ytRows, ytMenuText, ytInfo, ytMenuResend, setMediaDownloader: (f) => { mediaDownloader = f; }, _ytsearch: (f) => { yts = f; }, _ytMenus: ytMenus, _infoCache: infoCache };
+module.exports = { handle, CMDS, GROUP_CMDS, ytCommand, ytMenuBridge, ytRemember, parseYtArgs, ytRows, cliptoRows, ytMenuText, ytInfo, ytMenuResend, setMediaDownloader: (f) => { mediaDownloader = f; }, _ytsearch: (f) => { yts = f; }, _ytMenus: ytMenus, _infoCache: infoCache };

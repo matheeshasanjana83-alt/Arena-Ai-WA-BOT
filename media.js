@@ -134,25 +134,46 @@ function ytError(t) {
 }
 const blocked = (t) => /sign in to confirm|not a bot|403|forbidden|429|timed out|unable to connect|connection (reset|refused)/i.test(String(t));
 
+// ── v2.65 race helper: first SUCCESS wins, losers keep dying on their own caps ──
+// (the old sequential fallback chain was the "quality menu එකට විනාඩි 4" bug: one hung attempt
+//  delayed every later attempt by its full timeout — now all variants run at once)
+function firstOk(jobs) {
+    return new Promise((res, rej) => {
+        let left = jobs.length, done = false;
+        if (!left) return rej(new Error('attempts නෑ'));
+        jobs.forEach((j) => j.then((v) => { if (!done) { done = true; res(v); } },
+            (e) => { if (--left === 0 && !done) { done = true; rej(e); } }));
+    });
+}
+
+/** yt-dlp info JSON — v2.65: all variants RACED in parallel (direct → alt-clients → proxies).
+ *  Panel probe 2026-10: direct info = 2.9s; alt clients = "page needs to be reloaded";
+ *  hung pool proxies cost a full 120s EACH when probed sequentially = the 4-minute menu. */
 async function info(url) {
     const yt = await getBin('yt-dlp');
-    let r = await run(yt, cookieArgs(['-J', '--no-playlist', '--no-warnings', '--skip-download']).concat([url]), 120e3);
-    if (r.code !== 0 && /sign in to confirm|not a bot/i.test(r.err))   // bot check → alternate clients
-        r = await run(yt, cookieArgs(['-J', '--no-playlist', '--no-warnings', '--skip-download']).concat(['--extractor-args', 'youtube:player_client=web_safari,tv,mweb', url]), 120e3);
+    const base = cookieArgs(['-J', '--no-playlist', '--no-warnings', '--skip-download', '--socket-timeout', '15']);
     const px = proxyArg();
     const pool = require('./proxypool');
-    // bot-check/403 → your proxy first, then free-proxy pool candidates
     const pxList = [...(px ? [px] : []), ...pool.candidates(2)].filter((v, i, a) => v && a.indexOf(v) === i);
-    for (const p of pxList) {
-        if (r.code === 0 || !blocked(r.err)) break;
-        r = await run(yt, cookieArgs(['-J', '--no-playlist', '--no-warnings', '--skip-download']).concat(['--proxy', p, url]), 120e3);
-        if (pool.isPool(p)) (r.code === 0 ? pool.markGood(p) : pool.markBad(p));
+    const variants = [
+        { args: [], label: 'direct' },
+        { args: ['--extractor-args', 'youtube:player_client=web_safari,tv,mweb'], label: 'alt' },   // bot-check window rescue
+        ...pxList.map((p) => ({ args: ['--proxy', p], label: 'proxy' })),
+    ];
+    const errs = [];
+    try {
+        return await firstOk(variants.map((v) => (async () => {
+            try {
+                const r = await run(yt, base.concat(v.args, [url]), 75e3);
+                if (r.code !== 0) throw new Error((v.label + ': ') + String(r.err || r.out || 'fail').split('\n').filter(Boolean).pop());
+                return JSON.parse(r.out);   // parse fail → throws → another variant can still win
+            } catch (e) { errs.push(v.label + ': ' + String(e.message).slice(0, 120)); throw e; }
+        })()));
+    } catch (e) {
+        const msg = (errs.find((x) => x.startsWith('direct')) || errs[errs.length - 1] || e.message);
+        if (EXTRACT_BROKEN.test(msg)) checkUpdate(true).catch(() => { });   // stale extractor → update in background
+        throw new Error(ytError(msg));
     }
-    if (r.code !== 0) {
-        if (EXTRACT_BROKEN.test(r.err || r.out)) checkUpdate(true).catch(() => { });   // stale extractor → update in background
-        throw new Error(ytError(r.err || r.out));
-    }
-    return JSON.parse(r.out);
 }
 
 /**
@@ -170,50 +191,71 @@ async function ytdl(url, { mode = 'video', maxMB = 100, height = null } = {}) {
         : [2160, 1440, 1080, 720, 480, 360];
     const ck = cookiesFile();
     const pool = require('./proxypool');
-    // attempts: plain → alt-clients → cookies (if any) → your proxy → free-proxy pool candidates
+    const isYt = /youtube\.com|youtu\.be/i.test(url);
+    // ⚡ v2.65 attempt order (panel probe 2026-10: alt clients = "page needs to be reloaded" — demoted to LAST;
+    //  direct → cookies → your proxy/pool → alt-clients last resort)
     const pxList = [...(px ? [px] : []), ...pool.candidates(2)].filter((v, i, a) => v && a.indexOf(v) === i);
-    const attempts = [];
-    for (const useProxy of [null, ...pxList]) {
+    const attempts = [{ proxy: null, alt: false, ck: false }];
+    if (ck) attempts.push({ proxy: null, alt: false, ck: true });
+    for (const useProxy of pxList) {
         attempts.push({ proxy: useProxy, alt: false, ck: false });
         if (ck) attempts.push({ proxy: useProxy, alt: false, ck: true });
-        attempts.push({ proxy: useProxy, alt: true, ck: false });
-        if (ck) attempts.push({ proxy: useProxy, alt: true, ck: true });
     }
+    if (!isYt) {   // non-YouTube (eporner CDN…): alt player clients are YouTube-only — skip them
+        for (let i = attempts.length - 1; i >= 0; i--) if (attempts[i].alt) attempts.splice(i, 1);
+    } else {
+        attempts.push({ proxy: null, alt: true, ck: false });   // last resort (bot-check windows)
+    }
+    // non-YouTube CDNs (eporner…) rotate mirror hosts per page load → 2 ladders = a fresh extraction
+    // gets a 2nd chance on a different CDN host when the first one refuses to connect
+    const rounds = isYt ? 1 : 2;
     let lastErr = '';
     outer:
-    for (const at of attempts) {
-        for (const h of heights) {
-            const fmt = mode === 'audio' ? 'bestaudio[ext=m4a]/bestaudio[acodec^=mp4a]/bestaudio'
-                : ff ? `bv*[height<=${h}][ext=mp4]+ba[ext=m4a]/b[height<=${h}][ext=mp4]/b[height<=${h}]/b`
-                    : `b[height<=${h}][ext=mp4]/b[height<=${h}]/b`;
-            const prefix = `yt-${process.pid}-${Date.now().toString(36)}`;
-            // ⚡ v2.64 speed: parallel fragment workers (DASH/HLS ≈ 4-6× faster), lean retries
-            // (default 10 retries can hang a dead attempt for minutes before the next fallback)
-            const args = ['--no-playlist', '--no-warnings', '--no-part', '--concurrent-fragments', '5',
-                '--retries', '2', '--fragment-retries', '3', '--socket-timeout', '20',
-                '--max-filesize', `${maxMB}M`, '-f', fmt, '-o', path.join(TMP(), prefix + '.%(ext)s')];
-            if (at.ck) args.push('--cookies', ck);
-            if (at.alt) args.push('--extractor-args', 'youtube:player_client=web_safari,tv,mweb');
-            if (ff) args.push('--ffmpeg-location', ff);
-            if (mode === 'video' && ff) args.push('--merge-output-format', 'mp4');
-            if (at.proxy) args.push('--proxy', at.proxy);
-            args.push(url);
-            const r = await run(yt, args);
-            if (at.proxy && pool.isPool(at.proxy)) (r.code === 0 ? pool.markGood(at.proxy) : pool.markBad(at.proxy));
-            const produced = fs.readdirSync(TMP()).filter((f) => f.startsWith(prefix + '.') && !/\.(part|ytdl|temp)$/.test(f));
-            const main = produced.find((f) => !/\.f\d+\./.test(f)) || produced[0];
-            if (r.code === 0 && main) {
-                for (const f of produced) if (f !== main) fs.rmSync(path.join(TMP(), f), { force: true });
-                const p = path.join(TMP(), main);
-                const size = fs.statSync(p).size;
-                if (size > maxMB * 1048576) { fs.rmSync(p, { force: true }); lastErr = 'File is larger than max'; continue; }
-                return { path: p, ext: path.extname(main).slice(1) || (mode === 'audio' ? 'm4a' : 'mp4'), height: h, size, proxy: at.proxy };
+    for (let round = 0; round < rounds; round++) {
+        for (const at of attempts) {
+            for (const h of heights) {
+                const fmt = mode === 'audio' ? 'bestaudio[ext=m4a]/bestaudio[acodec^=mp4a]/bestaudio'
+                    : ff ? `bv*[height<=${h}][ext=mp4]+ba[ext=m4a]/b[height<=${h}][ext=mp4]/b[height<=${h}]/b`
+                        : `b[height<=${h}][ext=mp4]/b[height<=${h}]/b`;
+                const prefix = `yt-${process.pid}-${Date.now().toString(36)}`;
+                // ⚡ v2.64 speed: parallel fragment workers (DASH/HLS ≈ 4-6× faster), lean retries
+                // (default 10 retries can hang a dead attempt for minutes before the next fallback)
+                const args = ['--no-playlist', '--no-warnings', '--no-part', '--concurrent-fragments', '5',
+                    '--retries', '2', '--fragment-retries', '3', '--socket-timeout', isYt ? '20' : '12',
+                    '--max-filesize', `${maxMB}M`, '-f', fmt, '-o', path.join(TMP(), prefix + '.%(ext)s')];
+                if (at.ck) args.push('--cookies', ck);
+                if (at.alt) args.push('--extractor-args', 'youtube:player_client=web_safari,tv,mweb');
+                if (ff) args.push('--ffmpeg-location', ff);
+                if (mode === 'video' && ff) args.push('--merge-output-format', 'mp4');
+                if (at.proxy) args.push('--proxy', at.proxy);
+                args.push(url);
+                const r = await run(yt, args);
+                if (at.proxy && pool.isPool(at.proxy)) (r.code === 0 ? pool.markGood(at.proxy) : pool.markBad(at.proxy));
+                const produced = fs.readdirSync(TMP()).filter((f) => f.startsWith(prefix + '.') && !/\.(part|ytdl|temp)$/.test(f));
+                const main = produced.find((f) => !/\.f\d+\./.test(f)) || produced[0];
+                if (r.code === 0 && main) {
+                    for (const f of produced) if (f !== main) fs.rmSync(path.join(TMP(), f), { force: true });
+                    const p = path.join(TMP(), main);
+                    const size = fs.statSync(p).size;
+                    if (size > maxMB * 1048576) { fs.rmSync(p, { force: true }); lastErr = 'File is larger than max'; continue; }
+                    return { path: p, ext: path.extname(main).slice(1) || (mode === 'audio' ? 'm4a' : 'mp4'), height: h, size, proxy: at.proxy };
+                }
+                for (const f of produced) fs.rmSync(path.join(TMP(), f), { force: true });
+                lastErr = r.err || r.out || (r.code === 0 ? 'File is larger than max' : '');
+                if (EXTRACT_BROKEN.test(lastErr)) { checkUpdate(true).catch(() => { }); break outer; }   // stale extractor → updating won't help this run
+                if (blocked(lastErr)) {
+                    // 🌐 v2.65: non-YouTube hosts — a blocked/dead CDN file is NOT an IP block: try the NEXT
+                    // height (often a different CDN file) instead of re-running the same ladder; the round-2
+                    // ladder below re-extracts (fresh page load → eporner may hand out a different mirror).
+                    if (!isYt) continue;
+                    break;               // YouTube IP block → next attempt (cookies / alt clients / proxy)
+                }
+                if (!/larger than max|max-filesize|requested format/i.test(lastErr)) {
+                    // 🌐 non-YouTube connect failures (dead CDN mirror) → next height of THIS attempt, then round 2
+                    if (!isYt && /timed out|unable to connect|connection (reset|refused)|ENOTFOUND|EAI_AGAIN|UND_ERR|ETIMEDOUT|ECONNRESET/i.test(lastErr)) continue;
+                    break outer;         // real error → stop
+                }
             }
-            for (const f of produced) fs.rmSync(path.join(TMP(), f), { force: true });
-            lastErr = r.err || r.out || (r.code === 0 ? 'File is larger than max' : '');
-            if (EXTRACT_BROKEN.test(lastErr)) { checkUpdate(true).catch(() => { }); break outer; }   // stale extractor → updating won't help this run
-            if (blocked(lastErr)) break;               // IP block → next attempt (cookies / alt clients / proxy)
-            if (!/larger than max|max-filesize|requested format/i.test(lastErr)) break outer;   // real error → stop
         }
     }
     throw new Error(ytError(lastErr));
@@ -311,4 +353,4 @@ async function resolveRedirects(url, max = 6) {
     throw new Error('redirect ගොඩක් (loop)');
 }
 
-module.exports = { getBin, info, ytdl, makeSticker, addExif, ytError, isTermux, fetchToFile, resolveRedirects, cookiesFile, checkUpdate, _run: run };
+module.exports = { getBin, info, ytdl, makeSticker, addExif, ytError, isTermux, fetchToFile, resolveRedirects, cookiesFile, checkUpdate, firstOk, _run: run };
