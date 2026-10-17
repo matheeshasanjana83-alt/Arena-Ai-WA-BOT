@@ -289,12 +289,36 @@ function start(deps) {
                         out.rawSearch = { s: rr.status, body: tt.slice(0, 90), ms: Date.now() - t0 };
                     }
                 } catch (e) { out.login = { err: String(e.message).slice(0, 110) }; }
-                // ⑤ the full user-facing search
+                // ⑤ the full user-facing search + WHY-did-fallback-not-fire probes
+                try { out.plan = mv.mbDispatchers().map(x => x.kind === 'proxy' ? { kind: 'proxy', url: x.url.replace(/^https?:\/\//, '').slice(0, 22) } : { kind: x.kind }); } catch (e) { out.plan = String(e.message).slice(0, 60); }
                 try {
                     const t0 = Date.now();
                     const list = await mv.mbSearch('black clover', 3);
                     out.mbSearch = { ok: true, rows: list.length, ms: Date.now() - t0, first: list[0] ? `${list[0].name} [${list[0].type}]` : null };
                 } catch (e) { out.mbSearch = { ok: false, err: String(e.message).slice(0, 130) }; }
+                out.mbStateAfter = mv._mbState ? mv._mbState() : null;
+                // ⑤b TOKEN THEORY: registered token via proxy vs fresh-visitor via direct
+                try {
+                    const undici2 = require('undici');
+                    const pp2 = require('./proxypool');
+                    const cand = pp2.candidates(1)[0];
+                    if (cand) {
+                        const ag = new undici2.ProxyAgent({ uri: /^https?:\/\//.test(cand) ? cand : 'http://' + cand, connect: { timeout: 8000 } });
+                        const su = mv.MB_HOSTS[0] + '/wefeed-mobile-bff/subject-api/search/v2';
+                        const body = JSON.stringify({ keyword: 'black clover', page: 1, perPage: 20, subjectType: 0 });
+                        const sh = mv.mbHeaders('POST', su, body);   // mbPickToken → REGISTERED token
+                        const sr = await undici2.fetch(su, { method: 'POST', headers: sh, body, dispatcher: ag, signal: AbortSignal.timeout(15000) });
+                        const st = await sr.text().catch(() => '');
+                        out.regTokenViaProxy = { s: sr.status, hits: (st.match(/"subjectId"/g) || []).length, body: st.slice(0, 70) };
+                        // fresh visitor via DIRECT (is the block IP-side for fresh tokens too?)
+                        mv.mbIdentity();
+                        await mv.mbLogin(1);
+                        const dh = mv.mbHeaders('POST', su, body); delete dh.Authorization;   // pure anon-visitor semantics… keep mbToken if just issued
+                        const dr = await fetch(su, { method: 'POST', headers: mv.mbHeaders('POST', su, body), body, signal: AbortSignal.timeout(15000) });
+                        const dt = await dr.text().catch(() => '');
+                        out.freshVisitorDirect = { s: dr.status, hits: (dt.match(/"subjectId"/g) || []).length, body: dt.slice(0, 70) };
+                    } else out.regTokenViaProxy = 'no pool candidate';
+                } catch (e) { out.regTokenViaProxy = String(e.message).slice(0, 80); }
                 // ⑥ proxy A/B — login + search through pool proxies (datacenter-IP-block theory, panel vantage)
                 try {
                     const undici = require('undici');

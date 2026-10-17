@@ -203,60 +203,76 @@ async function mbLogin(rounds = 6, disp = null) {
 }
 
 /** signed GET/POST with full fallback (v2.63): dispatcher plan = [direct-if-healthy, pool
- *  proxies ×3] or [sticky proxy + 2 spares] — per plan entry: host rotation + fresh identity
- *  on junk, re-login through the SAME entry on 441/401, and on a region-block answer
- *  (406/451/403-region) → mark that path bad and move to the next entry. Proxies stick
- *  (mbProxy) so every later BFF call reuses the IP the token was issued to. */
+ *  proxies ×3], TWO rounds (round 2 pulls fresh candidates — round-1 deaths are bad-marked).
+ *  Per plan entry: host rotation + fresh identity on junk, re-login through the SAME entry on
+ *  441/401. REGION-BLOCK handling (the 2026-10-18 discovery): MovieBox anchors the region to
+ *  the IP THAT ISSUED THE TOKEN — a token born via a blocked IP 406s "find no content" from
+ *  EVERYWHERE (live-proven: registered token + healthy proxy → 406, proxy-issued fresh token
+ *  + same proxy → 200). So on a proxied 406: wipe BOTH token layers (registered + visitor),
+ *  re-login THROUGH this proxy (fresh proxy-born token), retry — and schedule a re-registration
+ *  so the registered account is re-born via the proxy too. Direct 406 → 30-min cooldown (the
+ *  panel IP itself is blocked; token games can't fix that). Proxies stick (mbProxy) so later
+ *  calls reuse the IP the working token was born on. */
 async function mbApi(p, bodyObj, tries = 8) {
     let last, fails = 0;
     const pool = mbPool();
-    const plan = mbDispatchers();
-    for (let di = 0; di < plan.length; di++) {
-        const disp = plan[di];
-        const inner = disp.kind === 'direct' ? tries : 3;   // proxies: bounded (free proxies die — don't burn the budget)
-        for (let i = 0; i < inner; i++) {
-            const host = MB_HOSTS[mbHostIdx++ % MB_HOSTS.length];
-            const url = host + p;
-            let body = null, method = 'GET';
-            if (bodyObj !== undefined) { body = JSON.stringify(bodyObj); method = 'POST'; }
-            try {
-                const opt = { method, headers: mbHeaders(method, url, body), body: body || undefined, signal: AbortSignal.timeout(20000) };
-                if (disp.agent) opt.dispatcher = disp.agent;
-                const r = await fetch(url, opt);
-                const xu = r.headers.get('x-user');
-                if (xu) { try { const t = JSON.parse(xu).token; if (t) mbToken = t; } catch { } }
-                if (!r.ok) { const bt = await r.text().catch(() => ''); try { await r.body?.cancel(); } catch { } throw new Error('HTTP ' + r.status + ' ' + bt.slice(0, 50)); }
-                const j = await r.json();
-                if (j.code !== undefined && j.code !== 0 && j.code !== 200) throw new Error('api ' + j.code + ' ' + String(j.message || '').slice(0, 40));
-                mbAuthFailAt = 0;   // v2.46: authenticated again
-                if (disp.kind === 'proxy') { mbProxy = disp.url; pool?.markGood?.(disp.url); }
-                else mbDirectBadUntil = 0;
-                return j;
-            } catch (e) {
-                last = e; fails++;
-                const msg = String(e.message || '');
-                if (/HTTP 441|HTTP 401|miss token|UNAUTHORIZED/i.test(msg)) {
-                    mbToken = null;
-                    mbAuthFailAt = Date.now(); mbUserToken = '';   // v2.46: token rejected → visitor window + fresh registration
-                    if (/resource/.test(p)) scheduleMbRegister(1500);
-                    if (!await mbLogin(tries <= 3 ? 2 : 4, disp)) {   // probes fail FAST — no minute-long login loops
-                        if (di + 1 < plan.length) break;              // next dispatcher may still login
-                        throw new Error('MovieBox re-login fail');
+    for (let round = 0; round < 2; round++) {
+        const plan = mbDispatchers();
+        for (let di = 0; di < plan.length; di++) {
+            const disp = plan[di];
+            const inner = disp.kind === 'direct' ? tries : 3;   // proxies: bounded (free proxies die — don't burn the budget)
+            for (let i = 0; i < inner; i++) {
+                const host = MB_HOSTS[mbHostIdx++ % MB_HOSTS.length];
+                const url = host + p;
+                let body = null, method = 'GET';
+                if (bodyObj !== undefined) { body = JSON.stringify(bodyObj); method = 'POST'; }
+                try {
+                    const opt = { method, headers: mbHeaders(method, url, body), body: body || undefined, signal: AbortSignal.timeout(20000) };
+                    if (disp.agent) opt.dispatcher = disp.agent;
+                    const r = await fetch(url, opt);
+                    const xu = r.headers.get('x-user');
+                    if (xu) { try { const t = JSON.parse(xu).token; if (t) mbToken = t; } catch { } }
+                    if (!r.ok) { const bt = await r.text().catch(() => ''); try { await r.body?.cancel(); } catch { } throw new Error('HTTP ' + r.status + ' ' + bt.slice(0, 50)); }
+                    const j = await r.json();
+                    if (j.code !== undefined && j.code !== 0 && j.code !== 200) throw new Error('api ' + j.code + ' ' + String(j.message || '').slice(0, 40));
+                    mbAuthFailAt = 0;   // v2.46: authenticated again
+                    if (disp.kind === 'proxy') { mbProxy = disp.url; pool?.markGood?.(disp.url); }
+                    else mbDirectBadUntil = 0;
+                    return j;
+                } catch (e) {
+                    last = e; fails++;
+                    const msg = String(e.message || '');
+                    if (/HTTP 441|HTTP 401|miss token|UNAUTHORIZED/i.test(msg)) {
+                        mbToken = null;
+                        mbAuthFailAt = Date.now(); mbUserToken = '';   // v2.46: token rejected → visitor window + fresh registration
+                        if (/resource/.test(p)) scheduleMbRegister(1500);
+                        if (!await mbLogin(tries <= 3 ? 2 : 4, disp)) {   // probes fail FAST — no minute-long login loops
+                            if (di + 1 < plan.length) break;              // next dispatcher may still login
+                            throw new Error('MovieBox re-login fail');
+                        }
+                    } else if (mbRegionBlocked(msg)) {
+                        if (disp.kind === 'direct') { mbDirectBadUntil = Date.now() + MB_DIRECT_COOLDOWN; break; }   // IP-blocked: token games can't help
+                        // token born via a blocked IP → poisoned EVERYWHERE: wipe both layers,
+                        // re-login THROUGH this proxy (fresh proxy-born token), retry same proxy
+                        mbToken = null; mbUserToken = ''; mbAuthFailAt = Date.now();
+                        scheduleMbRegister(/resource/.test(p) ? 1500 : 60e3);   // re-born registered account rides the proxy
+                        if (!await mbLogin(2, disp)) {
+                            if (mbProxy === disp.url) mbProxy = ''; pool?.markBad?.(disp.url);
+                            break;   // → next dispatcher
+                        }
+                        // login ok → loop retries this proxy with the fresh token
+                    } else if (disp.kind === 'proxy') {
+                        if (mbProxy === disp.url) mbProxy = '';   // sticky proxy died → rotate on the next call too
+                        pool?.markBad?.(disp.url);
+                        break;   // dead/failed proxy → next candidate
+                    } else {
+                        if (fails % 2 === 0) mbIdentity();   // flagged fingerprint → new device
+                        await sleepMs(900);
                     }
-                } else if (mbRegionBlocked(msg)) {
-                    if (disp.kind === 'direct') mbDirectBadUntil = Date.now() + MB_DIRECT_COOLDOWN;   // 30-min direct cooldown (auto-heal)
-                    else { if (mbProxy === disp.url) mbProxy = ''; pool?.markBad?.(disp.url); }   // blocked proxy → unstick + rotate
-                    break;   // → next dispatcher
-                } else if (disp.kind === 'proxy') {
-                    if (mbProxy === disp.url) mbProxy = '';   // sticky proxy died → rotate on the next call too
-                    pool?.markBad?.(disp.url);
-                    break;   // dead/failed proxy → next candidate
-                } else {
-                    if (fails % 2 === 0) mbIdentity();   // flagged fingerprint → new device
-                    await sleepMs(900);
                 }
             }
         }
+        if (mbProxy) break;   // a proxy proved itself this round — don't burn a second plan
     }
     throw new Error('MovieBox API fail: ' + (last?.message || last));
 }
@@ -1679,4 +1695,4 @@ async function handle(c, ctx) {
     return true;
 }
 
-module.exports = { handle, bridgeReply, hasSession, setUi, mbSearch, mbDetails, mbSeasons, mbPlay, dashFrom, parseMpd, dashDownload, chunkCount, expandTpl, streamQualities, mergedQualities, downloadDash, transcode360, tvRows, listText, cardText, seriesText, sendSeriesCard, seasonOptText, epFileName, epCaption, packStat, mbDirectRows, mbDirectUrl, mbPositionSize, mbSizePlausible, MB_POS_SIZE, combinedRows, directDownload, mbRegisterAccount, mbCaptions, parseCaptions, subLabel, subFileName, vttToSrt, deliverSub, __deliver: deliverStream, _sessions: sessions, _testSession: (jid, s) => sessions.set(jid, s), mbHeaders, mbLogin, mbIdentity, MB_HOSTS, mbApi, _mbState: () => ({ proxy: mbProxy, directBadUntil: mbDirectBadUntil }), _mbReset: () => { mbProxy = ''; mbDirectBadUntil = 0; mbToken = null; }, _mbTestPool: (p) => { _pp = p; }, _mbProxyOf: (agent) => { for (const [u, a] of mbAgents) if (a === agent) return u; return null; } };
+module.exports = { handle, bridgeReply, hasSession, setUi, mbSearch, mbDetails, mbSeasons, mbPlay, dashFrom, parseMpd, dashDownload, chunkCount, expandTpl, streamQualities, mergedQualities, downloadDash, transcode360, tvRows, listText, cardText, seriesText, sendSeriesCard, seasonOptText, epFileName, epCaption, packStat, mbDirectRows, mbDirectUrl, mbPositionSize, mbSizePlausible, MB_POS_SIZE, combinedRows, directDownload, mbRegisterAccount, mbCaptions, parseCaptions, subLabel, subFileName, vttToSrt, deliverSub, __deliver: deliverStream, _sessions: sessions, _testSession: (jid, s) => sessions.set(jid, s), mbHeaders, mbLogin, mbIdentity, MB_HOSTS, mbApi, mbDispatchers, _mbState: () => ({ proxy: mbProxy, directBadUntil: mbDirectBadUntil }), _mbReset: () => { mbProxy = ''; mbDirectBadUntil = 0; mbToken = null; }, _mbTestPool: (p) => { _pp = p; }, _mbProxyOf: (agent) => { for (const [u, a] of mbAgents) if (a === agent) return u; return null; } };

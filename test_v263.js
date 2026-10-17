@@ -13,6 +13,8 @@
  *  [1] direct 406 → pool proxy fallback (sticky set, cooldown armed)
  *  [2] sticky: next call skips direct entirely (all attempts carry a dispatcher)
  *  [3] blocked sticky proxy → unstuck + spare takes over
+ *  [3b] poisoned registered token → fresh proxy-born visitor token (issue-IP = region anchor)
+ *  [3c] all round-1 candidates dead → round 2 pulls fresh candidates
  *  [4] login rides the SAME dispatcher as the 401'd call
  *  [5] login impossible on every dispatcher → "MovieBox re-login fail"
  *  [6] no pool → old behavior: fail with the 406 message + direct cooldown armed
@@ -42,8 +44,9 @@ const mkPool = (urls) => {
         markGood: (u) => bad.delete(u), markBad: (u) => bad.add(u),
     };
 };
-const MODE = { direct406: false, blockedProxies: new Set(), deadProxies: new Set(), one401: false, one401Any: false, loginFail: false };
+const MODE = { direct406: false, blockedProxies: new Set(), deadProxies: new Set(), one401: false, one401Any: false, loginFail: false, poisonedReg: false };
 const CALLS = [];   // { kind: 'login'|'search'|'other', via: 'direct'|proxyUrl, host }
+let LOGIN_VIA_PROXY = 0;
 
 const SEARCH_OK = () => Response.json({ code: 0, data: { results: [{ subjects: [{ subjectId: 'S1', title: 'Black Clover', subjectType: 2 }] }] } });
 const LOGIN_OK = () => Response.json({ code: 0, data: { token: 'mock.visitor.token' } });
@@ -56,6 +59,7 @@ globalThis.fetch = async (url, opts = {}) => {
     const kind = u.includes('visitor-login') ? 'login' : (u.includes('/search/v2') ? 'search' : 'other');
     CALLS.push({ kind, via, host: new URL(u).host });
     if (kind === 'login') {
+        if (via !== 'direct') LOGIN_VIA_PROXY++;
         if (MODE.loginFail) throw new Error('HTTP 500');
         return LOGIN_OK();
     }
@@ -63,6 +67,7 @@ globalThis.fetch = async (url, opts = {}) => {
         if (via !== 'direct') {
             if (MODE.deadProxies.has(via)) throw new TypeError('fetch failed');
             if (MODE.blockedProxies.has(via)) return R406();
+            if (MODE.poisonedReg && !LOGIN_VIA_PROXY) return R406();   // registered token born via blocked IP → 406 even via proxy
         } else if (MODE.direct406) return R406();
         if (MODE.one401Any || (MODE.one401 && via === 'direct')) { MODE.one401 = false; return Response.json({ code: 441, message: 'miss token' }, { status: 441 }); }
         return SEARCH_OK();
@@ -99,6 +104,29 @@ const SEARCH = '/wefeed-mobile-bff/subject-api/search/v2';
     await ok('P1 blocked (406 through proxy) → P2 spare serves the call', () => assert.strictEqual(j.data.results[0].subjects[0].title, 'Black Clover'));
     await ok('sticky moved to P2', () => assert.strictEqual(mdx._mbState().proxy, P2));
     MODE.blockedProxies.delete(P1);
+
+    console.log('\n[3b] poisoned registered token → fresh proxy-born token (THE live discovery)');
+    mdx._mbReset(); mdx._mbTestPool(mkPool([P1]));
+    CALLS.length = 0; LOGIN_VIA_PROXY = 0; MODE.direct406 = true; MODE.poisonedReg = true;
+    j = await mdx.mbApi(SEARCH, { keyword: 'black clover' }, 4);
+    await ok('registered-token 406 via proxy → wipe + proxy re-login → search OK', () => assert.strictEqual(j.data.results[0].subjects[0].title, 'Black Clover'));
+    await ok('a visitor-login happened THROUGH the proxy (issue-IP = region anchor)', () => assert.ok(CALLS.some(c => c.kind === 'login' && c.via !== 'direct'), JSON.stringify(CALLS)));
+    await ok('working proxy became sticky', () => assert.strictEqual(mdx._mbState().proxy, P1));
+    await ok('direct cooldown armed (direct 406 first)', () => assert.ok(mdx._mbState().directBadUntil > Date.now()));
+    MODE.poisonedReg = false; MODE.direct406 = false;
+
+    console.log('\n[3c] ALL round-1 candidates dead → round 2 pulls fresh candidates');
+    mdx._mbReset();
+    const round2 = mkPool([P1, P2]);
+    let picks = 0;
+    const origCand = round2.candidates.bind(round2);
+    round2.candidates = (n) => (++picks === 1 ? [P1] : origCand(n));   // round 1 serves only the dead P1, round 2 the real (bad-marked) filter → P2
+    mdx._mbTestPool(round2);
+    CALLS.length = 0; MODE.deadProxies.add(P1); MODE.direct406 = true;
+    j = await mdx.mbApi(SEARCH, { keyword: 'black clover' }, 3);
+    await ok('round-2 candidate (P2) serves after round-1 death', () => assert.strictEqual(j.data.results[0].subjects[0].title, 'Black Clover'));
+    await ok('sticky moved to P2', () => assert.strictEqual(mdx._mbState().proxy, P2));
+    MODE.deadProxies.delete(P1); MODE.direct406 = false;
 
     console.log('\n[4] login rides the SAME dispatcher as the failing call');
     mdx._mbReset(); mdx._mbTestPool(mkPool([P1]));
