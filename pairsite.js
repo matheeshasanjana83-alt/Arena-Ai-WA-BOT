@@ -319,6 +319,18 @@ function start(deps) {
                         out.freshVisitorDirect = { s: dr.status, hits: (dt.match(/"subjectId"/g) || []).length, body: dt.slice(0, 70) };
                     } else out.regTokenViaProxy = 'no pool candidate';
                 } catch (e) { out.regTokenViaProxy = String(e.message).slice(0, 80); }
+                // ⑤c CDN-IP-BINDING probe: a proxy-issued direct MP4 link fetched DIRECT (the bot's real download path)
+                try {
+                    const rows = await mv.mbDirectRows('3380137095141441488', 1, 124);
+                    const row360 = rows.find(r => r.h === 360) || rows[0];
+                    if (row360) {
+                        const rid = row360.direct?.rid || row360.resourceId;   // v2.46 row shape: rid lives under direct{}
+                        const link = await mv.mbDirectUrl('3380137095141441488', 1, 124, rid);
+                        const dr = await fetch(link, { headers: { 'User-Agent': 'okhttp/4.9.3', Range: 'bytes=0-32767' }, signal: AbortSignal.timeout(20000) });
+                        await dr.body?.cancel().catch(() => { });
+                        out.cdnDirectFetch = { s: dr.status, ct: (dr.headers.get('content-type') || '').slice(0, 30), cr: dr.headers.get('content-range') };
+                    } else out.cdnDirectFetch = 'no rows';
+                } catch (e) { out.cdnDirectFetch = String(e.message).slice(0, 110); }
                 // ⑥ proxy A/B — login + search through pool proxies (datacenter-IP-block theory, panel vantage)
                 try {
                     const undici = require('undici');
