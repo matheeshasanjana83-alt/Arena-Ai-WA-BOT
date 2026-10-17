@@ -187,7 +187,11 @@ async function ytdl(url, { mode = 'video', maxMB = 100, height = null } = {}) {
                 : ff ? `bv*[height<=${h}][ext=mp4]+ba[ext=m4a]/b[height<=${h}][ext=mp4]/b[height<=${h}]/b`
                     : `b[height<=${h}][ext=mp4]/b[height<=${h}]/b`;
             const prefix = `yt-${process.pid}-${Date.now().toString(36)}`;
-            const args = ['--no-playlist', '--no-warnings', '--no-part', '--max-filesize', `${maxMB}M`, '-f', fmt, '-o', path.join(TMP(), prefix + '.%(ext)s')];
+            // ⚡ v2.64 speed: parallel fragment workers (DASH/HLS ≈ 4-6× faster), lean retries
+            // (default 10 retries can hang a dead attempt for minutes before the next fallback)
+            const args = ['--no-playlist', '--no-warnings', '--no-part', '--concurrent-fragments', '5',
+                '--retries', '2', '--fragment-retries', '3', '--socket-timeout', '20',
+                '--max-filesize', `${maxMB}M`, '-f', fmt, '-o', path.join(TMP(), prefix + '.%(ext)s')];
             if (at.ck) args.push('--cookies', ck);
             if (at.alt) args.push('--extractor-args', 'youtube:player_client=web_safari,tv,mweb');
             if (ff) args.push('--ffmpeg-location', ff);

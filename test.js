@@ -218,10 +218,14 @@ const mk = (text, fromMe = true, jid = ME) => ({ key: { id: 'IN' + (++n), remote
         r = await run(mk('.wiki si ශ්‍රී ලංකාව')); t('.wiki si → සිංහල', /[\u0D80-\u0DFF]/.test(txt()) && /si\.(m\.)?wikipedia/.test(txt()));
         r = await run(mk('.gitclone matheeshasanjana83-alt/Arena-Ai-WA-BOT')); const gz = r.find(x => x.document);
         t('.gitclone → repo zip document', !!gz && /Arena-Ai-WA-BOT-main\.zip/.test(gz.fileName) && gz.size > 10000);
-        r = await run(mk('.song https://www.youtube.com/watch?v=jNQXAC9IVRw')); const au = r.find(x => x.audio);
-        t('.song <link> → audio (yt-dlp)', !!au && /Me at the zoo/.test(txt()));
-        r = await run(mk('.video https://www.youtube.com/watch?v=jNQXAC9IVRw')); const vi = r.find(x => x.video);
-        t('.video <link> → mp4 video + caption', !!vi && /Me at the zoo/.test(vi.caption || '') && /\d+p/.test(vi.caption || ''));
+        r = await run(mk('.song https://www.youtube.com/watch?v=jNQXAC9IVRw m4a')); const au = r.find(x => x.audio);
+        t('.song <link> m4a → instant audio (yt-dlp)', !!au && /Me at the zoo/.test(txt()));
+        r = await run(mk('.song https://www.youtube.com/watch?v=jNQXAC9IVRw'));
+        t('.song <link> (no quality) → 📋 format menu / audio fallback', /Format එකක් තෝරන්න/.test(txt()) || r.some(x => x.audio));
+        r = await run(mk('.video https://www.youtube.com/watch?v=jNQXAC9IVRw 360')); const vi = r.find(x => x.video);
+        t('.video <link> 360 → instant mp4 + caption', !!vi && /Me at the zoo/.test(vi.caption || '') && /\d+p/.test(vi.caption || ''));
+        r = await run(mk('.video https://www.youtube.com/watch?v=jNQXAC9IVRw'));
+        t('.video <link> (no quality) → 📋 quality menu / video fallback', /Quality එකක් තෝරන්න/.test(txt()) || r.some(x => x.video));
         t('yt temp files delete වෙනවා', await new Promise(res => setTimeout(() => res(![au, vi].some(x => x && fs.existsSync(x.audio?.url || x.video?.url))), 400)));
         r = await run(mk('.tiktok https://www.tiktok.com/@scout2015/video/6718335390845095173')); t('.tiktok → video (no watermark)', r.some(x => x.video && /No watermark/.test(x.caption || '')));
         r = await run(mk('.fb')); t('.fb link නැතුව → usage', /\.fb <link>/.test(txt()));

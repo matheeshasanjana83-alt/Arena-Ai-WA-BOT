@@ -17,6 +17,12 @@ function driveId(u) {
     return (m && m[1]) || u.searchParams.get('id');
 }
 
+// ⚡ v2.64 MediaFire resolve cache (page url → { link, at }) — 10-min TTL, capped
+const MF_TTL = 10 * 60e3;
+const mfCache = new Map();
+const mfCacheGet = (k) => { const c = mfCache.get(k); return c && Date.now() - c.at < MF_TTL ? c : null; };
+const mfCacheSet = (k, link) => { mfCache.set(k, { link, at: Date.now() }); if (mfCache.size > 200) mfCache.delete(mfCache.keys().next().value); };
+
 async function resolve(raw) {
     let u;
     try { u = new URL(raw); } catch { throw new Error('link එක වැරදියි'); }
@@ -52,9 +58,12 @@ async function resolve(raw) {
         if (m) return { kind: 'http', url: `https://pixeldrain.com/api/file/${m[1]}?download` };
     }
 
-    // ── MediaFire ──
+    // ── MediaFire ──  (⚡ v2.64: resolve cache — the CDN link is stable for minutes, so repeat
+    // downloads skip the 1-2s page scrape; 10-min TTL keeps expired links out)
     if (host.endsWith('mediafire.com') && !/^download\d*\./.test(host)) {
         if (/\/folder\//.test(u.pathname)) throw new Error('MediaFire folder links support නෑ — file link එකක් එවන්න');
+        const cached = mfCacheGet(raw);
+        if (cached) return { kind: 'http', url: cached.link, referer: raw };
         const page = await fetchText(raw, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0 Safari/537.36');
         if (page.status === 404) throw new Error('MediaFire file එක delete වෙලා / private');
         let m = page.text.match(/href="(https?:\/\/download\d*\.mediafire\.com[^"]+)"/);
@@ -64,6 +73,7 @@ async function resolve(raw) {
             if (s) { try { link = Buffer.from(s[1], 'base64').toString('utf8'); } catch { } }
         }
         if (!link) throw new Error('MediaFire download link එක හොයාගන්න බෑ (file එක delete වෙලා හෝ private)');
+        mfCacheSet(raw, link);
         return { kind: 'http', url: link, referer: raw };
     }
 
@@ -89,4 +99,4 @@ function driveConfirmUrl(html) {
     return action + (action.includes('?') ? '&' : '?') + params.toString();
 }
 
-module.exports = { resolve, driveConfirmUrl, UA_BROWSER, UA_CURL };
+module.exports = { resolve, driveConfirmUrl, UA_BROWSER, UA_CURL, mfCacheGet, mfCacheSet, _mfCache: mfCache, MF_TTL };

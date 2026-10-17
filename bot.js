@@ -131,7 +131,7 @@ const HELP = `*◈ KAVIZ MD V1 ◈* — commands
 📥 *.download <link>* (*.dl*) · *.mediafire* · *.mega* · *.gdrive* · *.video* (yt) · *.song* (yt)
 📥 *.mirror <link>* · *.gitclone user/repo*
 🍿 *.moviedex* <movie/series name> — movie & 📺 TV download
-🎬 *.yts* <නම> · *.song* <නම/link> · *.video* <නම/link> [2160..144]
+🎬 *.yts* <නම> · *.song* <නම/link> — 🎧 M4A/MP3 menu · *.video* <නම/link> — 🎬 quality menu [2160..144]
 📱 *.tiktok* · *.fb* · *.ig* · *.x* <link>
 🖼️ *.s* (reply) · *.take* Pack | Author
 🔍 *.wiki* <මාතෘකාව>
@@ -301,12 +301,13 @@ async function onMessages({ messages, type }, send, del = async () => { }) {
                 if (type !== 'notify' && ts && ts < STARTED - 60) continue;   // old history — don't re-run old commands
                 seen.add(msg.key.id); if (seen.size > 1000) seen.delete(seen.values().next().value);
                 let text = getText(msg.message);
-                if (accessible && /^\d{1,3}$/.test(text)) {                      // number reply → .mode / .setting / .menu panel · .moviedex card (v2.41: 3 panels)
+                if (accessible && /^\d{1,3}$/.test(text)) {                      // number reply → .mode / .setting / .menu panel · .moviedex card · 📋 yt quality menu (v2.64)
                     const jid0 = replyJid(msg.key), qid = msg.message?.extendedTextMessage?.contextInfo?.stanzaId;
                     if (qid) {                                                   // 🔒 v2.58 REPLY-ONLY: number එක card එකට QUOTE කරලා ම එන්න ඕන — bare number (no quote) → කිසිම දෙයක් නෑ (user bug 05:15: menu එකට reply නොකර '1' ගැහුවාම DOWNLOAD open වුණා)
                         const panels = [[settingState.get(jid0), '.setting '], [menuState.get(jid0), '.menu '], [modeState.get(jid0), '.mode ']].filter(([x]) => x && qid === x.id);
                         if (panels.length) text = panels[0][1] + text;           // exact quote of the panel card wins
-                        else { const b = moviedex.bridgeReply(jid0, qid, text); if (b) text = b; }   // moviedex card quotes — v2.28/29 routing (ring 40 · TTL 60m · never search while menu fresh)
+                        else { const y = features.ytMenuBridge(jid0, qid, text); if (y) text = y;   // 📋 v2.64 yt quality menu cards
+                            else { const b = moviedex.bridgeReply(jid0, qid, text); if (b) text = b; } }   // moviedex card quotes — v2.28/29 routing
                     }
                 }
                 if (!text.startsWith('.')) { maybeAiReply({ msg, jid: replyJid(msg.key), text, owner, send }); continue; }   // 🤖 AI chat (v2.41 — own modes, works even when bot commands are private)
@@ -455,7 +456,7 @@ const reactTo = (key, emoji) => {   // ⏳ → ✅/❌ pro-bot feedback (respect
     if (!reactOn() || !key?.id) return;
     try { SOCK?.sendMessage(key.remoteJid, { react: { text: emoji, key } }).catch(() => { }); } catch { }
 };
-const HEAVY = new Set(['.download', '.dl', '.dn', '.mediafire', '.mega', '.gdrive', '.moviedex', '.mdx', '.song', '.play', '.yta', '.video', '.ytv', '.yt', '.fb', '.facebook', '.faceboock', '.fbvid', '.ig', '.insta', '.x', '.twitter', '.tiktok', '.tt', '.mirror', '.link', '.tourl', '.url', '.gitclone', '.ai', '.ask', '.gpt', '.imagine', '.img', '.s', '.sticker', '.take', '.tts', '.say', '.ss', '.setcookies', '.setlogo', '.update']);
+const HEAVY = new Set(['.download', '.dl', '.dn', '.mediafire', '.mega', '.gdrive', '.moviedex', '.mdx', '.song', '.play', '.yta', '.video', '.ytv', '.yt', '.ytmenu', '.fb', '.facebook', '.faceboock', '.fbvid', '.ig', '.insta', '.x', '.twitter', '.tiktok', '.tt', '.mirror', '.link', '.tourl', '.url', '.gitclone', '.ai', '.ask', '.gpt', '.imagine', '.img', '.s', '.sticker', '.take', '.tts', '.say', '.ss', '.setcookies', '.setlogo', '.update']);
 // 🆕 v2.59: site-locked download commands — each one downloads ONLY its own site (menu: 📥 DOWNLOAD).
 // resolve() already scrapes all 3 hosts → router just validates the link + brands the progress bubble.
 const SITE_DL = {
@@ -486,8 +487,8 @@ async function handleReact(send, jid, msg, arg) {
 }
 
 const CATS = [
-    ['📥', 'Download', `*📥 DOWNLOAD*\n\n✦ *.download <link>* — file එක එවනවා (*.dl*)\n✦ *.mediafire <link>* — 🔥 MediaFire\n✦ *.mega <link>* — 🟢 MEGA\n✦ *.gdrive <link>* — 🔵 Google Drive\n✦ *.video <link/නම>* — 🎬 YouTube video (*.yt*)\n✦ *.song <link/නම>* — 🎧 YouTube audio (*.play*)\n✦ *.dl link1 link2* — links 5 දක්වා\n✦ *.mirror <link>* — 🔗 direct share link\n✦ *.gitclone user/repo* — repo → zip\n\n> 📏 max {MAX} / file · *.maxmb* වෙනස් කරන්න`],
-    ['🎬', 'YouTube', `*🎬 YOUTUBE*\n\n✦ *.yts <නම>* — search\n✦ *.song <නම / link>* — audio (*.play*)\n✦ *.video <නම / link>* — video (*.yt*)\n✦ *.video <link> 1080* — quality pick\n\n> 2160p → 144p · quality නැත්නම් best`],
+    ['📥', 'Download', `*📥 DOWNLOAD*\n\n✦ *.download <link>* — file එක එවනවා (*.dl*)\n✦ *.mediafire <link>* — 🔥 MediaFire\n✦ *.mega <link>* — 🟢 MEGA\n✦ *.gdrive <link>* — 🔵 Google Drive\n✦ *.video <link/නම>* — 🎬 YouTube quality menu (*.yt*)\n✦ *.song <link/නම>* — 🎧 YouTube audio menu (*.play*)\n✦ *.dl link1 link2* — links 5 දක්වා\n✦ *.mirror <link>* — 🔗 direct share link\n✦ *.gitclone user/repo* — repo → zip\n\n> 📏 max {MAX} / file · *.maxmb* වෙනස් කරන්න · ⚡ multi-connection fast download`],
+    ['🎬', 'YouTube', `*🎬 YOUTUBE*\n\n✦ *.yts <නම>* — search\n✦ *.song <නම / link>* — 🎧 format menu — M4A / MP3 320 / 128 (*.play*)\n✦ *.video <නම / link>* — 🎬 quality menu — sizes එක්ක (*.yt*)\n✦ *.video <link> 1080* — instant pick (menu නැතුව)\n\n> menu card එකට අංකය *reply* කරන්න · 2160p → 144p`],
     ['🍿', 'MovieDex', `*🍿 MOVIEDEX* — movies + 📺 series\n\n✦ *.moviedex <නම>* — search (*.mdx*)\n✦ අංකය reply — card → options\n✦ *.moviedex <n> <q#>* — 🍿 movie file\n✦ series: season 🧳 pack files · episode 🎬 files\n✦ *.moviedex <n> <q#> link* — 🔗 share link\n\n> DASH 1080p/720p/480p · ffmpeg mux · *.maxmb* limit`],
     ['📱', 'Social', `*📱 SOCIAL*\n\n✦ *.tiktok <link>* — watermark නෑ (*.tt*)\n✦ *.fb <link>* — Facebook (*.facebook*)\n✦ *.ig <link>* — Instagram\n✦ *.x <link>* — X / Twitter`],
     ['🔍', 'Search', `*🔍 SEARCH*\n\n✦ *.wiki <මාතෘකාව>* — Wikipedia\n✦ *.wiki si <මාතෘකාව>* — සිංහල wiki\n✦ *.yts <නම>* — YouTube search`],

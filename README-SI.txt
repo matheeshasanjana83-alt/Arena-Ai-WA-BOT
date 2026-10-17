@@ -26,6 +26,20 @@ litterbox/catbox, x0.at, transfer.archivete.am, filebin, eporner (v2.17). (gofil
 
 🔒 Private: ඔයා යවන messages විතරයි. වෙන අය commands යැව්වත් ignore.
 
+v2.64.0 — ⚡ FAST DOWNLOADS + 📋 YT QUALITY MENU
+  • Downloads ⚡ වේගවත්: .download / .mediafire / .mega / .gdrive දැන් connections 6ක් පාවිච්චි
+    කරලා parallel බාගන්නවා (server එක range support කරනවා නම් — 3-6× වේගයක්; support නැත්නම්
+    පරණ විදියටම single-stream)
+  • yt-dlp එකට concurrent fragments 5 — YouTube/DASH/HLS downloads වේගවත් + retries අඩු කරලා
+    fail වුණු attempts ඉක්මනට ඊළඟ attempt එකට මාරු වෙනවා
+  • MediaFire link resolve එක 10 min cache වෙනවා — දෙපාරක් එකම link එක දුන්නාම page scrape එක skip
+  • 📋 .video <link/නම> — quality menu card එකක් එනවා (1080p · ~245 MB වගේ rows, sizes ඇත්ත) —
+    card එකට අංකය reply කරන්න (මිනිත්තු 60 ඇතුලත) · 2160p → 144p
+  • 📋 .song <link/නම> — format menu: M4A original (වේගවත්ම) / MP3 320 / MP3 128 — MP3 convert
+    ffmpeg එකෙන්; ffmpeg fail උනොත් M4A ම එවනවා
+  • කලින් විදියටම instant pick වැඩ: .video <link> 1080 · .song <link> 320k / m4a
+  • වැරදි අංකයක් / expire වුණු card එකකට reply → menu එක ආයෙත් පෙන්නනවා (.ytmenu)
+
 v2.63.0 — 🛡️ MOVIEDEX REGION-BLOCK FIX (406)
   • ".mdx" එකෙන් "MovieBox API fail: HTTP 406 Not Acceptable" ආවේ MovieBox එක server එකේ
     datacenter IP එක block කරලා නිසා (406 "find no content" — login වැඩ, search වැඩ නෑ)

@@ -55,10 +55,97 @@ async function sendFile(send, jid, msg, kind, p, extra) {
 }
 
 // ───────── YouTube / any yt-dlp site ─────────
-// ".video <link> 1080" / ".yt <link> 720p" → quality pick  (no quality = best available, 2160 → 144)
+// ".video <link> 1080" / ".yt <link> 720p" → instant quality pick
+// ".video/.song <link>" (no quality) → 📋 INTERACTIVE QUALITY MENU (v2.64) — quote the card + digit
 const Q_RE = /\s(2160|1440|1080|720|480|360|240|144)p?\s*$/i;
+const A_RE = /\s(m4a|mp3|orig|original|320|256|192|128)\s*(?:k|kbps)?\s*$/i;
 
 const MAXV = () => Math.min(200, MAXMB());   // video cap (MB)
+
+/** ".video <q> 1080" / ".song <q> 320k" → { query, height, aBit }  (pure — tests)
+ *  video: 2160..144 [p] · audio: m4a/orig (original) · mp3 (320) · 320/256/192/128 [k|kbps] */
+function parseYtArgs(query, mode) {
+    let height = null, aBit = null;
+    const qm = query.match(mode === 'video' ? Q_RE : A_RE);
+    if (qm) {
+        if (mode === 'video') height = +qm[1];
+        else aBit = /^(m4a|orig|original)$/i.test(qm[1]) ? 'm4a' : /^mp3$/i.test(qm[1]) ? 320 : parseInt(qm[1], 10);
+        query = query.slice(0, qm.index).trim();
+    }
+    return { query, height, aBit };
+}
+
+// ── v2.64 quality menu: info cache + row builders ──
+const INFO_TTL = 10 * 60e3;
+const infoCache = new Map();   // url → { info, at }  (media.info is a full yt-dlp -J pass = 2-4s → cache it)
+async function ytInfo(url) {
+    const c = infoCache.get(url);
+    if (c && Date.now() - c.at < INFO_TTL) return c.info;
+    const i = await media.info(url);
+    infoCache.set(url, { info: i, at: Date.now() });
+    if (infoCache.size > 60) infoCache.delete(infoCache.keys().next().value);
+    return i;
+}
+const fsize = (f) => f.filesize || f.filesize_approx || 0;
+
+/** menu rows from yt-dlp info JSON (pure — tests)
+ *  video: heights desc, real size = video file + audio track (DASH merge), rows over capMB hidden, max 6
+ *  audio: [M4A original, MP3 320, MP3 128] — mp3 sizes estimated from duration (128k ≈ 16 KB/s, 320k ≈ 40 KB/s) */
+function ytRows(info, mode, capMB = 9e9) {
+    const fmts = info?.formats || [];
+    const auds = fmts.filter((f) => f.acodec && f.acodec !== 'none' && (!f.vcodec || f.vcodec === 'none'));
+    const audSize = Math.max(0, ...auds.map(fsize));
+    if (mode === 'audio') {
+        const best = auds.sort((a, b) => fsize(b) - fsize(a))[0];
+        const dur = info?.duration || 0;
+        return [
+            { label: 'M4A original', pick: 'm4a', size: fsize(best || {}) || (dur ? Math.round(dur * 16 * 1024) : null) },
+            { label: 'MP3 320kbps', pick: '320k', size: dur ? Math.round(dur * 40 * 1024) : null },
+            { label: 'MP3 128kbps', pick: '128k', size: dur ? Math.round(dur * 16 * 1024) : null },
+        ];
+    }
+    const byH = new Map();
+    for (const f of fmts) {
+        if (!f.height || !f.vcodec || f.vcodec === 'none') continue;
+        const cur = byH.get(f.height);
+        if (!cur || fsize(f) > fsize(cur)) byH.set(f.height, f);
+    }
+    const rows = [];
+    for (const h of [2160, 1440, 1080, 720, 480, 360, 240, 144]) {
+        const f = byH.get(h);
+        if (!f) continue;
+        const size = (fsize(f) || 0) + (f.acodec && f.acodec !== 'none' ? 0 : audSize);   // progressive = audio inside
+        if (size && size > capMB * 1048576) continue;                                     // cap එකෙන් ලොකු ඒවා menu එකේ පෙන්නන්නෙ නෑ
+        rows.push({ label: h + 'p', pick: String(h), size: size || null, h });
+        if (rows.length >= 6) break;
+    }
+    return rows;
+}
+
+function ytMenuText(title, rows, mode, meta) {
+    const head = `${mode === 'audio' ? '🎧' : '🎬'} *${cut(title || 'YouTube', 80)}*${meta ? '\n' + meta : ''}`;
+    const list = rows.map((r, i) => `*${i + 1}.* ${mode === 'audio' ? '🎵' : '🎞️'} ${r.label}${r.size ? ' · ~' + human(r.size) : ''}`).join('\n');
+    return `${head}\n\n${mode === 'audio' ? 'Format' : 'Quality'} එකක් තෝරන්න — මේ message එකට *අංකය reply* කරන්න:\n\n${list}\n\n${foot('මිනිත්තු 60 ඇතුලත reply කරන්න')}`;
+}
+
+// ── v2.64 menu routing (moviedex-card pattern): menu card id → { url, rows… }; bot.js quotes bridge here
+const YT_TTL = 60 * 60e3, YT_CAP = 40;
+const ytMenus = new Map();   // card message id → { jid, url, title, mode, rows, at }
+function ytRemember(jid, sent, url, title, mode, rows) {
+    const key = sent?.key?.id || (typeof sent?.key === 'string' ? sent.key : null);
+    if (!key) return;
+    ytMenus.set(key, { jid, url, title, mode, rows, at: Date.now() });
+    if (ytMenus.size > YT_CAP) ytMenus.delete(ytMenus.keys().next().value);
+}
+/** quoted number on a menu card → ".video/.song <url> <quality>" | ".ytmenu …" (re-show) | null (not ours) */
+function ytMenuBridge(jid, qid, digits) {
+    const k = String(qid || ''), s = ytMenus.get(k);
+    if (!s || s.jid !== jid || !/^\d{1,3}$/.test(String(digits || ''))) return null;
+    const stale = Date.now() - s.at > YT_TTL;
+    const row = stale ? null : s.rows[parseInt(digits, 10) - 1];
+    if (!row) return `.ytmenu ${s.url} ${s.mode}`;   // expired / wrong digit → menu එක ආයෙත් පෙන්නනවා
+    return s.mode === 'audio' ? `.song ${s.url} ${row.pick}` : `.video ${s.url} ${row.pick}`;
+}
 
 async function ytDlpFetch(url, mode, height) {
     return media.ytdl(url, { mode, height, maxMB: mode === 'audio' ? Math.min(60, MAXMB()) : MAXV() });
@@ -123,11 +210,21 @@ async function cliptoFetch(url, mode, height) {
     return { path: out, size: fs.statSync(out).size, height: target, title };
 }
 
+/** m4a → MP3 <kbps> via ffmpeg (null = ffmpeg fail → caller sends the M4A as-is) */
+async function toMp3(p, kbps) {
+    let ff = null; try { ff = await media.getBin('ffmpeg'); } catch { return null; }
+    const out = p.replace(/\.(m4a|webm|opus|mp4)$/i, '') + `-${kbps}.mp3`;
+    const r = await media._run(ff, ['-hide_banner', '-loglevel', 'error', '-y', '-i', p, '-vn', '-c:a', 'libmp3lame', '-b:a', `${kbps}k`, out], 600e3);
+    if (r.code !== 0) { fs.rm(out, { force: true }, () => { }); return null; }
+    return out;
+}
+
 async function ytCommand(send, jid, msg, query, mode, label = 'YouTube', react) {
-    let height = null;
-    const qm = query.match(Q_RE);
-    if (qm) { height = +qm[1]; query = query.slice(0, qm.index).trim(); }
-    if (!query) return send(jid, { text: `${mode === 'audio' ? '🎧 *.song*' : '🎬 *.video*'} <link / නම>${mode === 'audio' ? '' : ' [2160..144]'}\n${foot('උදා: ' + (mode === 'audio' ? '.song faded alan walker' : '.video https://youtu.be/xxxx 1080'))}` }, { quoted: msg });
+    const parsed = parseYtArgs(query, mode);
+    query = parsed.query;
+    const height = mode === 'video' ? parsed.height : null;
+    const aBit = mode === 'audio' ? parsed.aBit : null;
+    if (!query) return send(jid, { text: `${mode === 'audio' ? '🎧 *.song*' : '🎬 *.video*'} <link / නම>${mode === 'audio' ? ' [m4a · 320 · 128]' : ' [2160..144]'}\n${foot(mode === 'audio' ? 'quality menu එකෙන් format එක තෝරන්න පුළුවන් · උදා: .song faded' : 'quality menu එකෙන් තෝරන්න පුළුවන් · උදා: .video https://youtu.be/xxxx')}` }, { quoted: msg });
     const s = await status(send, jid, msg, mode === 'audio' ? '🎧 audio…' : '🎬 video…');
     let url = (query.match(URL_RE) || [])[0], title = '', meta = '', e1msg = '';
     try {
@@ -136,7 +233,27 @@ async function ytCommand(send, jid, msg, query, mode, label = 'YouTube', react) 
             if (!v) { react?.('❌'); return s.edit(`❌ "${cut(query, 40)}" — හරියන result එකක් නෑ`); }
             url = v.url; title = v.title; meta = v.timestamp || '';
         }
-        await s.edit(`${title ? `*${cut(title, 60)}*\n` : ''}⬇️ ${mode === 'audio' ? 'audio' : 'video'} ${height ? height + 'p · ' : ''}download…`);
+        // 📋 v2.64 quality menu — no quality in the command → info JSON → available rows (real sizes) → card
+        if ((mode === 'video' && !height) || (mode === 'audio' && !aBit)) {
+            await s.edit(`${title ? `*${cut(title, 60)}*\n` : ''}🔎 quality හොයනවා…`);
+            let info = null;
+            try { info = await ytInfo(url); } catch { }
+            const rows = info ? ytRows(info, mode, mode === 'audio' ? 9e9 : MAXV()) : [];
+            if (rows.length) {
+                title = title || info?.title || '';
+                if (info?.duration) meta = meta || fmtDur(info.duration);
+                if (info?.view_count) meta = [meta, '👁️ ' + fmtNum(info.view_count)].filter(Boolean).join(' · ');
+                const st = await send(jid, { text: ytMenuText(title, rows, mode, meta) }, { quoted: msg });
+                ytRemember(jid, st, url, title, mode, rows);
+                await s.del();
+                react?.('✨');
+                return;
+            }
+            await s.edit(`${title ? `*${cut(title, 60)}*\n` : ''}⬇️ ${mode === 'audio' ? 'audio' : 'video'} download… (quality info එක නෑ — best)`);   // menu හදන්න බැරි → best download
+        } else {
+            await s.edit(`${title ? `*${cut(title, 60)}*\n` : ''}⬇️ ${mode === 'audio' ? 'audio' : 'video'} ${height ? height + 'p · ' : aBit && aBit !== 'm4a' ? 'MP3 ' + aBit + 'k · ' : ''}download…`);
+        }
+        const infoP = (!title || !meta) ? ytInfo(url).catch(() => null) : Promise.resolve(null);   // caption title — download එක්කම parallel
         let r = null;
         try {
             r = await ytDlpFetch(url, mode, height);   // primary: yt-dlp (all sites, best quality)
@@ -147,10 +264,19 @@ async function ytCommand(send, jid, msg, query, mode, label = 'YouTube', react) 
             r = await cliptoFetch(url, mode, height);
             if (!title) title = r.title || '';
         }
-        if (!title) { try { const i = await media.info(url); title = i.title || ''; meta = fmtDur(i.duration); } catch { } }
-        const cap = `${mode === 'audio' ? '🎧' : '🎬'} *${cut(title || label, 120)}*\n${foot([r.height && mode === 'video' ? r.height + 'p' : '', human(r.size), meta].filter(Boolean).join(' · '))}`;
+        // 🎵 MP3 convert (m4a → mp3 <kbps>) — ffmpeg fail → M4A ම යවනවා (never dead-ends)
+        let mp3Note = '';
+        if (mode === 'audio' && aBit && aBit !== 'm4a') {
+            await s.edit(`🎚️ MP3 ${aBit}kbps convert…`);
+            const mp3 = await toMp3(r.path, aBit);
+            if (mp3) { try { fs.rmSync(r.path, { force: true }); } catch { } r = { ...r, path: mp3 }; }
+            else mp3Note = 'ffmpeg fail → M4A';
+        }
+        if (!title || !meta) { const i = await infoP; if (i) { title = title || i.title || ''; meta = meta || fmtDur(i.duration); } }
+        const cap = `${mode === 'audio' ? '🎧' : '🎬'} *${cut(title || label, 120)}*\n${foot([r.height && mode === 'video' ? r.height + 'p' : '', mode === 'audio' && aBit && aBit !== 'm4a' ? 'MP3 ' + aBit + 'kbps' : '', human(r.size), meta, mp3Note].filter(Boolean).join(' · '))}`;
         await sendFile(send, jid, msg, mode, r.path, { caption: cap });
-        await s.del();   // progress bubble අයින් — file එකම ප්‍රමාණවත්
+        if (mp3Note) await s.edit(`🎚️ ${cut(title || label, 40)} — MP3 convert fail → *M4A* ම එවනවා`);   // audio captions WhatsApp එකේ render නෑ → note එක bubble එකේම
+        else await s.del();   // progress bubble අයින් — file එකම ප්‍රමාණවත්
         react?.('✅');
     } catch (e) {
         const em = String(e.message);
@@ -159,6 +285,21 @@ async function ytCommand(send, jid, msg, query, mode, label = 'YouTube', react) 
         await s.edit(`❌ ${cut(em, 180)}${e1msg ? ' · ' + cut(e1msg, 80) : ''}${botCheck ? '\n> *.setcookies* — YouTube block fix' : ''}`);
         console.log(`❌ ${label}: ${em}${e1msg ? ' / ' + e1msg : ''}`);
     }
+}
+
+/** ".ytmenu <url> <mode>" — menu card එක ආයෙත් පෙන්නනවා (expired card / වැරදි අංකයකට reply) */
+async function ytMenuResend(send, jid, msg, rest) {
+    const arg = rest.join(' ');
+    const url = (arg.match(URL_RE) || [])[0];
+    const mode = /audio|song/i.test(arg) ? 'audio' : 'video';
+    if (!url) return send(jid, { text: `📋 *.ytmenu <link> <video|song>*` }, { quoted: msg });
+    try {
+        const info = await ytInfo(url);
+        const rows = ytRows(info, mode, mode === 'audio' ? 9e9 : MAXV());
+        if (!rows.length) throw new Error('formats නෑ');
+        const st = await send(jid, { text: ytMenuText(info?.title || '', rows, mode, info?.duration ? fmtDur(info.duration) : '') }, { quoted: msg });
+        ytRemember(jid, st, url, info?.title || '', mode, rows);
+    } catch (e) { await send(jid, { text: `❌ quality info එක ගන්න බැරි වුණා — *${mode === 'audio' ? '.song' : '.video'} ${cut(url, 60)}* ආයෙත් ගහන්න` }, { quoted: msg }); }
 }
 
 async function ytSearchCmd(send, jid, msg, q) {
@@ -378,7 +519,7 @@ async function group(sock, send, jid, msg, c, args, me) {
 }
 
 const GROUP_CMDS = ['.tagall', '.kick', '.promote', '.demote', '.grouplink', '.groupinfo', '.jid', '.mute', '.unmute', '.tagadmins', '.resetlink'];
-const CMDS = ['.yts', '.play', '.song', '.yta', '.video', '.ytv', '.yt', '.tiktok', '.tt', '.fb', '.facebook', '.faceboock', '.fbvid', '.ig', '.insta', '.x', '.twitter', '.wiki', '.gitclone', '.sticker', '.s', '.take', ...GROUP_CMDS];
+const CMDS = ['.yts', '.play', '.song', '.yta', '.video', '.ytv', '.yt', '.ytmenu', '.tiktok', '.tt', '.fb', '.facebook', '.faceboock', '.fbvid', '.ig', '.insta', '.x', '.twitter', '.wiki', '.gitclone', '.sticker', '.s', '.take', ...GROUP_CMDS];
 
 /** returns true if handled */
 async function handle(c, { send, jid, msg, rest, sock, me, download, react }) {
@@ -388,6 +529,7 @@ async function handle(c, { send, jid, msg, rest, sock, me, download, react }) {
         case '.yts': await ytSearchCmd(send, jid, msg, q); break;
         case '.play': case '.song': case '.yta': await ytCommand(send, jid, msg, q, 'audio', 'YouTube', react); break;
         case '.video': case '.ytv': case '.yt': await ytCommand(send, jid, msg, q, 'video', 'YouTube', react); break;
+        case '.ytmenu': await ytMenuResend(send, jid, msg, rest); break;
         case '.fb': case '.facebook': case '.faceboock': case '.fbvid': await fbCommand(send, jid, msg, q, react); break;
         case '.ig': case '.insta': case '.x': case '.twitter':
             if (!URL_RE.test(q)) { await send(jid, { text: `🎬 *${c} <link>* — public video link එකක් දෙන්න` }, { quoted: msg }); break; }
@@ -404,4 +546,4 @@ async function handle(c, { send, jid, msg, rest, sock, me, download, react }) {
     return true;
 }
 
-module.exports = { handle, CMDS, GROUP_CMDS, ytCommand, setMediaDownloader: (f) => { mediaDownloader = f; }, _ytsearch: (f) => { yts = f; } };
+module.exports = { handle, CMDS, GROUP_CMDS, ytCommand, ytMenuBridge, ytRemember, parseYtArgs, ytRows, ytMenuText, ytInfo, ytMenuResend, setMediaDownloader: (f) => { mediaDownloader = f; }, _ytsearch: (f) => { yts = f; }, _ytMenus: ytMenus, _infoCache: infoCache };

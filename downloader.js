@@ -94,22 +94,71 @@ async function streamToFile(stream, dest, total, onProgress) {
     return loaded;
 }
 
-async function httpGet(url, ua, referer) {
-    const headers = { 'User-Agent': ua, 'Accept': '*/*' };
+async function httpGet(url, ua, referer, extra) {
+    const headers = { 'User-Agent': ua, 'Accept': '*/*', ...(extra || {}) };
     if (referer) headers.Referer = referer;
     return fetchExplained(url, { headers, redirect: 'follow' });
 }
 
+// ── ⚡ v2.64 parallel ranged download — MediaFire/pixeldrain/CDN per-connection speed caps are
+// common; K parallel Range chunks ≈ K× faster. Only when size known + server says "accept-ranges:
+// bytes" (and every chunk MUST answer 206 — some hosts ignore Range and would send the WHOLE file
+// K times, so a non-206 chunk aborts everything → caller falls back to the single-stream path).
+const PAR_MIN = 8 * 1048576;      // < 8 MB → single stream (not worth it)
+const PAR_CHUNK = 8 * 1048576;    // ~8 MB per connection
+const PAR_MAX = 6;                // connection count cap
+const PAR_IDLE = 60e3;            // no data at all for 60s → abort → fallback
+function planRanges(total, max = PAR_MAX, chunkMin = PAR_CHUNK) {
+    const n = Math.max(1, Math.min(max, Math.floor(total / chunkMin) || 1));
+    const size = Math.floor(total / n);
+    const parts = [];
+    for (let i = 0; i < n; i++) parts.push([i * size, i === n - 1 ? total - 1 : (i + 1) * size - 1]);   // inclusive [start,end]
+    return parts;
+}
+
+async function downloadParallel(r, ua, dest, total, onProgress) {
+    const parts = planRanges(total);
+    const fd = fs.openSync(dest, 'w'); fs.closeSync(fd);   // preallocate (sparse)
+    fs.truncateSync(dest, total);
+    let done = 0, dead = false, lastData = Date.now();
+    const t0 = Date.now();
+    const fail = (why) => Object.assign(new Error('parallel chunk fail: ' + why), { code: 'KZ_RANGE' });
+    const idle = setInterval(() => { if (Date.now() - lastData > PAR_IDLE) { dead = true; } }, 5000);
+    try {
+        await Promise.all(parts.map(async ([s, e]) => {
+            const res = await httpGet(r.url, ua, r.referer, { Range: `bytes=${s}-${e}` });
+            if (res.status !== 206) { try { await res.body?.cancel(); } catch { } throw fail(`HTTP ${res.status} (206 ඕනේ)`); }
+            const ws = fs.createWriteStream(dest, { flags: 'r+', start: s });
+            const src = Readable.fromWeb(res.body);   // ⚠️ undici fetch body = WEB stream (.on නෑ) — fromWeb ඕනේ
+            let pos = s;
+            await new Promise((ok2, no2) => {
+                src.on('data', (c) => {
+                    lastData = Date.now();
+                    if (dead) return;
+                    pos += c.length; done += c.length;
+                    if (pos > e + 1) { dead = true; src.destroy(); ws.destroy(); return no2(fail('chunk overflow')); }
+                    try { onProgress?.(done, total, done / Math.max((Date.now() - t0) / 1000, 0.5)); } catch { }
+                });
+                src.on('error', (e2) => { dead = true; no2(e2); });
+                ws.on('error', (e2) => { dead = true; no2(e2); });
+                ws.on('finish', () => { if (pos !== e + 1) { dead = true; no2(fail(`chunk short (${pos - s}/${e - s + 1})`)); } else ok2(); });
+                src.pipe(ws);
+            });
+        }));
+        return total;
+    } finally { clearInterval(idle); }
+}
+
 async function downloadHttp(r, dest, onProgress, allowStream) {
-    let res, ct;
+    let res, ct, goodUa = UA_BROWSER;
     // try browser UA, then curl UA (some hosts give a "warning page" to browsers, e.g. filebin)
     for (const ua of [UA_BROWSER, UA_CURL]) {
         res = await httpGet(r.url, ua, r.referer);
         ct = (res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
-        if (res.ok && ct !== 'text/html') break;
+        if (res.ok && ct !== 'text/html') { goodUa = ua; break; }
         if (res.ok && ct === 'text/html' && r.drive) {
             const next = driveConfirmUrl(await res.text());
-            if (next) { res = await httpGet(next, ua); ct = (res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase(); if (res.ok && ct !== 'text/html') break; }
+            if (next) { res = await httpGet(next, ua); ct = (res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase(); if (res.ok && ct !== 'text/html') { goodUa = ua; break; } }
             throw new Error('Google Drive file එක public නෑ (Anyone with the link කරන්න) හෝ download limit එක ඉවරයි');
         }
         if (!res.ok && res.status !== 403) break;
@@ -121,14 +170,37 @@ async function downloadHttp(r, dest, onProgress, allowStream) {
     const total = parseInt(res.headers.get('content-length') || '0', 10);
     if (total > maxBytes()) { try { await res.body?.cancel(); } catch { } throw new Error(`file එක ${human(total)} — limit එක ${human(maxBytes())}  (*.maxmb* එකෙන් වෙනස් කරන්න, max 2000)`); }
     const name = nameFromHeaders(res.headers, res.url || r.url);
+    const mime = ct || 'application/octet-stream';
+    // ⚡ v2.64: size known + ranges OK + disk fits 2× → K parallel connections (3-6× faster).
+    // any chunk problem → silent fallback to the classic single-stream paths below.
+    if (total >= PAR_MIN && !/bytes/i.test(res.headers.get('accept-ranges') || '')) {
+        // some real CDNs answer 206 WITHOUT advertising accept-ranges (thinkbroadband, OVH…) → cheap 1-byte probe
+        try {
+            const p = await httpGet(r.url, goodUa, r.referer, { Range: 'bytes=0-0' });
+            if (p.status === 206) res.headers.set('accept-ranges', 'bytes');
+            try { await p.body?.cancel(); } catch { }
+        } catch { }
+    }
+    if (total >= PAR_MIN && /bytes/i.test(res.headers.get('accept-ranges') || '')) {
+        let diskOk = false;
+        try { checkDisk(total, false); diskOk = true; } catch { }
+        if (diskOk) {
+            try { await res.body?.cancel(); } catch { }
+            try { const size = await downloadParallel(r, goodUa, dest, total, onProgress); return { name, size, mime }; }
+            catch { /* fall through — fresh single GET below */ }
+            const retry = await httpGet(r.url, goodUa, r.referer);
+            if (retry.ok) { res = retry; ct = (res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase(); }
+            else { try { await retry.body?.cancel(); } catch { } throw new Error(`server එකෙන් ${retry.status} ආවා (link එක expire වෙලා / private / වැරදියි)`); }   // original body එක cancel කරලා ඉවරයි → retry fail නම් clear error
+        }
+    }
     if (allowStream && total && total >= streamMin()) {   // 🌊 big file → straight to WhatsApp
         try { checkDisk(total, true); } catch (e) { try { await res.body?.cancel(); } catch { } throw e; }
         const body = res.body;
-        return { name, size: total, mime: ct || 'application/octet-stream', open: () => counting(Readable.fromWeb(body), total, onProgress) };
+        return { name, size: total, mime, open: () => counting(Readable.fromWeb(body), total, onProgress) };
     }
     try { checkDisk(total, false); } catch (e) { try { await res.body?.cancel(); } catch { } throw e; }
     const size = await streamToFile(Readable.fromWeb(res.body), dest, total, onProgress);
-    return { name, size, mime: ct || 'application/octet-stream' };
+    return { name, size, mime };
 }
 
 async function downloadMega(url, destDir, onProgress, allowStream) {
@@ -161,4 +233,4 @@ async function download(link, onProgress, { stream = false } = {}) {
     } catch (e) { fs.rm(dest, { force: true }, () => { }); throw e; }
 }
 
-module.exports = { explainNetErr, download, human, maxBytes, maxMB, freeDisk, WA_MAX_MB, get MAX_BYTES() { return maxBytes(); } };
+module.exports = { explainNetErr, download, human, maxBytes, maxMB, freeDisk, WA_MAX_MB, planRanges, downloadParallel, PAR_MIN, PAR_CHUNK, PAR_MAX, get MAX_BYTES() { return maxBytes(); } };

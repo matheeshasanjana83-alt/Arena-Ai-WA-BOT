@@ -1,6 +1,6 @@
 {
-  "version": "2.63.0",
-  "notes": "v2.63.0: MOVIEDEX REGION-BLOCK FIX \u2014 '.mdx' \u2192 'MovieBox API fail: HTTP 406 Not Acceptable'. MovieBox soft-blocked the server's datacenter IP: every subject-api call answered 406 'find no content' while login still worked and the SAME call through a residential proxy worked (proven via pairsite /diag A/B). mbApi now runs a dispatcher plan [direct \u2192 proxy-pool \u00d73], keeps a STICKY working proxy, re-probes direct after a 30-min cooldown, and logins/registration ride the same path. New pairsite /diag MovieBox diagnostics endpoint (pair-key gated). Earlier features (DEEP EPISODES, EPISODE NUMBERS, REAL SIZES, SUBTITLES, season packs) unchanged.",
+  "version": "2.64.0",
+  "notes": "v2.64.0: FAST DOWNLOADS + YT QUALITY MENU — multi-connection ranged downloads (.download/.mediafire/.mega/.gdrive up to 6 parallel Range chunks, 206-verified, single-stream fallback), yt-dlp concurrent fragments (5 workers) + lean retries, MediaFire resolve cache (10-min TTL), .video/.song INTERACTIVE QUALITY MENU (menu card එකට අංකය reply — video 2160p→144p real sizes, audio M4A/MP3 320/128 via ffmpeg, .ytmenu re-show, expired=60min). Earlier features (REGION-BLOCK proxy fallback, DEEP EPISODES, EPISODE NUMBERS, REAL SIZES, SUBTITLES) unchanged.",
   "removed": [
     "movies.js",
     "test_v218.js",
@@ -81,6 +81,7 @@
     "test_v260.js",
     "test_v261.js",
     "test_v262.js",
-    "test_v263.js"
+    "test_v263.js",
+    "test_v264.js"
   ]
 }
