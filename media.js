@@ -103,6 +103,15 @@ function cookieArgs(args) {
     return args;
 }
 
+// 🧠 v2.66 THE ".song/.video වැඩ නෑ" ROOT CAUSE (panel verbose probe 2026-10-18):
+//   "[debug] JS runtimes: none … [jsc] JS Challenge Providers: node (unavailable) …
+//    WARNING: No supported JavaScript runtime could be found. Only deno is enabled by default"
+//    → YouTube's EJS/n-sig challenge is never solved → EVERY real download = "Sign in to
+//    confirm you're not a bot" (HTTP 403) while info/menu still works. yt-dlp 2026 needs an
+//    external JS runtime; the bot IS node → enable it explicitly with the bot's own binary
+//    (process.execPath = /usr/local/bin/node on the panel — PATH lookup not trusted).
+const JSRT = () => ['--js-runtimes', `node:${process.execPath}`];
+
 function run(bin, args, timeout = 15 * 60e3) {
     return new Promise((resolve) => {
         const p = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'] });
@@ -151,7 +160,7 @@ function firstOk(jobs) {
  *  hung pool proxies cost a full 120s EACH when probed sequentially = the 4-minute menu. */
 async function info(url) {
     const yt = await getBin('yt-dlp');
-    const base = cookieArgs(['-J', '--no-playlist', '--no-warnings', '--skip-download', '--socket-timeout', '15']);
+    const base = cookieArgs(['-J', '--no-playlist', '--no-warnings', '--skip-download', '--socket-timeout', '15']).concat(JSRT());
     const px = proxyArg();
     const pool = require('./proxypool');
     const pxList = [...(px ? [px] : []), ...pool.candidates(2)].filter((v, i, a) => v && a.indexOf(v) === i);
@@ -223,6 +232,7 @@ async function ytdl(url, { mode = 'video', maxMB = 100, height = null } = {}) {
                 const args = ['--no-playlist', '--no-warnings', '--no-part', '--concurrent-fragments', '5',
                     '--retries', '2', '--fragment-retries', '3', '--socket-timeout', isYt ? '20' : '12',
                     '--max-filesize', `${maxMB}M`, '-f', fmt, '-o', path.join(TMP(), prefix + '.%(ext)s')];
+                args.push(...JSRT());   // 🧠 v2.66 node EJS challenge solver — the 403 bot-check fix
                 if (at.ck) args.push('--cookies', ck);
                 if (at.alt) args.push('--extractor-args', 'youtube:player_client=web_safari,tv,mweb');
                 if (ff) args.push('--ffmpeg-location', ff);

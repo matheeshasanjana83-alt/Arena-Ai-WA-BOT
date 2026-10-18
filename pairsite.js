@@ -396,6 +396,7 @@ function start(deps) {
                             const pref = path2.join(tmpd, `diagyt-${name}-${Date.now().toString(36)}`);
                             try {
                                 const args = ['--no-playlist', '--no-warnings', '--no-part', '--socket-timeout', '15', '--retries', '1',
+                                    '--js-runtimes', `node:${process.execPath}`,   // 🧠 v2.66 — probe the FIXED path
                                     '--max-filesize', '4M', '-f', 'bestaudio[ext=m4a]/bestaudio', '-o', pref + '.%(ext)s', ...ea, U];
                                 const rr = await media._run(bin, args, 150e3);
                                 const got = fs2.readdirSync(tmpd).filter((f) => f.startsWith(path2.basename(pref) + '.'));
@@ -416,6 +417,26 @@ function start(deps) {
                             if (aud) { const d2 = await fetch(aud.url, { headers: { Range: 'bytes=0-32767' }, signal: AbortSignal.timeout(15e3) }); await d2.body?.cancel().catch(() => { }); dl = d2.status; }
                             out.yt.clipto = { ok: !!aud, ms: Date.now() - t2, audDl: dl, err: jj ? '' : 'json fail' };
                         } catch (e) { out.yt.clipto = { ok: false, ms: Date.now() - t2, err: String(e.message).slice(0, 100) }; }
+                        // ④ ?yt=<url> verbose download probe — WHY does the real .video/.song download 403?
+                        // captures the yt-dlp --verbose tail (player client, EJS/nsig, PO token, HTTP 403) + JS runtime availability
+                        if (ytQ !== '1') {
+                            out.yt.verbose = {};
+                            try {
+                                const which = await media._run('/bin/sh', ['-c', 'command -v deno; command -v node; node --version 2>/dev/null'], 10e3);
+                                out.yt.verbose.runtime = (which.out || '').trim() || 'none-in-PATH';
+                                out.yt.verbose.execPath = process.execPath;   // 🧠 v2.66 — what JSRT() feeds --js-runtimes
+                                const t3 = Date.now();
+                                const args = ['--no-playlist', '--no-warnings', '--verbose', '--no-part', '--socket-timeout', '15', '--retries', '1',
+                                    '--js-runtimes', `node:${process.execPath}`,   // 🧠 v2.66 — probe the FIXED path
+                                    '--max-filesize', '3M', '-f', 'best[height<=480][ext=mp4]/best[height<=480]/bestaudio', '-o', path2.join(tmpd, 'diagytv-%(ext)s'), U];
+                                const rr = await media._run(bin, args, 120e3);
+                                const got3 = fs2.readdirSync(tmpd).filter((f) => f.startsWith('diagytv-'));
+                                const lines = String(rr.err || '') + '\n' + String(rr.out || '');
+                                const pick = lines.split('\n').filter((l) => /player|ejs|nsig|sig|po.?token|403|forbidden|error|deno|node|runtime|fetch|sabr/i.test(l));
+                                out.yt.verbose.dl = { code: rr.code, ok: got3.length > 0, ms: Date.now() - t3, tail: pick.slice(-28).map((l) => l.slice(0, 160)) };
+                                for (const f of got3) { try { fs2.rmSync(path2.join(tmpd, f), { force: true }); } catch { } }
+                            } catch (e) { out.yt.verbose.err = String(e.message).slice(0, 100); }
+                        }
                     } catch (e) { out.yt.err = String(e.message).slice(0, 100); }
                 }
                 // ⑧ eporner probe (?ep=1) — CDN host reachability + end-to-end smallest-quality download

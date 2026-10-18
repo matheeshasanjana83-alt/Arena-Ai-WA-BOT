@@ -130,8 +130,8 @@ const run = (m) => bot.onMessages({ messages: [m], type: 'notify' }, send, del);
 
     // ═══ [5] version pins ═══
     console.log('\n[5] version pins');
-    await ok('package.json 2.65.0 (current)', () => assert.strictEqual(require('./package.json').version, '2.65.0'));
-    await ok('manifest.json 2.65.0 (current)', () => assert.strictEqual(JSON.parse(fs.readFileSync('manifest.json')).version, '2.65.0'));
+    await ok('package.json 2.65.0 (current)', () => assert.strictEqual(require('./package.json').version, '2.66.0'));
+    await ok('manifest.json 2.65.0 (current)', () => assert.strictEqual(JSON.parse(fs.readFileSync('manifest.json')).version, '2.66.0'));
     await ok('manifest notes = current changelog', () => assert.ok(JSON.parse(fs.readFileSync('manifest.json')).notes.includes('v2.65.0')));
 
     // restore settings

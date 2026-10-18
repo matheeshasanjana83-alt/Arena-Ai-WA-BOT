@@ -1,6 +1,6 @@
 {
-  "version": "2.65.0",
-  "notes": "v2.64.0: FAST DOWNLOADS + YT QUALITY MENU — multi-connection ranged downloads (.download/.mediafire/.mega/.gdrive up to 6 parallel Range chunks, 206-verified, single-stream fallback), yt-dlp concurrent fragments (5 workers) + lean retries, MediaFire resolve cache (10-min TTL), .video/.song INTERACTIVE QUALITY MENU (menu card එකට අංකය reply — video 2160p→144p real sizes, audio M4A/MP3 320/128 via ffmpeg, .ytmenu re-show, expired=60min). Earlier features (REGION-BLOCK proxy fallback, DEEP EPISODES, EPISODE NUMBERS, REAL SIZES, SUBTITLES) unchanged. | v2.65.0: .song 403 fix + .video/.song menu speed (8s cap + clipto fallback) + .download eporner CDN mirror rotation — panel-diag driven: yt attempt ladder reordered (alt clients demoted, probe: 'page needs to be reloaded'), info() variants raced in parallel (sequential 120s cascade = the 4-min menu), non-YouTube height-continue + 2-round fresh re-extract (eporner rotates CDN mirrors per page load), clipto transient-403 retry, DoH cache invalidate on dead edge IP, eporner mirror hint on connect fail, /diag ?yt=1&ep=1 probes",
+  "version": "2.66.0",
+  "notes": "v2.66.0: THE .song/.video 403 ROOT-CAUSE FIX — panel verbose probe proved yt-dlp 2026 runs with 'JS runtimes: none' (only deno is enabled by default) → YouTube's EJS/n-sig challenge is never solved → every real download 403s with 'Sign in to confirm you're not a bot' while info/quality-menu still works. Fix: --js-runtimes node:<bot's own node binary> wired into every yt-dlp call (info + download + /diag probes). Ladder unchanged: direct → cookies → proxy → alt-clients; clipto fallback still last-resort. | v2.64.0: FAST DOWNLOADS + YT QUALITY MENU — multi-connection ranged downloads (.download/.mediafire/.mega/.gdrive up to 6 parallel Range chunks, 206-verified, single-stream fallback), yt-dlp concurrent fragments (5 workers) + lean retries, MediaFire resolve cache (10-min TTL), .video/.song INTERACTIVE QUALITY MENU (menu card එකට අංකය reply — video 2160p→144p real sizes, audio M4A/MP3 320/128 via ffmpeg, .ytmenu re-show, expired=60min). Earlier features (REGION-BLOCK proxy fallback, DEEP EPISODES, EPISODE NUMBERS, REAL SIZES, SUBTITLES) unchanged. | v2.65.0: .song 403 fix + .video/.song menu speed (8s cap + clipto fallback) + .download eporner CDN mirror rotation — panel-diag driven: yt attempt ladder reordered (alt clients demoted, probe: 'page needs to be reloaded'), info() variants raced in parallel (sequential 120s cascade = the 4-min menu), non-YouTube height-continue + 2-round fresh re-extract (eporner rotates CDN mirrors per page load), clipto transient-403 retry, DoH cache invalidate on dead edge IP, eporner mirror hint on connect fail, /diag ?yt=1&ep=1 probes",
   "removed": [
     "movies.js",
     "test_v218.js",
@@ -83,6 +83,7 @@
     "test_v262.js",
     "test_v263.js",
     "test_v264.js",
-    "test_v265.js"
+    "test_v265.js",
+    "test_v266.js"
   ]
 }

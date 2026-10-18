@@ -172,8 +172,8 @@ const SEARCH = '/wefeed-mobile-bff/subject-api/search/v2';
     await ok('garbage keyword still returns a normal 200 payload', () => assert.ok(j.data && j.data.results !== undefined));
 
     console.log('\n[9] version + source pins');
-    await ok('package.json 2.65.0', () => assert.strictEqual(require('./package.json').version, '2.65.0'));
-    await ok('manifest.json 2.65.0 + notes mention the region-block fix', () => { const m = JSON.parse(fs.readFileSync('manifest.json')); assert.strictEqual(m.version, '2.65.0'); assert.ok(/REGION-BLOCK|406/i.test(m.notes)); });
+    await ok('package.json 2.65.0', () => assert.strictEqual(require('./package.json').version, '2.66.0'));
+    await ok('manifest.json 2.65.0 + notes mention the region-block fix', () => { const m = JSON.parse(fs.readFileSync('manifest.json')); assert.strictEqual(m.version, '2.66.0'); assert.ok(/REGION-BLOCK|406/i.test(m.notes)); });
     await ok('README-SI v2.63 changelog entry', () => assert.ok(fs.readFileSync('README-SI.txt', 'utf8').includes('v2.63.0 — 🛡️ MOVIEDEX REGION-BLOCK FIX')));
     const mv = fs.readFileSync('moviedex.js', 'utf8');
     await ok('v2.63 header marker', () => assert.ok(mv.includes('v2.63 — REGION-BLOCK FALLBACK')));

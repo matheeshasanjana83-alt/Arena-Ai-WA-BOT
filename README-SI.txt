@@ -1,3 +1,4 @@
+v2.66.0 — .song/.video 403 ROOT-CAUSE FIX: yt-dlp 2026 එකට JavaScript runtime එකක් තිබ්බේ නෑ (deno විතරයි default) → YouTube challenge එක solve වුණේ නෑ → හැම download එකක්ම 'Sign in to confirm you're not a bot' (403). Fix: bot එකේම node binary එක --js-runtimes විදිහට දුන්නා — info + download + /diag හැම call එකකම.
 KAVIZ MD V1 (Arena AI v2.3 base) — ඔයාට විතරක් වැඩ කරන WhatsApp bot එක (AI + Downloader)
 =====================================================================
 Commands ("Message yourself" chat එකේ ගහන්න):
