@@ -32,31 +32,42 @@ _patchEval();
 
 const TMP = () => process.env.DL_TMP || os.tmpdir();
 
-// one shared session — fresh visitor-data / po-token context every 30 min
-let _sess = null, _sessAt = 0;
-const CLIENT = String(process.env.YTI_CLIENT || 'WEB');
-async function sess() {
-    if (!_sess || Date.now() - _sessAt > 30 * 60e3) {
+// one shared session pair — ANDROID primary (panel-probe 2026-10: ANDROID = info OK + audio
+// download 2.1MB @ 5s; WEB = info OK but googlevideo gvs URLs 403 without a bound gvs PO
+// token; TV/IOS = player API 400/404 dead in v18.1) — WEB stays as the alt info path.
+const PRIMARY = String(process.env.YTI_CLIENT || 'ANDROID');
+const ALT = PRIMARY === 'WEB' ? 'ANDROID' : 'WEB';
+let _sess = null, _sessAlt = null, _sessAt = 0, _sessAltAt = 0;
+async function sess(which = 'primary') {
+    const wantAlt = which === 'alt';
+    const cur = wantAlt ? _sessAlt : _sess, at = wantAlt ? _sessAltAt : _sessAt;
+    if (!cur || Date.now() - at > 30 * 60e3) {
         _patchEval();
         const yti = require('youtubei.js');
-        _sess = await yti.Innertube.create({ client_type: CLIENT });
-        _sessAt = Date.now();
+        const s = await yti.Innertube.create({ client_type: wantAlt ? ALT : PRIMARY });
+        if (wantAlt) { _sessAlt = s; _sessAltAt = Date.now(); } else { _sess = s; _sessAt = Date.now(); }
+        return s;
     }
-    return _sess;
+    return cur;
 }
 
 const ID_RE = /(?:youtube\.com\/(?:watch\?[^ ]*v=|shorts\/|embed\/|live\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/;
 
-/** innertube getBasicInfo — throws on playability walls (LOGIN_REQUIRED etc.) */
+/** innertube getBasicInfo — primary client (ANDROID), alt client (WEB) on playability walls */
 async function info(url) {
     const m = String(url || '').match(ID_RE);
     if (!m) throw new Error('youtube id එක හොයාගන්න බැරි වුණා');
-    const yt = await sess();
-    const inf = await yt.getBasicInfo(m[1]);
-    const st = inf.playability_status?.status;
-    if (st && st !== 'OK') throw new Error('yti playability ' + st + (inf.playability_status?.reason ? ': ' + inf.playability_status.reason : ''));
-    if (!inf.streaming_data?.adaptive_formats?.length && !inf.streaming_data?.formats?.length) throw new Error('yti streaming_data නෑ');
-    return inf;
+    const check = (inf) => {
+        const st = inf.playability_status?.status;
+        if (st && st !== 'OK') throw new Error('yti playability ' + st + (inf.playability_status?.reason ? ': ' + inf.playability_status.reason : ''));
+        if (!inf.streaming_data?.adaptive_formats?.length && !inf.streaming_data?.formats?.length) throw new Error('yti streaming_data නෑ');
+        return inf;
+    };
+    let pErr = null;
+    try { return check(await (await sess('primary')).getBasicInfo(m[1])); }
+    catch (e) { pErr = e; }
+    try { return check(await (await sess('alt')).getBasicInfo(m[1])); }
+    catch (e) { throw pErr; }   // primary error is the honest one
 }
 
 // ───────── rows — SAME row shape as features.ytRows / cliptoRows (pure — offline tests):

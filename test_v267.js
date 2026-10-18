@@ -22,10 +22,12 @@ ok('yti.js: evaluator patch (new Function) exists + idempotent marker', () => {
     assert.ok(s.includes('Platform.shim.eval = (data) => new Function(data.output)()'), 'eval patch missing');
     assert.ok(s.includes('__kzEval'), 'idempotency marker missing');
 });
-ok('yti.js: session cache 30-min + YTI_CLIENT env override', () => {
+ok('yti.js: session cache 30-min + YTI_CLIENT env override + ANDROID primary / WEB alt', () => {
     const s = fs.readFileSync(path.join(R, 'yti.js'), 'utf8');
     assert.ok(/30 \* 60e3/.test(s), 'session TTL missing');
     assert.ok(s.includes('YTI_CLIENT'), 'client env missing');
+    assert.ok(s.includes("process.env.YTI_CLIENT || 'ANDROID'"), 'ANDROID default missing (panel-probe: ANDROID = download OK, WEB gvs 403)');
+    assert.ok(/sess\('alt'\)/.test(s) && /const ALT = PRIMARY === 'WEB' \? 'ANDROID' : 'WEB';/.test(s), 'alt-client fallback missing');
 });
 ok('yti.js: ID_RE covers watch/shorts/embed/live/youtu.be', () => {
     const { ID_RE } = require(path.join(R, 'yti.js'));
