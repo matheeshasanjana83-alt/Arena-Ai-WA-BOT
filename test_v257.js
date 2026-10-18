@@ -116,8 +116,8 @@ function ok(name, fn) {
     srv.close();
 
     console.log('\n[4] version pins');
-    await ok('package.json 2.65.0 (current)', () => assert.strictEqual(require('./package.json').version, '2.66.0'));
-    await ok('manifest.json 2.65.0 (current)', () => assert.strictEqual(JSON.parse(fs.readFileSync('manifest.json')).version, '2.66.0'));
+    await ok('package.json 2.65.0 (current)', () => assert.strictEqual(require('./package.json').version, '2.67.0'));
+    await ok('manifest.json 2.65.0 (current)', () => assert.strictEqual(JSON.parse(fs.readFileSync('manifest.json')).version, '2.67.0'));
     await ok('manifest notes = current version changelog', () => assert.ok(JSON.parse(fs.readFileSync('manifest.json')).notes.includes('v2.65.0')));
     const src = fs.readFileSync('pairsite.js', 'utf8');
     await ok('pairsite routes /abc/', () => assert.ok(src.includes("url.pathname.startsWith('/abc/')")));

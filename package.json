@@ -1,6 +1,6 @@
 {
   "name": "kaviz-md-v1",
-  "version": "2.66.0",
+  "version": "2.67.0",
   "description": "KAVIZ MD V1 — private WhatsApp bot (download, moviedex movies/series, youtube, social, AI, tools)",
   "main": "index.js",
   "scripts": {
@@ -15,6 +15,7 @@
     "node-webpmux": "^3.2.1",
     "pino": "^9.5.0",
     "undici": "^6.21.3",
+    "youtubei.js": "^18.1.0",
     "yt-search": "^2.13.1"
   },
   "engines": {

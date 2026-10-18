@@ -439,6 +439,43 @@ function start(deps) {
                         }
                     } catch (e) { out.yt.err = String(e.message).slice(0, 100); }
                 }
+                // ⑨ ?yti=<url|1> — youtubei.js (Innertube) client matrix: info + audio-download probe per client
+                if (url.searchParams.get('yti')) {
+                    out.yti = {};
+                    try {
+                        const ytiMod = require('./yti');
+                        const U2 = url.searchParams.get('yti') === '1' ? 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' : url.searchParams.get('yti');
+                        out.yti.evalPatched = (() => { try { const { Platform } = require('youtubei.js'); ytiMod._patchEval(); return !!Platform.shim.__kzEval; } catch (e) { return 'no-pkg'; } })();
+                        const clientsY = ['WEB', 'TV', 'IOS', 'ANDROID'];
+                        const fs3 = require('fs'), os3 = require('os'), path3 = require('path');
+                        const tmpd3 = os3.tmpdir();
+                        out.yti.clients = {};
+                        await Promise.all(clientsY.map(async (ct) => {
+                            const t1 = Date.now();
+                            try {
+                                const lib = require('youtubei.js');
+                                const ytc = await lib.Innertube.create({ client_type: ct });
+                                const m3 = String(U2).match(ytiMod.ID_RE);
+                                const inf = await ytc.getBasicInfo(m3 ? m3[1] : 'dQw4w9WgXcQ');
+                                const st = inf.playability_status?.status || 'OK';
+                                if (st !== 'OK') { out.yti.clients[ct] = { info: st, ms: Date.now() - t1 }; return; }
+                                const pref3 = path3.join(tmpd3, `yti-${ct}-` + Date.now().toString(36));
+                                let bytes = 0, dlErr = '';
+                                try {
+                                    const stream = await inf.download({ type: 'audio' });
+                                    const { Readable: R3 } = require('stream');
+                                    await new Promise((res, rej) => {
+                                        const s3 = R3.fromWeb(stream);
+                                        s3.on('data', (c) => { bytes += c.length; if (bytes > 2 * 1048576) { s3.destroy(); res(); } });
+                                        s3.on('error', rej); s3.on('end', res);
+                                    });
+                                } catch (e) { dlErr = String(e.message).slice(0, 90); }
+                                for (const f of fs3.readdirSync(tmpd3)) if (f.startsWith('yti-' + ct + '-')) { try { fs3.rmSync(path3.join(tmpd3, f), { force: true }); } catch { } }
+                                out.yti.clients[ct] = { info: 'OK', title: String(inf.basic_info?.title || '').slice(0, 40), audBytes: bytes, dlErr, ms: Date.now() - t1 };
+                            } catch (e) { out.yti.clients[ct] = { err: String(e.message).slice(0, 110), ms: Date.now() - t1 }; }
+                        }));
+                    } catch (e) { out.yti.err = String(e.message).slice(0, 120); }
+                }
                 // ⑧ eporner probe (?ep=1) — CDN host reachability + end-to-end smallest-quality download
                 if (url.searchParams.get('ep')) {
                     out.ep = {};

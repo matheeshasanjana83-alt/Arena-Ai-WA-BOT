@@ -187,6 +187,13 @@ async function ytDlpFetch(url, mode, height) {
     return media.ytdl(url, { mode, height, maxMB: mode === 'audio' ? Math.min(60, MAXMB()) : MAXV() });
 }
 
+// ───────── v2.67 youtubei.js (Innertube) fallback — the Asitha-MD path (yti.js):
+// yt-dlp 2026 on datacenter IPs = "Sign in to confirm you're not a bot" (403) even with the
+// node EJS runtime; innertube session keeps working (native PO tokens). Lazy-loaded —
+// if the package is missing the ladder just continues to clipto.
+let _yti = null;
+function yti() { if (!_yti) _yti = require('./yti'); return _yti; }
+
 // ───────── clipto.com API fallback — bypasses YouTube "Sign in to confirm you're not a bot"
 // datacenter-IP blocks (returns googlevideo URLs with poToken included). YouTube only.
 async function cliptoInfo(url) {
@@ -297,6 +304,10 @@ async function ytCommand(send, jid, msg, query, mode, label = 'YouTube', react) 
                     rows = cliptoRows(cj, mode, mode === 'audio' ? 9e9 : MAXV());
                     if (cj?.title) title = title || cj.title;
                 } catch (e) { }
+                // 🆕 v2.67: innertube rows (Asitha-MD path) — 3rd source before giving up the menu
+                if (!rows.length) {
+                    try { rows = yti().rows(await yti().info(url), mode, mode === 'audio' ? 9e9 : MAXV()); } catch (e) { }
+                }
             }
             if (rows.length) {
                 title = title || info?.title || '';
@@ -318,9 +329,15 @@ async function ytCommand(send, jid, msg, query, mode, label = 'YouTube', react) 
             r = await ytDlpFetch(url, mode, height);   // primary: yt-dlp (all sites, best quality)
         } catch (e1) {
             e1msg = String(e1.message);
-            if (!/youtube\.com|youtu\.be/i.test(url)) throw e1;   // clipto fallback = YouTube only
+            if (!/youtube\.com|youtu\.be/i.test(url)) throw e1;   // clipto/yti fallback = YouTube only
             await s.edit('↻ fallback…');
-            r = await cliptoFetch(url, mode, height);
+            // 🆕 v2.67 ladder: youtubei.js (innertube — native PO tokens, works on bot-walled IPs) → clipto.com
+            try {
+                r = await yti().fetch(url, mode, height, mode === 'audio' ? Math.min(60, MAXMB()) : MAXV());
+            } catch (e2) {
+                e1msg += ' / innertube: ' + String(e2.message).slice(0, 70);
+                r = await cliptoFetch(url, mode, height);
+            }
             if (!title) title = r.title || '';
         }
         // 🎵 MP3 convert (m4a → mp3 <kbps>) — ffmpeg fail → M4A ම යවනවා (never dead-ends)
