@@ -57,19 +57,19 @@ async function sendFile(send, jid, msg, kind, p, extra) {
 // ───────── YouTube / any yt-dlp site ─────────
 // ".video <link> 1080" / ".yt <link> 720p" → instant quality pick
 // ".video/.song <link>" (no quality) → 📋 INTERACTIVE QUALITY MENU (v2.64) — quote the card + digit
-const Q_RE = /\s(2160|1440|1080|720|480|360|240|144)p?\s*$/i;
-const A_RE = /\s(m4a|mp3|orig|original|320|256|192|128)\s*(?:k|kbps)?\s*$/i;
+const Q_RE = /\s(2160|1440|1080|720|480|360|240|144|best|auto)\s*p?\s*$/i;
+const A_RE = /\s(m4a|mp3|orig|original|320|256|192|160|96|64|128|best|auto)\s*(?:k|kbps)?\s*$/i;
 
 const MAXV = () => Math.min(200, MAXMB());   // video cap (MB)
 
-/** ".video <q> 1080" / ".song <q> 320k" → { query, height, aBit }  (pure — tests)
- *  video: 2160..144 [p] · audio: m4a/orig (original) · mp3 (320) · 320/256/192/128 [k|kbps] */
+/** ".video <q> 1080" / ".video <q> best" / ".song <q> 320k" → { query, height, aBit }  (pure — tests)
+ *  video: 2160..144 [p] · best/auto = top of the ladder · audio: m4a/orig/best (original) · mp3 (320) · 320..64 [k|kbps] */
 function parseYtArgs(query, mode) {
     let height = null, aBit = null;
     const qm = query.match(mode === 'video' ? Q_RE : A_RE);
     if (qm) {
-        if (mode === 'video') height = +qm[1];
-        else aBit = /^(m4a|orig|original)$/i.test(qm[1]) ? 'm4a' : /^mp3$/i.test(qm[1]) ? 320 : parseInt(qm[1], 10);
+        if (mode === 'video') height = /^(best|auto)$/i.test(qm[1]) ? 2160 : +qm[1];
+        else aBit = /^(m4a|orig|original|best|auto)$/i.test(qm[1]) ? 'm4a' : /^mp3$/i.test(qm[1]) ? 320 : parseInt(qm[1], 10);
         query = query.slice(0, qm.index).trim();
     }
     return { query, height, aBit };
@@ -276,7 +276,7 @@ async function ytCommand(send, jid, msg, query, mode, label = 'YouTube', react) 
     query = parsed.query;
     const height = mode === 'video' ? parsed.height : null;
     const aBit = mode === 'audio' ? parsed.aBit : null;
-    if (!query) return send(jid, { text: `${mode === 'audio' ? '🎧 *.song*' : '🎬 *.video*'} <link / නම>${mode === 'audio' ? ' [m4a · 320 · 128]' : ' [2160..144]'}\n${foot(mode === 'audio' ? 'quality menu එකෙන් format එක තෝරන්න පුළුවන් · උදා: .song faded' : 'quality menu එකෙන් තෝරන්න පුළුවන් · උදා: .video https://youtu.be/xxxx')}` }, { quoted: msg });
+    if (!query) return send(jid, { text: `${mode === 'audio' ? '🎧 *.song*' : '🎬 *.video*'} <link / නම>${mode === 'audio' ? '[m4a · best · 320..64]' : '[2160..144 · best]'}\n${foot(mode === 'audio' ? 'quality menu එකෙන් format එක තෝරන්න පුළුවන් · උදා: .song faded' : 'quality menu එකෙන් තෝරන්න පුළුවන් · උදා: .video https://youtu.be/xxxx')}` }, { quoted: msg });
     const s = await status(send, jid, msg, mode === 'audio' ? '🎧 audio…' : '🎬 video…');
     let url = (query.match(URL_RE) || [])[0], title = '', meta = '', e1msg = '';
     try {
@@ -516,6 +516,132 @@ async function gitclone(send, jid, msg, q, download, react) {
     finally { for (const f of files) fs.rm(f.path, { force: true }, () => { }); }
 }
 
+// ───────── APK Downloader (v2.68 — ported from Sachi-MD v1.1.0) ─────────
+// .apk <app නම> → Play/Aptoide/F-Droid search → results card → QUOTE + අංකය → download
+// .apk com.whatsapp / .apk <url> → direct download (APKPure → Aptoide fallback, PK magic check)
+const APK_TTL = 15 * 60e3, APK_CAP = 40;
+const apkMenus = new Map();     // card message id → { jid, items, at }
+const apkPending = new Map();   // jid → { item, at }  (bridge digit → download item)
+function apkRemember(jid, sent, items) {
+    const key = sent?.key?.id || (typeof sent?.key === 'string' ? sent.key : null);
+    if (!key) return;
+    apkMenus.set(key, { jid, items, at: Date.now() });
+    if (apkMenus.size > APK_CAP) apkMenus.delete(apkMenus.keys().next().value);
+}
+/** quoted number on an APK results card → ".apk __go" (item stashed) | ".apk __cancel" | null (not ours) */
+function apkMenuBridge(jid, qid, digits) {
+    const k = String(qid || ''), s = apkMenus.get(k);
+    if (!s || s.jid !== jid || !/^\d{1,3}$/.test(String(digits || ''))) return null;
+    const stale = Date.now() - s.at > APK_TTL;
+    if (stale) return '.apk';
+    if (String(digits) === '0') return '.apk __cancel';
+    const item = s.items[parseInt(digits, 10) - 1];
+    if (!item) return '.apk';
+    apkPending.set(jid, { item, at: Date.now() });
+    if (apkPending.size > 20) apkPending.delete(apkPending.keys().next().value);
+    return '.apk __go';
+}
+
+const APK_MIME = 'application/vnd.android.package-archive';
+async function apkDownloadAndSend(send, jid, msg, s, item, react) {
+    const apk = require('./apk');
+    const r = await apk.downloadApk(item, {
+        maxMB: MAXMB(),
+        onStatus: (t) => { try { s.edit('📦 ' + cut(String(t), 120)); } catch { } },
+    });
+    const cap = `📦 *${cut(r.name, 80)}*${r.version ? '  ·  v' + r.version : ''}\n${foot([r.package ? '`' + r.package + '`' : '', human(r.size), r.source, r.isBundle ? 'XAPK bundle — SAI වගේ installer එකකින් install කරන්න' : ''].filter(Boolean).join(' · '))}`;
+    await send(jid, { document: { url: r.path }, fileName: r.fileName, mimetype: APK_MIME, caption: cap }, { quoted: msg });
+    fs.rmSync(r.path, { force: true });
+    await s.del(); react?.('✅');
+}
+
+async function apkCommand(send, jid, msg, q, react) {
+    const apk = require('./apk');
+    // bridge-internal picks (digit reply already resolved the item)
+    if (q === '__go') {
+        const p = apkPending.get(jid);
+        if (!p || Date.now() - p.at > APK_TTL) return send(jid, { text: '⏳ selection එක expire වෙලා — *.apk <නම>* ආයෙත් ගහන්න' }, { quoted: msg });
+        apkPending.delete(jid);
+        const s = await status(send, jid, msg, '📦 APK download…');
+        try { await apkDownloadAndSend(send, jid, msg, s, p.item, react); }
+        catch (e) { react?.('❌'); await s.edit('❌ ' + cut(String(e.message), 180)); }
+        return;
+    }
+    if (q === '__cancel') return send(jid, { text: '❎ APK selection cancel කළා' }, { quoted: msg });
+    const input = apk.resolveInput(q);
+    if (input.type === 'empty') return send(jid, { text: `📦 *.apk <app නම / package / url>*\n${foot('උදා: .apk whatsapp · .apk com.whatsapp · .apk https://f-droid.org/repo/….apk')}` }, { quoted: msg });
+    const s = await status(send, jid, msg, '📦 APK…');
+    try {
+        if (input.type === 'query') {
+            await s.edit(`🔎 *${cut(input.value, 40)}* — Play Store / Aptoide search…`);
+            const items = await apk.search(input.value, { limit: 6 });
+            if (!items.length) { react?.('❌'); return s.edit(`❌ "${cut(input.value, 40)}" — APK results නෑ. Package නමක් (com.xxx.yyy) හෝ direct link එකක් try කරන්න`); }
+            const lines = items.map((it, i) => {
+                const bits = [it.name ? '`' + it.package + '`' : '', it.version ? 'v' + it.version : '', it.sizeBytes ? human(it.sizeBytes) : ''].filter(Boolean);
+                return `*${i + 1}.* 📱 *${cut(it.name || it.package, 50)}*${bits.length ? '\n     ' + bits.join('  ·  ') : ''}`;
+            });
+            const st = await send(jid, { text: `📦 *APK Downloader* — 🔎 *${cut(input.value, 40)}* (${items.length})\n\n${lines.join('\n')}\n\n${foot('මේ message එකට *අංකය reply* කරන්න · 0 = cancel')}` }, { quoted: msg });
+            apkRemember(jid, st, items);
+            await s.del(); react?.('✨');
+            return;
+        }
+        await s.edit('⬇️ APK download…');
+        const item = input.type === 'url' ? { url: input.value, source: 'direct' } : { source: 'apkpure', package: input.value };
+        await apkDownloadAndSend(send, jid, msg, s, item, react);
+    } catch (e) {
+        react?.('❌');
+        await s.edit('❌ ' + cut(String(e.message), 200));
+    }
+}
+
+// ───────── .getdp — profile photo fetch (v2.68 — ported from Sachi-MD) ─────────
+async function getdp(send, jid, msg, q, sock) {
+    if (!sock) return send(jid, { text: '⚠️ WhatsApp connect වෙලා නෑ' }, { quoted: msg });
+    const ci = ctxInfo(msg);
+    let num = String(q || '').replace(/\D/g, '').replace(/^00/, '');
+    if (!num && ci?.participant) { const b = bare(ci.participant); num = b.split('@')[0]; }
+    if (!num || num.length < 8 || num.length > 15) return send(jid, { text: `🖼️ *.getdp <number>* — number එකක profile photo එක\n${foot('උදා: .getdp 94771234567 · message එකකට reply කරලත් වැඩ')}` }, { quoted: msg });
+    const jidN = num + '@s.whatsapp.net';
+    try {
+        const res = await sock.onWhatsApp(jidN);
+        const hit = (Array.isArray(res) ? res : []).find((x) => x?.exists && x?.jid);
+        if (!hit?.jid) return send(jid, { text: '❌ මේ number එක WhatsApp එකේ නෑ' }, { quoted: msg });
+        const url = await sock.profilePictureUrl(hit.jid, 'image');
+        if (!url) return send(jid, { text: 'ℹ️ මේ account එකේ bot එකට පේන profile photo එකක් නෑ' }, { quoted: msg });
+        await send(jid, { image: { url }, caption: `🖼️ *Profile Picture*\n📱 +${num}` }, { quoted: msg });
+    } catch (e) {
+        const m = String(e?.message || e).toLowerCase();
+        if (m.includes('not-authorized') || m.includes('forbidden') || m.includes('privacy')) return send(jid, { text: '🔒 Photo එක privacy settings නිසා hide කරලා' }, { quoted: msg });
+        return send(jid, { text: '❌ ' + cut(String(e.message), 150) }, { quoted: msg });
+    }
+}
+
+// ───────── .vv — view-once / quoted media reveal (v2.68 — ported from Sachi-MD) ─────────
+async function vv(send, jid, msg) {
+    const own = unwrap(msg.message), ci = ctxInfo(msg);
+    const pick = (m) => m?.imageMessage ? ['image', m.imageMessage] : m?.videoMessage ? ['video', m.videoMessage] : m?.audioMessage ? ['audio', m.audioMessage] : m?.documentMessage ? ['document', m.documentMessage] : null;
+    let src = null, kind = null, content = null;
+    const p1 = pick(own);
+    if (p1) { [kind, content] = p1; src = { key: msg.key, message: own }; }
+    else if (ci?.quotedMessage) {
+        const qm = unwrap(ci.quotedMessage);
+        const p2 = pick(qm);
+        if (p2) { [kind, content] = p2; src = { key: { remoteJid: msg.key.remoteJid, id: ci.stanzaId, participant: ci.participant, fromMe: false }, message: qm }; }
+    }
+    if (!src) return send(jid, { text: `🕵️ *.vv* — view-once / සාමාන්‍ය media reveal\n${foot('view-once photo/video එකකට හෝ ඕනෑම media එකකට reply කරලා *.vv*')}` }, { quoted: msg });
+    if (!mediaDownloader) return send(jid, { text: '⚠️ media downloader තාම ready නෑ' }, { quoted: msg });
+    try {
+        const buf = await mediaDownloader(src);
+        const cap = content.caption || `🕵️ Revealed · ${kind}`;
+        if (kind === 'image') await send(jid, { image: buf, caption: cap }, { quoted: msg });
+        else if (kind === 'video') await send(jid, { video: buf, caption: cap }, { quoted: msg });
+        else if (kind === 'audio') await send(jid, { audio: buf, mimetype: content.mimetype || 'audio/mp4', ptt: !!content.ptt }, { quoted: msg });
+        else await send(jid, { document: buf, mimetype: content.mimetype || 'application/octet-stream', fileName: content.fileName || 'media.bin', caption: cap }, { quoted: msg });
+    } catch (e) {
+        await send(jid, { text: '❌ Reveal කරන්න බැරි වුණා: ' + cut(String(e.message), 150) }, { quoted: msg });
+    }
+}
+
 // ───────── Sticker ─────────
 let mediaDownloader = null;   // set by bot.js (Baileys downloadMediaMessage)
 async function sticker(send, jid, msg, args, take) {
@@ -599,7 +725,7 @@ async function group(sock, send, jid, msg, c, args, me) {
 }
 
 const GROUP_CMDS = ['.tagall', '.kick', '.promote', '.demote', '.grouplink', '.groupinfo', '.jid', '.mute', '.unmute', '.tagadmins', '.resetlink'];
-const CMDS = ['.yts', '.play', '.song', '.yta', '.video', '.ytv', '.yt', '.ytmenu', '.tiktok', '.tt', '.fb', '.facebook', '.faceboock', '.fbvid', '.ig', '.insta', '.x', '.twitter', '.wiki', '.gitclone', '.sticker', '.s', '.take', ...GROUP_CMDS];
+const CMDS = ['.yts', '.play', '.song', '.yta', '.video', '.ytv', '.yt', '.ytmenu', '.tiktok', '.tt', '.fb', '.facebook', '.faceboock', '.fbvid', '.ig', '.insta', '.x', '.twitter', '.wiki', '.gitclone', '.sticker', '.s', '.take', '.apk', '.app', '.apkdl', '.getdp', '.dp', '.pp', '.vv', '.viewonce', '.reveal', ...GROUP_CMDS];
 
 /** returns true if handled */
 async function handle(c, { send, jid, msg, rest, sock, me, download, react }) {
@@ -619,6 +745,9 @@ async function handle(c, { send, jid, msg, rest, sock, me, download, react }) {
         case '.gitclone': await gitclone(send, jid, msg, q, download, react); break;
         case '.sticker': case '.s': await sticker(send, jid, msg, rest, false); break;
         case '.take': await sticker(send, jid, msg, rest, true); break;
+        case '.apk': case '.app': case '.apkdl': await apkCommand(send, jid, msg, q, react); break;
+        case '.getdp': case '.dp': case '.pp': await getdp(send, jid, msg, q, sock); break;
+        case '.vv': case '.viewonce': case '.reveal': await vv(send, jid, msg); break;
         default:
             if (!sock) { await send(jid, { text: '⚠️ WhatsApp connect වෙලා නෑ' }, { quoted: msg }); break; }
             try { await group(sock, send, jid, msg, c, rest, me); } catch (e) { await send(jid, { text: '❌ ' + String(e.message).slice(0, 200) }, { quoted: msg }); }
@@ -626,4 +755,4 @@ async function handle(c, { send, jid, msg, rest, sock, me, download, react }) {
     return true;
 }
 
-module.exports = { handle, CMDS, GROUP_CMDS, ytCommand, ytMenuBridge, ytRemember, parseYtArgs, ytRows, cliptoRows, ytMenuText, ytInfo, ytMenuResend, setMediaDownloader: (f) => { mediaDownloader = f; }, _ytsearch: (f) => { yts = f; }, _ytMenus: ytMenus, _infoCache: infoCache };
+module.exports = { handle, CMDS, GROUP_CMDS, ytCommand, ytMenuBridge, ytRemember, parseYtArgs, ytRows, cliptoRows, ytMenuText, ytInfo, ytMenuResend, apkMenuBridge, apkCommand, apkRemember, getdp, vv, setMediaDownloader: (f) => { mediaDownloader = f; }, _ytsearch: (f) => { yts = f; }, _ytMenus: ytMenus, _apkMenus: apkMenus, _apkPending: apkPending, _infoCache: infoCache };

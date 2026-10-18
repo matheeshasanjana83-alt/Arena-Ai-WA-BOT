@@ -158,9 +158,9 @@ ok('rows(): empty streaming_data → [] (menu falls through gracefully)', () => 
         }
     }
     // ── ⑤ version pins ──
-    ok('package.json + manifest.json = 2.67.0', () => {
-        assert.strictEqual(require(path.join(R, 'package.json')).version, '2.67.0');
-        assert.strictEqual(require(path.join(R, 'manifest.json')).version, '2.67.0');
+    ok('package.json + manifest.json = 2.68.0', () => {
+        assert.strictEqual(require(path.join(R, 'package.json')).version, '2.68.0');
+        assert.strictEqual(require(path.join(R, 'manifest.json')).version, '2.68.0');
     });
     ok('manifest: yti.js in files + youtubei.js dep + v2.67 notes', () => {
         const m = require(path.join(R, 'manifest.json'));

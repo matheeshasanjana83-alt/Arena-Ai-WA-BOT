@@ -73,9 +73,15 @@ async function checkUpdate(force = false) {
     lastForced = Date.now();
     updateRunning = (async () => {
         try {
-            const r = await fetch('https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest', { headers: { 'User-Agent': 'kaviz-md-bot', Accept: 'application/vnd.github+json' } });
-            if (!r.ok) return;
-            const latest = String((await r.json()).tag_name || '').replace(/^v/, '');
+            let latest = '';
+            try {
+                const r = await fetch('https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest', { headers: { 'User-Agent': 'kaviz-md-bot', Accept: 'application/vnd.github+json' } });
+                if (r.ok) latest = String((await r.json()).tag_name || '').replace(/^v/, '');
+            } catch { }
+            // 🩺 v2.68: panel GitHub API = 0/60 rate-limited (worklog 2026-10-18) → the API check silently
+            // NEVER ran on the panel = stale yt-dlp for weeks = 2026 YouTube enforcement killed .song/.video.
+            // The releases/latest REDIRECT carries the same version with ZERO API quota → fallback + primary.
+            if (!latest) latest = await latestViaRedirect();
             if (!latest) return;
             const cur = await ytdlpVersion(local);
             if (cur && cur !== latest) {
@@ -88,7 +94,21 @@ async function checkUpdate(force = false) {
     return updateRunning;
 }
 
+/** GitHub API quota-free latest version: releases/latest 302 → /tag/v2026.10.16 → "2026.10.16" */
+async function latestViaRedirect() {
+    try {
+        const r = await fetch('https://github.com/yt-dlp/yt-dlp/releases/latest', { redirect: 'manual', headers: { 'User-Agent': 'kaviz-md-bot' }, signal: AbortSignal.timeout(15000) });
+        const loc = r.headers.get('location') || '';
+        try { await r.body?.cancel(); } catch { }
+        const m = loc.match(/\/tag\/v?([0-9][0-9.]*)\s*$/);
+        return m ? m[1] : '';
+    } catch { return ''; }
+}
+
 const EXTRACT_BROKEN = /Cannot parse data|Unable to extract|no video formats|Requested format is not available|player response/i;
+// 🩺 v2.68: login-required / bot-check = YouTube enforcement — often a STALE extractor (new player
+// version). checkUpdate(true) refreshes the ./bin binary in the background; next attempt is fresh.
+const YT_ENFORCED = /sign in to confirm|not a bot|login required|log in to|authentication required/i;
 
 // ── YouTube cookies (.setcookies → cookies.txt in bot dir) ──
 function cookiesFile() {
@@ -180,7 +200,7 @@ async function info(url) {
         })()));
     } catch (e) {
         const msg = (errs.find((x) => x.startsWith('direct')) || errs[errs.length - 1] || e.message);
-        if (EXTRACT_BROKEN.test(msg)) checkUpdate(true).catch(() => { });   // stale extractor → update in background
+        if (EXTRACT_BROKEN.test(msg) || YT_ENFORCED.test(msg)) checkUpdate(true).catch(() => { });   // stale extractor → update in background
         throw new Error(ytError(msg));
     }
 }
@@ -252,7 +272,7 @@ async function ytdl(url, { mode = 'video', maxMB = 100, height = null } = {}) {
                 }
                 for (const f of produced) fs.rmSync(path.join(TMP(), f), { force: true });
                 lastErr = r.err || r.out || (r.code === 0 ? 'File is larger than max' : '');
-                if (EXTRACT_BROKEN.test(lastErr)) { checkUpdate(true).catch(() => { }); break outer; }   // stale extractor → updating won't help this run
+                if (EXTRACT_BROKEN.test(lastErr) || YT_ENFORCED.test(lastErr)) { checkUpdate(true).catch(() => { }); if (EXTRACT_BROKEN.test(lastErr)) break outer; }   // stale extractor / enforcement → refresh in bg
                 if (blocked(lastErr)) {
                     // 🌐 v2.65: non-YouTube hosts — a blocked/dead CDN file is NOT an IP block: try the NEXT
                     // height (often a different CDN file) instead of re-running the same ladder; the round-2
@@ -363,4 +383,4 @@ async function resolveRedirects(url, max = 6) {
     throw new Error('redirect ගොඩක් (loop)');
 }
 
-module.exports = { getBin, info, ytdl, makeSticker, addExif, ytError, isTermux, fetchToFile, resolveRedirects, cookiesFile, checkUpdate, firstOk, _run: run };
+module.exports = { getBin, info, ytdl, makeSticker, addExif, ytError, isTermux, fetchToFile, resolveRedirects, cookiesFile, checkUpdate, latestViaRedirect, firstOk, _run: run };

@@ -147,8 +147,8 @@ const mk = (text) => ({ key: { remoteJid: SELF, fromMe: true, id: 'm' + (++N) + 
     await ok('E123 menu shows the full 1080 ladder too', () => assert.ok(/1080p/.test(lastText())));
 
     console.log('\n[7] version pins');
-    await ok('package.json 2.65.0', () => assert.strictEqual(require('./package.json').version, '2.67.0'));
-    await ok('manifest.json 2.65.0 + notes mention deep episodes', () => { const m = JSON.parse(fs.readFileSync('manifest.json')); assert.strictEqual(m.version, '2.67.0'); assert.ok(/DEEP EPISODES|EPISODE NUMBERS|REAL SIZES|SUBTITLES/i.test(m.notes)); });
+    await ok('package.json 2.65.0', () => assert.strictEqual(require('./package.json').version, '2.68.0'));
+    await ok('manifest.json 2.65.0 + notes mention deep episodes', () => { const m = JSON.parse(fs.readFileSync('manifest.json')); assert.strictEqual(m.version, '2.68.0'); assert.ok(/DEEP EPISODES|EPISODE NUMBERS|REAL SIZES|SUBTITLES/i.test(m.notes)); });
     await ok('moviedex.js pins: MB_RES_PAGES + totalCount walk present, old page<=6 gone', () => {
         const src = fs.readFileSync('moviedex.js', 'utf8');
         assert.ok(src.includes('MB_RES_PAGES = 15'));
