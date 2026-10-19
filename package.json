@@ -1,7 +1,7 @@
 {
   "name": "kaviz-md-v1",
-  "version": "2.68.0",
-  "description": "KAVIZ MD V1 \u2014 private WhatsApp bot (download, moviedex movies/series, youtube, social, AI, tools)",
+  "version": "2.69.0",
+  "description": "KAVIZ MD V1 — private WhatsApp bot (download, moviedex movies/series, youtube, social, AI, tools)",
   "main": "index.js",
   "scripts": {
     "start": "node launcher.js",
@@ -11,6 +11,8 @@
   },
   "dependencies": {
     "baileys": "7.0.0-rc14",
+    "bgutils-js": "^4.0.3",
+    "jsdom": "^30.1.3",
     "megajs": "^1.3.0",
     "node-webpmux": "^3.2.1",
     "pino": "^9.5.0",

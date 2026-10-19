@@ -66,6 +66,12 @@ async function info(url) {
     let pErr = null;
     try { return check(await (await sess('primary')).getBasicInfo(m[1])); }
     catch (e) { pErr = e; }
+    // 🩺 v2.69 — PO-bound WEB session (BotGuard token via pot.js) — per-video LOGIN_REQUIRED gates වලට
+    try {
+        const pot = require('./pot');
+        const s = await pot.poSession();
+        return check(await s.getBasicInfo(m[1]));
+    } catch (e) { try { require('./pot').kick(); } catch { } }   // dead token → fresh mint for next call
     try { return check(await (await sess('alt')).getBasicInfo(m[1])); }
     catch (e) { throw pErr; }   // primary error is the honest one
 }

@@ -85,6 +85,7 @@ const mk = (text, fromMe = true, jid = ME) => ({ key: { id: 'IN' + (++n), remote
             }
             return J(200, { choices: [{ message: { content: 'Groq answer ✅' } }] });
         }
+        if (String(url).includes('pollinations.ai')) return J(500, { error: { message: 'mock-polli-down' } });   // 🌸 v2.69: polli provider = deterministic offline in tests
         return realFetch(url, opt);
     };
     const fs2 = require('fs'); const SET = require('path').join(__dirname, 'settings.json');

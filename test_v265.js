@@ -14,6 +14,7 @@
  * Run: node test_v265.js   (fully OFFLINE — fake yt-dlp binary + patched proxypool/fetch)
  */
 process.env.ARENA_NO_DELAY = '1'; process.env.ARENA_NO_REACT = '1';
+process.env.KZ_POT = '0';   // deterministic variant counts — PO-token ladder OFF in this suite
 const assert = require('assert');
 const fs = require('fs');
 const os = require('os');
@@ -329,10 +330,10 @@ const lastText = () => { const t = [...sent].reverse().find(x => x.content?.text
     });
 
     console.log('\n[7] version pins');
-    await ok('package.json 2.65.0', () => assert.strictEqual(require('./package.json').version, '2.68.0'));
+    await ok('package.json 2.65.0', () => assert.strictEqual(require('./package.json').version, '2.69.0'));
     await ok('manifest.json 2.65.0 + notes keep old keywords + new markers', () => {
         const m = JSON.parse(fs.readFileSync('manifest.json'));
-        assert.strictEqual(m.version, '2.68.0');
+        assert.strictEqual(m.version, '2.69.0');
         assert.ok(/FAST DOWNLOADS|YT QUALITY MENU/i.test(m.notes));
         assert.ok(/REGION-BLOCK|406/i.test(m.notes));
         assert.ok(/SONG 403|MENU SPEED|EPORNER CDN/i.test(m.notes));

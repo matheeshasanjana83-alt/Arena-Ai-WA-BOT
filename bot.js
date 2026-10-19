@@ -394,7 +394,7 @@ async function onMessages({ messages, type }, send, del = async () => { }) {
                 if (c === '.proxies' || c === '.proxypool') { await handleProxies(send, jid, msg, (rest[0] || '').toLowerCase()); continue; }
                 if (c === '.setcookies') { await handleCookies(send, del, jid, msg, rest.join(' ').trim()); continue; }
                 if (c === '.forward') { await runJob(() => handleForward(send, jid, msg, rest.join(' ').trim())); continue; }   // 🧭 owner-only (v2.41)
-                if (c === '.keys') { const k = ai.getKeys(); await send(jid, { text: `🔑 *API keys*\nGemini: ${k.gemini ? '✅ ' + mask(k.gemini) : '❌ නෑ'}\nGroq: ${k.groq ? '✅ ' + mask(k.groq) : '❌ නෑ'}\nZ.ai (GLM): ${k.zai ? '✅ ' + mask(k.zai) : '❌ නෑ'}\nTogether (🖼 image): ${k.together ? '✅ ' + mask(k.together) : '❌ නෑ — .setkey together <KEY>'}` }, { quoted: msg }); continue; }
+                if (c === '.keys') { const k = ai.getKeys(); await send(jid, { text: `🔑 *API keys*\nGemini: ${k.gemini ? '✅ ' + mask(k.gemini) : '❌ නෑ'}\nGroq: ${k.groq ? '✅ ' + mask(k.groq) : '❌ නෑ'}\nZ.ai (GLM): ${k.zai ? '✅ ' + mask(k.zai) : '❌ නෑ'}\nTogether (🖼 image): ${k.together ? '✅ ' + mask(k.together) : '❌ නෑ — .setkey together <KEY>'}\nPollinations (🌸 chat/image/voice/stt): ${k.polli ? '✅ ' + mask(k.polli) : '🌸 default key ON — .setkey polli <KEY> override'}` }, { quoted: msg }); continue; }
                 if (c === '.aiprovider') { // 🎛 AI provider selector (v2.49)
                     const arg2 = (rest[0] || '').toLowerCase();
                     if (!arg2 || arg2 === 'auto' || arg2 === 'list' || arg2 === '?') {
@@ -457,7 +457,7 @@ const reactTo = (key, emoji) => {   // ⏳ → ✅/❌ pro-bot feedback (respect
     if (!reactOn() || !key?.id) return;
     try { SOCK?.sendMessage(key.remoteJid, { react: { text: emoji, key } }).catch(() => { }); } catch { }
 };
-const HEAVY = new Set(['.download', '.dl', '.dn', '.mediafire', '.mega', '.gdrive', '.moviedex', '.mdx', '.song', '.play', '.yta', '.video', '.ytv', '.yt', '.ytmenu', '.fb', '.facebook', '.faceboock', '.fbvid', '.ig', '.insta', '.x', '.twitter', '.tiktok', '.tt', '.mirror', '.link', '.tourl', '.url', '.gitclone', '.ai', '.ask', '.gpt', '.imagine', '.img', '.s', '.sticker', '.take', '.tts', '.say', '.ss', '.setcookies', '.setlogo', '.update', '.apk', '.app', '.apkdl', '.getdp', '.dp', '.pp', '.vv', '.viewonce', '.reveal']);
+const HEAVY = new Set(['.download', '.dl', '.dn', '.mediafire', '.mega', '.gdrive', '.moviedex', '.mdx', '.song', '.play', '.yta', '.video', '.ytv', '.yt', '.ytmenu', '.fb', '.facebook', '.faceboock', '.fbvid', '.ig', '.insta', '.x', '.twitter', '.tiktok', '.tt', '.mirror', '.link', '.tourl', '.url', '.gitclone', '.ai', '.ask', '.gpt', '.imagine', '.img', '.s', '.sticker', '.take', '.tts', '.say', '.stt', '.totext', '.ss', '.setcookies', '.setlogo', '.update', '.apk', '.app', '.apkdl', '.getdp', '.dp', '.pp', '.vv', '.viewonce', '.reveal']);
 // 🆕 v2.59: site-locked download commands — each one downloads ONLY its own site (menu: 📥 DOWNLOAD).
 // resolve() already scrapes all 3 hosts → router just validates the link + brands the progress bubble.
 const SITE_DL = {
@@ -494,7 +494,7 @@ const CATS = [
     ['📱', 'Social', `*📱 SOCIAL*\n\n✦ *.tiktok <link>* — watermark නෑ (*.tt*)\n✦ *.fb <link>* — Facebook (*.facebook*)\n✦ *.ig <link>* — Instagram\n✦ *.x <link>* — X / Twitter`],
     ['🔍', 'Search', `*🔍 SEARCH*\n\n✦ *.wiki <මාතෘකාව>* — Wikipedia\n✦ *.wiki si <මාතෘකාව>* — සිංහල wiki\n✦ *.yts <නම>* — YouTube search`],
     ['🖼️', 'Sticker', `*🖼️ STICKER*\n\n✦ *.s* — photo/video reply → sticker\n✦ *.take Pack | Author* — නම වෙනස් කරන්න\n\n> video sticker — තත්පර 6 දක්වා`],
-    ['🛠️', 'Tools', `*🛠️ TOOLS*\n\n✦ *.tr <භාෂාව> <text>* — translate\n✦ *.remind <time> <note>* — ⏰ reminders\n✦ *.tts <text>* — voice (සිංහල OK)\n✦ *.weather <නගරය>* — කාලගුණය · දින 3\n✦ *.lyrics <සින්දුව>* — lyrics\n✦ *.imagine <විස්තරය>* — AI image\n✦ *.toimg* — sticker → photo\n✦ *.getdp <number>* — 🖼️ profile photo\n✦ *.vv* — 🕵️ view-once reveal\n✦ *.tourl* — media → 🔗 link\n✦ *.ss <site>* · *.qr* · *.short* · *.calc*\n✦ *.github <user>* · *.del* · *.setpp*`],
+    ['🛠️', 'Tools', `*🛠️ TOOLS*\n\n✦ *.tr <භාෂාව> <text>* — translate\n✦ *.remind <time> <note>* — ⏰ reminders\n✦ *.stt* — 🎙️ voice note → text\n✦ *.tts <text>* — voice (සිංහල OK)\n✦ *.weather <නගරය>* — කාලගුණය · දින 3\n✦ *.lyrics <සින්දුව>* — lyrics\n✦ *.imagine <විස්තරය>* — AI image\n✦ *.toimg* — sticker → photo\n✦ *.getdp <number>* — 🖼️ profile photo\n✦ *.vv* — 🕵️ view-once reveal\n✦ *.tourl* — media → 🔗 link\n✦ *.ss <site>* · *.qr* · *.short* · *.calc*\n✦ *.github <user>* · *.del* · *.setpp*`],
     ['🎉', 'Fun', `*🎉 FUN*\n\n✦ *.joke* · *.fact* · *.quote*\n✦ *.8ball <ප්‍රශ්නය>* — 🎱`],
     ['👥', 'Group', `*👥 GROUP* — group එකේ ඔයා ගහන්න\n\n✦ *.groupinfo* · *.grouplink* · *.jid*\n✦ *.tagall [msg]* — විනාඩි 10 කට 1\n✦ *.kick @user* · *.promote* · *.demote*\n✦ *.mute* · *.unmute* · *.tagadmins* · *.resetlink*\n\n> @mention නැත්නම් message එකකට reply කරන්න`],
     ['🤖', 'AI', `*🤖 AI*\n\n✦ *.ai <ප්‍රශ්නය>* — සිංහල OK\n✦ message එකකට reply + *.ai* — ඒක ගැනම\n✦ *.ai reset* — අලුත් කතාවක්
@@ -504,7 +504,8 @@ const CATS = [
 ✦ *.ai tools* — GLM connector (search/weather/YT)
 ✦ *.ai roast* — 🔥 බැනුමට ආපහු බැනීම (on/off)
 ✦ AI provider තෝරන්න — *.aiprovider gemini/groq/zai/auto* · *.setting* → 10\n✦ AI chat auto-reply — *.mode* → 5/6 on·off · 11-16 modes
-✦ *.setkey gemini/groq/zai/together <KEY>* · *.keys*`],
+✦ 🌸 Pollinations fallback auto (Gemini/Groq down වුණත් .ai වැඩ)
+✦ *.setkey gemini/groq/zai/together/polli <KEY>* · *.keys* · *.stt* — voice→text`],
     ['🔧', 'Network', `*🔧 NETWORK*\n\n✦ *.net <link>* — fail වුණොත් හේතුව\n✦ *.setproxy <url|off>* — block sites වලට\n✦ *.proxies* — free pool status · *.proxies check*\n✦ *.setcookies* — YouTube bot-check fix`],
     ['⚙️', 'Settings', `*⚙️ SETTINGS*\n\n✦ *.setlogo* / *.dellogo* — menu logo\n✦ *.react on|off* — auto react\n✦ *.maxmb <MB>* — download limit\n✦ *.setting* — ⚙️ settings panel (අංක reply → toggle)
 ✦ *.mode* — 🛡 mode panel (public / private / inbox / groups + AI chat modes)\n✦ *.autoupdate on|off* — GitHub එකෙන් auto update (default on)\n✦ *.update* · *.restart* · *.version*`],
@@ -924,12 +925,16 @@ const KEY_HELP = `🔑 *Free API key එකක් ගන්න:*
 2. *Create API Key* → copy (key එක සම්පූර්ණයෙන්ම copy වෙනවා ✅)
 3. *.setkey together ඔයාගේ_key*
 
-🖼 image chain: Together FLUX → Gemini → Pollinations (auto fallback — එකක් fail වුණොත් අනිත් එක auto)`;
+🖼 image chain: Together FLUX → Gemini → 🌸 Pollinations keyed → Pollinations free (auto fallback)
+
+🌸 *Pollinations (chat/image/voice/stt):*
+1. ඔබේ key දැනටමත් baked — .ai/.imagine/.tts/.stt KEY නැතුවම වැඩ
+2. Override ඕනේ නම්: *.setkey polli ඔයාගේ_key*`;
 
 async function handleKey(send, del, jid, msg, c, rest) {
     const raw = (rest[0] || '').toLowerCase();
     const provider = (raw === 'z.ai' || raw === 'glm' || raw === 'z') ? 'zai' : raw; // Z.ai aliases
-    if (!['gemini', 'groq', 'zai', 'together'].includes(provider)) return send(jid, { text: KEY_HELP }, { quoted: msg });
+    if (!['gemini', 'groq', 'zai', 'together', 'polli'].includes(provider)) return send(jid, { text: KEY_HELP }, { quoted: msg });
     if (c === '.delkey') { ai.setKey(provider, ''); return send(jid, { text: `🗑️ ${provider} key එක මැකුවා` }); }
     const key = (rest[1] || '').trim();
     if (key.length < 20) return send(jid, { text: KEY_HELP }, { quoted: msg });

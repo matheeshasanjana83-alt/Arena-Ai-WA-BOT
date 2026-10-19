@@ -37,7 +37,7 @@ const live = (name, cond) => { if (cond) { livePass++; console.log('  🌐 ' + n
     const bs = require('fs').readFileSync('./bot.js', 'utf8');
     ok('10 maybeAiReply sends r.images', /Array\.isArray\(r\.images\)/.test(bs) && /image: imgs\[0\]/.test(bs));
     ok('11 maybeAiReply photo caption', /හදලා දුන්නා!/.test(bs));
-    ok('12 handleKey whitelist together', /\['gemini', 'groq', 'zai', 'together'\]/.test(bs));
+    ok('12 handleKey whitelist together (+polli v2.69)', /\['gemini', 'groq', 'zai', 'together'(, 'polli')?\]/.test(bs));
     ok('13 KEY_HELP together section', /setkey together/.test(bs) && /api\.together\.ai\/settings\/api-keys/.test(bs));
     ok('14 .keys card together line', /Together \(🖼 image\)/.test(bs));
     ok('15 ai tools card chain text', /Together FLUX → Gemini → Pollinations/.test(bs));

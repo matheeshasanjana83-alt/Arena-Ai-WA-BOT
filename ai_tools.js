@@ -242,6 +242,8 @@ async function generateImage(prompt, keys) {
     // 🖼 v2.53 SUPER chain — Together FLUX.1-schnell-Free (free, 1024px) → Gemini nano-banana (quota ඇතෙනවානම්) → Pollinations flux (retries එක්ක)
     if (keys && keys.together) { try { return await togetherImage(prompt, keys.together); } catch { } }
     if (keys && keys.gemini) { try { return await geminiImage(prompt, keys.gemini); } catch { } } // quota/denied → pollinations
+    // 🌸 v2.69 — KEYED Pollinations (gen.pollinations.ai, user's sk_ key) — anonymous tier එකට කලින් try (402 roulette නැතුව)
+    try { const P = require('./pollinations'); if (P.hasKey()) { const pk = await P.imageBuf(prompt); if (pk && pk.length > 2000) return pk; } } catch { }
     for (let i = 0; i < 3; i++) {   // anonymous tier 402 rate-limit නිසා seed+size මාරු කරලා 3 පාරක්
         const seed = Math.floor(Math.random() * 1e9);
         const wh = i === 0 ? '1024' : i === 1 ? '768' : '512';

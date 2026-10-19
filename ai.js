@@ -84,7 +84,8 @@ function getKeys() {
         gemini: process.env.GEMINI_API_KEY || s.gemini || '',
         groq: process.env.GROQ_API_KEY || s.groq || '',
         zai: process.env.ZAI_API_KEY || s.zai || '',
-        together: process.env.TOGETHER_API_KEY || s.together || ''   // 🖼 v2.53 — Together FLUX.1-schnell-Free (image gen)
+        together: process.env.TOGETHER_API_KEY || s.together || '',   // 🖼 v2.53 — Together FLUX.1-schnell-Free (image gen)
+        polli: process.env.POLLI_API_KEY || s.polli || ''   // 🌸 v2.69 — gen.pollinations.ai (chat fallback — baked default key works even unset)
     };
 }
 
@@ -94,7 +95,7 @@ function setKey(provider, key) {
     saveSettings(s);
 }
 
-const PROVIDERS = ['gemini', 'groq', 'zai'];
+const PROVIDERS = ['gemini', 'groq', 'zai', 'polli'];   // 🌸 v2.69 — polli = free Pollinations fallback (Gemini 503 වගේ outages වලට auto-heal)
 function getProvider() { const p = String(loadSettings().aiProvider || '').toLowerCase().trim(); return PROVIDERS.includes(p) ? p : ''; }
 
 // 🧰 AI tools (v2.50) — GLM (Z.ai) එකට විතරක් connector abilities (GLM-first per user)
@@ -272,6 +273,15 @@ async function askGroq(key, msgs) {
     throw lastErr;
 }
 
+/** 🌸 v2.69 — Pollinations chat (gen.pollinations.ai OpenAI-compatible) — free fallback provider.
+ *  ai.js msgs use {role, text} → pollinations wants {role, content}. Baked default key → key param may be ''. */
+async function askPolli(key, msgs) {
+    const P = require('./pollinations');
+    const body = (msgs || []).slice(-14).map((m) => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: String(m.text ?? m.content ?? '') }));
+    const r = await P.chat(body);
+    return { text: r.text, model: r.model };
+}
+
 async function askZai(key, msgs, chatId, allKeys) {
     let lastErr;
     const toolsOn = getTools(); // connector tools — GLM first (v2.50)
@@ -389,9 +399,9 @@ async function imgPromptEn(question, keys) {   // සිංහල request එක
     const q = String(question || '').replace(/"""/g, '').replace(/\s+/g, ' ').trim().slice(0, 300);
     if (!q) return 'an image';
     if (!/[^\x00-\x7F]/.test(q)) return q;   // English already → direct
-    const FNS = { gemini: askGemini, groq: askGroq, zai: askZai };
+    const FNS = { gemini: askGemini, groq: askGroq, zai: askZai, polli: askPolli };
     for (const p of PROVIDERS) {
-        if (!keys[p]) continue;
+        if (!keys[p] && p !== 'polli') continue;   // polli = baked key → always available
         try {
             const r = await FNS[p](keys[p], [{ role: 'user', text: 'Convert this image request into ONE vivid detailed English image-generation prompt covering: exact subject + action, setting/background, lighting, style, full-scene composition. Reply with ONLY the prompt text itself (no quotes, no explanation).\n\nRequest: ' + q }], 'img-prompt');
             const t = String(r.text || '').replace(/\s+/g, ' ').trim().replace(/^["']|["']$/g, '').slice(0, 500);
@@ -405,13 +415,13 @@ async function imgPromptEn(question, keys) {   // සිංහල request එක
  *  🧠 per-model memory (v2.50): කැමති model එකක් select කරලා නම් ඒ model ගේම store එක — AUTO නම් shared. */
 async function ask(chatId, question) {
     const keys = getKeys();
-    if (!keys.gemini && !keys.groq && !keys.zai) {
+    if (!keys.gemini && !keys.groq && !keys.zai && !keys.polli) {
         const e = new Error('NO_KEY');
         e.noKey = true;
         throw e;
     }
     const pref = getProvider(); // 🎛 fixed provider → වෙන වෙනම memory store; AUTO → shared
-    const FNS = { gemini: askGemini, groq: askGroq, zai: askZai };
+    const FNS = { gemini: askGemini, groq: askGroq, zai: askZai, polli: askPolli };
     const order = PROVIDERS.map(p => [p, FNS[p]]);
     if (pref) order.sort((a, b) => (b[0] === pref) - (a[0] === pref));
     // 🔥 v2.56 — roast routing + සිංහල බලහත්කාර gate (screenshots bug: refuse → silent, English leak, garble loop)
@@ -420,7 +430,7 @@ async function ask(chatId, question) {
     const errors = [];
     let mkUsed = null, lastText = '', lastModel = '';
     for (const [name, fn] of order) {
-        if (!keys[name]) continue;
+        if (!keys[name] && name !== 'polli') continue;   // 🌸 polli = baked default key → always tries last
         const mk = memKeyOf(chatId, pref ? name : ''); // උත්තර දුන්න model ගේම store එකට
         const now = Date.now();
         const h = (history.get(mk) || []).filter(m => now - (m.t || now) < TTL_MS); // TTL prune

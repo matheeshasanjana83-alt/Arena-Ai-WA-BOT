@@ -87,13 +87,35 @@ async function cmdTts(send, jid, msg, args) {
     text = text || quotedText(msg);
     if (!text) return send(jid, { text: '🗣️ *.tts <text>*  — text එක voice එකක් කරනවා\nඋදා: .tts ආයුබෝවන්  •  .tts en hello  •  .tts ja konnichiwa\nනැත්නම් message එකකට reply කරලා *.tts*' }, { quoted: msg });
     lang ||= SI.test(text) ? 'si' : TA.test(text) ? 'ta' : 'en';
-    const bufs = [];
-    for (const c of chunks(text.slice(0, 2500))) {
-        const r = await fetch(`https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=${lang}&q=${encodeURIComponent(c)}`, { headers: UA });
-        if (!r.ok) throw new Error('TTS fail (' + r.status + ')');
-        bufs.push(Buffer.from(await r.arrayBuffer()));
+    try {
+        const bufs = [];
+        for (const c of chunks(text.slice(0, 2500))) {
+            const r = await fetch(`https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=${lang}&q=${encodeURIComponent(c)}`, { headers: UA, signal: AbortSignal.timeout(30e3) });
+            if (!r.ok) throw new Error('TTS fail (' + r.status + ')');
+            bufs.push(Buffer.from(await r.arrayBuffer()));
+        }
+        return send(jid, { audio: Buffer.concat(bufs), mimetype: 'audio/mpeg', ptt: true }, { quoted: msg });
+    } catch (e) {
+        // 🌸 v2.69 — Google translate_tts 429/rate-limit වෙලාද? → Pollinations neural voice (nova) fallback
+        try {
+            const P = require('./pollinations');
+            if (!P.hasKey()) throw e;
+            const buf = await P.ttsBuf(text);
+            return send(jid, { audio: buf, mimetype: 'audio/mpeg', ptt: true }, { quoted: msg });
+        } catch { throw e; }   // fallback එකත් fail → original error එකම
     }
-    return send(jid, { audio: Buffer.concat(bufs), mimetype: 'audio/mpeg', ptt: true }, { quoted: msg });
+}
+
+// 🎙️ v2.69 — .stt — voice note → text (Pollinations whisper-large-v3, free)
+async function cmdStt(send, jid, msg) {
+    const m = mediaOf(msg, ['audio', 'video', 'document']);
+    if (!m) return send(jid, { text: '🎙️ Voice note එකකට reply කරලා *.stt* ගහන්න — කථාව text වෙලා එනවා' }, { quoted: msg });
+    const buf = await mediaDownloader(m.src);
+    if (!buf || !buf.length) throw new Error('media download fail');
+    const mime = m.kind === 'video' ? 'video/mp4' : (m.src.message.documentMessage?.mimetype || 'audio/ogg');
+    const text = await require('./pollinations').sttText(buf, mime);
+    if (!text) return send(jid, { text: '🤷 හඬ හම්බුණේ නෑ — audio එක හිස්ද බලන්න' }, { quoted: msg });
+    return send(jid, { text: `🎙️→📝\n${text.slice(0, 1500)}` }, { quoted: msg });
 }
 
 // ───────── weather (Open-Meteo, no key) ─────────
@@ -231,6 +253,14 @@ async function cmdImagine(send, jid, msg, args) {
     if (!p) return send(jid, { text: '🎨 *.imagine <විස්තරය>*  — AI image එකක් හදනවා\nඋදා: .imagine a cute robot drinking tea, anime style' }, { quoted: msg });
     let prompt = p;
     if (SI.test(p)) { try { prompt = (await translate(p, 'en')).text; } catch { } }
+    // 🌸 v2.69 — KEYED Pollinations first (gen.pollinations.ai — no anonymous 402 roulette, faster + reliable)
+    try {
+        const P = require('./pollinations');
+        if (P.hasKey()) {
+            const buf = await P.imageBuf(prompt);
+            return send(jid, { image: buf, caption: `🎨 ${p.slice(0, 200)}` }, { quoted: msg });
+        }
+    } catch { }   // keyed fail → old anonymous loop එකට
     let last = '';
     for (let i = 0; i < 3; i++) {   // free tier = rate limited → wait + retry
         if (i) await new Promise((r) => setTimeout(r, 8000 * i));
@@ -282,7 +312,7 @@ function cmd8ball(send, jid, msg, args) {
     return send(jid, { text: `🎱 _${args.join(' ').slice(0, 200)}_\n\n${BALL[Math.floor(Math.random() * BALL.length)]}` }, { quoted: msg });
 }
 
-const CMDS = { '.tts': cmdTts, '.say': cmdTts, '.tr': cmdTr, '.translate': cmdTr, '.weather': cmdWeather, '.lyrics': cmdLyrics, '.toimg': cmdToImg, '.tourl': cmdToUrl, '.url': cmdToUrl, '.mirror': cmdMirror, '.link': cmdMirror, '.ss': cmdSs, '.qr': cmdQr, '.short': cmdShort, '.calc': cmdCalc, '.github': cmdGithub, '.imagine': cmdImagine, '.img': cmdImagine, '.joke': cmdJoke, '.fact': cmdFact, '.quote': cmdQuote, '.8ball': cmd8ball, '.del': null, '.delete': null, '.setpp': null };
+const CMDS = { '.tts': cmdTts, '.say': cmdTts, '.stt': cmdStt, '.totext': cmdStt, '.tr': cmdTr, '.translate': cmdTr, '.weather': cmdWeather, '.lyrics': cmdLyrics, '.toimg': cmdToImg, '.tourl': cmdToUrl, '.url': cmdToUrl, '.mirror': cmdMirror, '.link': cmdMirror, '.ss': cmdSs, '.qr': cmdQr, '.short': cmdShort, '.calc': cmdCalc, '.github': cmdGithub, '.imagine': cmdImagine, '.img': cmdImagine, '.joke': cmdJoke, '.fact': cmdFact, '.quote': cmdQuote, '.8ball': cmd8ball, '.del': null, '.delete': null, '.setpp': null };
 
 async function handle(c, { send, jid, msg, rest, sock, me, react }) {
     if (!(c in CMDS)) return false;

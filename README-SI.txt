@@ -447,3 +447,11 @@ v2.32.0 — 🛡️ Anti-Bug v2: MishuCrasher-class bug panels වල හැම 
     giant waveform arrays, duration bombs — සාමාන්‍ය සිංහල/Arabic/emoji/4K video false-positive නෑ
   • .antibug test — bug-payload self-test (memory-only; ඔයාගේ chat එකට කිසිවක් යවන්නේ නෑ)
   • පරණ වැඩ ඔක්කොම: auto delete (මට + group admin) · severe bug → sender block · "Message yourself" report · .antibug scan
+
+v2.69.0
+ - 🩺 YouTube PO-token path: BotGuard token (bgutils) yt-dlp + innertube වලට — ".song/.video වැඩ නෑ" (Sign in to confirm) gates වලට අලුත්ම counter
+ - 🌸 Pollinations AI key එක ඇතුළත්: .ai දැන් කවදාවත් නවතින්නේ නෑ (Gemini/Groq down වුණත් auto fallback)
+ - 🎨 .imagine/.img — keyed Pollinations flux (වේගවත් + reliable)
+ - 🗣️ .tts — Google TTS fail වුණොත් nova voice fallback
+ - 🎙️ අලුත් .stt — voice note එකකට reply කරලා → කථාව text වෙලා එනවා (whisper)
+ - 🩺 /diag?pot=1 — PO token live probe

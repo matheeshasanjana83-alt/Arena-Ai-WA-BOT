@@ -153,8 +153,8 @@ const FAKE_CAPS = {
     srv.close();
 
     console.log('\n[6] version pins');
-    await ok('package.json 2.65.0', () => assert.strictEqual(require('./package.json').version, '2.68.0'));
-    await ok('manifest.json 2.65.0 + notes mention subtitles/deep-episodes', () => { const m = JSON.parse(fs.readFileSync('manifest.json')); assert.strictEqual(m.version, '2.68.0'); assert.ok(/SUBTITLES|DEEP EPISODES/i.test(m.notes)); });
+    await ok('package.json 2.65.0', () => assert.strictEqual(require('./package.json').version, '2.69.0'));
+    await ok('manifest.json 2.65.0 + notes mention subtitles/deep-episodes', () => { const m = JSON.parse(fs.readFileSync('manifest.json')); assert.strictEqual(m.version, '2.69.0'); assert.ok(/SUBTITLES|DEEP EPISODES/i.test(m.notes)); });
     await ok('moviedex.js exports subtitle helpers', () => ['mbCaptions', 'parseCaptions', 'subLabel', 'subFileName', 'vttToSrt', 'deliverSub'].every(k => assert.ok(fs.readFileSync('moviedex.js', 'utf8').includes(k + ',') || fs.readFileSync('moviedex.js', 'utf8').includes(' ' + k + ','), k)));
 
     console.log(`\n═══ v2.60 moviedex subtitles: ${pass} passed, ${fail} failed ═══`);

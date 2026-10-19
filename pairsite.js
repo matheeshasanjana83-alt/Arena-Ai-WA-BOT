@@ -509,6 +509,16 @@ function start(deps) {
                         for (const f of got) { try { require('fs').rmSync('/tmp/' + f, { force: true }); } catch { } }
                     } catch (e) { out.ep.err = String(e.message).slice(0, 120); }
                 }
+                // 🩺 v2.69 — PO-token status (pot=1 → live mint probe too)
+                try {
+                    const pot = require('./pot');
+                    out.pot = pot.status();
+                    if (String(url.searchParams.get('pot') || '') === '1') {
+                        const t = Date.now();
+                        const tok = await pot.getPO(true);
+                        out.pot.liveMint = { ok: !!tok, ms: Date.now() - t, po_len: tok ? tok.po.length : 0 };
+                    }
+                } catch (e) { out.pot = { err: String(e.message).slice(0, 100) }; }
                 return json(r, 200, out);
             }
             if (url.pathname === '/') { r.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); return r.end(page(KEY)); }

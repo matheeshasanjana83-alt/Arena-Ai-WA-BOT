@@ -132,6 +132,11 @@ function cookieArgs(args) {
 //    (process.execPath = /usr/local/bin/node on the panel — PATH lookup not trusted).
 const JSRT = () => ['--js-runtimes', `node:${process.execPath}`];
 
+// 🩺 v2.69 — BotGuard PO-token (pot.js): warm cache එකෙන් yt-dlp extractor-args — per-IP/per-video
+// "Sign in to confirm" gates වලට bgutils path (Asitha-MD youtubei.js machinery එකම). Cold → bg mint (next call warm).
+let pot = null;
+try { pot = require('./pot'); } catch { }
+
 function run(bin, args, timeout = 15 * 60e3) {
     return new Promise((resolve) => {
         const p = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'] });
@@ -189,6 +194,8 @@ async function info(url) {
         { args: ['--extractor-args', 'youtube:player_client=web_safari,tv,mweb'], label: 'alt' },   // bot-check window rescue
         ...pxList.map((p) => ({ args: ['--proxy', p], label: 'proxy' })),
     ];
+    const _pa = pot ? pot.cachedArgs() : [];   // 🩺 v2.69 — warm PO args → direct ට පස්සේ 2වෙනි attempt
+    if (_pa.length) variants.splice(1, 0, { args: _pa, label: 'po' });
     const errs = [];
     try {
         return await firstOk(variants.map((v) => (async () => {
@@ -200,7 +207,7 @@ async function info(url) {
         })()));
     } catch (e) {
         const msg = (errs.find((x) => x.startsWith('direct')) || errs[errs.length - 1] || e.message);
-        if (EXTRACT_BROKEN.test(msg) || YT_ENFORCED.test(msg)) checkUpdate(true).catch(() => { });   // stale extractor → update in background
+        if (EXTRACT_BROKEN.test(msg) || YT_ENFORCED.test(msg)) { checkUpdate(true).catch(() => { }); if (pot) pot.kick(); }   // stale extractor / enforcement → refresh in bg
         throw new Error(ytError(msg));
     }
 }
@@ -224,7 +231,7 @@ async function ytdl(url, { mode = 'video', maxMB = 100, height = null } = {}) {
     // ⚡ v2.65 attempt order (panel probe 2026-10: alt clients = "page needs to be reloaded" — demoted to LAST;
     //  direct → cookies → your proxy/pool → alt-clients last resort)
     const pxList = [...(px ? [px] : []), ...pool.candidates(2)].filter((v, i, a) => v && a.indexOf(v) === i);
-    const attempts = [{ proxy: null, alt: false, ck: false }];
+    const attempts = [{ proxy: null, alt: false, ck: false, po: true }];
     if (ck) attempts.push({ proxy: null, alt: false, ck: true });
     for (const useProxy of pxList) {
         attempts.push({ proxy: useProxy, alt: false, ck: false });
@@ -253,6 +260,8 @@ async function ytdl(url, { mode = 'video', maxMB = 100, height = null } = {}) {
                     '--retries', '2', '--fragment-retries', '3', '--socket-timeout', isYt ? '20' : '12',
                     '--max-filesize', `${maxMB}M`, '-f', fmt, '-o', path.join(TMP(), prefix + '.%(ext)s')];
                 args.push(...JSRT());   // 🧠 v2.66 node EJS challenge solver — the 403 bot-check fix
+                // 🩺 v2.69 — first (direct) YouTube attempt gets warm PO-token args too
+                if (isYt && at.po) { const _pa = pot ? pot.cachedArgs() : []; args.push(..._pa); }
                 if (at.ck) args.push('--cookies', ck);
                 if (at.alt) args.push('--extractor-args', 'youtube:player_client=web_safari,tv,mweb');
                 if (ff) args.push('--ffmpeg-location', ff);
@@ -272,7 +281,7 @@ async function ytdl(url, { mode = 'video', maxMB = 100, height = null } = {}) {
                 }
                 for (const f of produced) fs.rmSync(path.join(TMP(), f), { force: true });
                 lastErr = r.err || r.out || (r.code === 0 ? 'File is larger than max' : '');
-                if (EXTRACT_BROKEN.test(lastErr) || YT_ENFORCED.test(lastErr)) { checkUpdate(true).catch(() => { }); if (EXTRACT_BROKEN.test(lastErr)) break outer; }   // stale extractor / enforcement → refresh in bg
+                if (EXTRACT_BROKEN.test(lastErr) || YT_ENFORCED.test(lastErr)) { checkUpdate(true).catch(() => { }); if (pot && isYt) pot.kick(); if (EXTRACT_BROKEN.test(lastErr)) break outer; }   // stale extractor / enforcement → refresh in bg
                 if (blocked(lastErr)) {
                     // 🌐 v2.65: non-YouTube hosts — a blocked/dead CDN file is NOT an IP block: try the NEXT
                     // height (often a different CDN file) instead of re-running the same ladder; the round-2

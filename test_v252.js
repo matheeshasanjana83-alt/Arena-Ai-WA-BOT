@@ -53,7 +53,7 @@ const live = (name, cond) => { if (cond) { livePass++; console.log('  🌐 ' + n
         return { ok: true, status: 200, arrayBuffer: async () => Buffer.alloc(8000, 3), headers: { get: (k) => (k === 'content-type' ? 'image/jpeg' : null) }, text: async () => 'x' };
     };
     buf = await T._generateImage('robot photo, full scene, studio light', { gemini: 'gk' });
-    ok('11 all-quota → pollinations flux', Buffer.isBuffer(buf) && buf.length === 8000 && calls.some(c => c.includes('image.pollinations.ai') && c.includes('model=flux')));
+    ok('11 all-quota → pollinations flux (keyed gen. or anonymous)', Buffer.isBuffer(buf) && buf.length === 8000 && calls.some(c => c.includes('pollinations.ai') && c.includes('model=flux')));
 
     // 12: legacy string key compat (v2.51 callers)
     calls = [];
