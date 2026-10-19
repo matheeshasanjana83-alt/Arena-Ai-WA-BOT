@@ -42,6 +42,7 @@ const guard = require('./guard');
 const features = require('./features');
 const tools = require('./tools');
 const moviedex = require('./moviedex');
+const animehub = require('./animehub');   // 🎌 v2.75 AniWorld + 🔞 NSFW (hentai-api style)
 const antibug = require('./antibug');
 const antispam = require('./antispam');
 const { BRAND, foot, cut } = require('./style');
@@ -308,7 +309,8 @@ async function onMessages({ messages, type }, send, del = async () => { }) {
                         if (panels.length) text = panels[0][1] + text;           // exact quote of the panel card wins
                         else { const a = features.apkMenuBridge(jid0, qid, text); if (a) text = a;   // 📦 v2.68 apk results card
                             else { const y = features.ytMenuBridge(jid0, qid, text); if (y) text = y;   // 📋 v2.64 yt quality menu cards
-                            else { const b = moviedex.bridgeReply(jid0, qid, text); if (b) text = b; } } }   // moviedex card quotes — v2.28/29 routing
+                            else { const b = moviedex.bridgeReply(jid0, qid, text); if (b) text = b;
+                            else { const h = animehub.bridge(jid0, qid, text); if (h) text = h; } } } }   // moviedex + 🎌 v2.75 aniworld card quotes
                     }
                 }
                 if (!text.startsWith('.')) { maybeAiReply({ msg, jid: replyJid(msg.key), text, owner, send }); continue; }   // 🤖 AI chat (v2.41 — own modes, works even when bot commands are private)
@@ -416,6 +418,7 @@ async function onMessages({ messages, type }, send, del = async () => { }) {
                 if (await runJob(() => tools.handle(c, { send, jid, msg, rest, sock: SOCK, me: ME, react }))) continue;
                 if (await runJob(() => features.handle(c, { send, jid, msg, rest, sock: SOCK, me: ME, download, react }))) continue;
                 if (await runJob(() => moviedex.handle(c, { send, jid, msg, rest, react }))) continue;
+                if (await runJob(() => animehub.handle(c, { send, jid, msg, rest, react }))) continue;   // 🎌 .aniworld + 🔞 .hentai/.hneko/.hmidriff/.pgif (v2.75)
 
                 // 🆕 v2.59: site-locked downloaders — .mediafire / .mega / .gdrive
                 if (SITE_DL[c]) {
@@ -462,7 +465,7 @@ const reactTo = (key, emoji) => {   // ⏳ → ✅/❌ pro-bot feedback (respect
     if (!reactOn() || !key?.id) return;
     try { SOCK?.sendMessage(key.remoteJid, { react: { text: emoji, key } }).catch(() => { }); } catch { }
 };
-const HEAVY = new Set(['.download', '.dl', '.dn', '.mediafire', '.mega', '.gdrive', '.moviedex', '.mdx', '.song', '.play', '.yta', '.video', '.ytv', '.yt', '.ytmenu', '.fb', '.facebook', '.faceboock', '.fbvid', '.ig', '.insta', '.x', '.twitter', '.tiktok', '.tt', '.mirror', '.link', '.tourl', '.url', '.gitclone', '.ai', '.ask', '.gpt', '.anime', '.manga', '.imagine', '.img', '.s', '.sticker', '.take', '.tts', '.say', '.stt', '.totext', '.ss', '.setcookies', '.setlogo', '.update', '.apk', '.app', '.apkdl', '.getdp', '.dp', '.pp', '.vv', '.viewonce', '.reveal']);
+const HEAVY = new Set(['.download', '.dl', '.dn', '.mediafire', '.mega', '.gdrive', '.moviedex', '.mdx', '.song', '.play', '.yta', '.video', '.ytv', '.yt', '.ytmenu', '.fb', '.facebook', '.faceboock', '.fbvid', '.ig', '.insta', '.x', '.twitter', '.tiktok', '.tt', '.mirror', '.link', '.tourl', '.url', '.gitclone', '.ai', '.ask', '.gpt', '.anime', '.manga', '.imagine', '.img', '.s', '.sticker', '.take', '.tts', '.say', '.stt', '.totext', '.ss', '.setcookies', '.setlogo', '.update', '.apk', '.app', '.apkdl', '.getdp', '.dp', '.pp', '.vv', '.viewonce', '.reveal', '.aniworld', '.aw']);
 // 🆕 v2.59: site-locked download commands — each one downloads ONLY its own site (menu: 📥 DOWNLOAD).
 // resolve() already scrapes all 3 hosts → router just validates the link + brands the progress bubble.
 const SITE_DL = {
@@ -493,13 +496,13 @@ async function handleReact(send, jid, msg, arg) {
 }
 
 const CATS = [
-    ['📥', 'Download', `*📥 DOWNLOAD*\n\n✦ *.download <link>* — file එක එවනවා (*.dl*)\n✦ *.mediafire <link>* — 🔥 MediaFire\n✦ *.mega <link>* — 🟢 MEGA\n✦ *.gdrive <link>* — 🔵 Google Drive\n✦ *.video <link/නම>* — 🎬 YouTube quality menu (*.yt*)\n✦ *.song <link/නම>* — 🎧 YouTube audio menu (*.play*)\n✦ *.apk <app නම / package / url>* — 📦 APK downloader\n✦ *.dl link1 link2* — links 5 දක්වා\n✦ *.mirror <link>* — 🔗 direct share link\n✦ *.gitclone user/repo* — repo → zip\n\n> 📏 max {MAX} / file · *.maxmb* වෙනස් කරන්න · ⚡ multi-connection fast download`],
+    ['📥', 'Download', `*📥 DOWNLOAD*\n\n✦ *.download <link>* — file එක එවනවා (*.dl*)\n✦ *.mediafire <link>* — 🔥 MediaFire\n✦ *.mega <link>* — 🟢 MEGA\n✦ *.gdrive <link>* — 🔵 Google Drive\n✦ *.video <link/නම>* — 🎬 YouTube quality menu (*.yt*)\n✦ *.song <link/නම>* — 🎧 YouTube audio menu (*.play*)\n✦ *.aniworld <anime>* — 🎌 AniWorld anime → season → episode → stream link (*.aw*)\n✦ *.apk <app නම / package / url>* — 📦 APK downloader\n✦ *.dl link1 link2* — links 5 දක්වා\n✦ *.mirror <link>* — 🔗 direct share link\n✦ *.gitclone user/repo* — repo → zip\n\n> 📏 max {MAX} / file · *.maxmb* වෙනස් කරන්න · ⚡ multi-connection fast download`],
     ['🎬', 'YouTube', `*🎬 YOUTUBE*\n\n✦ *.yts <නම>* — search\n✦ *.song <නම / link>* — 🎧 format menu — M4A / MP3 320 / 128 (*.play*)\n✦ *.video <නම / link>* — 🎬 quality menu — sizes එක්ක (*.yt*)\n✦ *.video <link> 1080* — instant pick (menu නැතුව)\n\n> menu card එකට අංකය *reply* කරන්න · 2160p → 144p`],
     ['🍿', 'MovieDex', `*🍿 MOVIEDEX* — movies + 📺 series\n\n✦ *.moviedex <නම>* — search (*.mdx*)\n✦ අංකය reply — card → options\n✦ *.moviedex <n> <q#>* — 🍿 movie file\n✦ series: season 🧳 pack files · episode 🎬 files\n✦ *.moviedex <n> <q#> link* — 🔗 share link\n\n> DASH 1080p/720p/480p · ffmpeg mux · *.maxmb* limit`],
     ['📱', 'Social', `*📱 SOCIAL*\n\n✦ *.tiktok <link>* — watermark නෑ (*.tt*)\n✦ *.fb <link>* — Facebook (*.facebook*)\n✦ *.ig <link>* — Instagram\n✦ *.x <link>* — X / Twitter`],
     ['🔍', 'Search', `*🔍 SEARCH*\n\n✦ *.wiki <මාතෘකාව>* — Wikipedia\n✦ *.wiki si <මාතෘකාව>* — සිංහල wiki\n✦ *.yts <නම>* — YouTube search`],
     ['🖼️', 'Sticker', `*🖼️ STICKER*\n\n✦ *.s* — photo/video reply → sticker\n✦ *.take Pack | Author* — නම වෙනස් කරන්න\n\n> video sticker — තත්පර 6 දක්වා`],
-    ['🛠️', 'Tools', `*🛠️ TOOLS*\n\n✦ *.tr <භාෂාව> <text>* — translate\n✦ *.remind <time> <note>* — ⏰ reminders\n✦ *.stt* — 🎙️ voice note → text\n✦ *.tts <text>* — voice (සිංහල OK)\n✦ *.weather <නගරය>* — කාලගුණය · දින 3\n✦ *.lyrics <සින්දුව>* — lyrics\n✦ *.imagine <විස්තරය>* — AI image\n✦ *.toimg* — sticker → photo\n✦ *.getdp <number>* — 🖼️ profile photo\n✦ *.vv* — 🕵️ view-once reveal\n✦ *.tourl* — media → 🔗 link\n✦ *.ss <site>* · *.qr* · *.short* · *.calc*\n✦ *.github <user>* · *.del* · *.setpp*`],
+    ['🛠️', 'Tools', `*🛠️ TOOLS*\n\n✦ *.tr <භාෂාව> <text>* — translate\n✦ *.remind <time> <note>* — ⏰ reminders\n✦ *.stt* — 🎙️ voice note → text\n✦ *.tts <text>* — voice (සිංහල OK)\n✦ *.weather <නගරය>* — කාලගුණය · දින 3\n✦ *.lyrics <සින්දුව>* — lyrics\n✦ *.imagine <විස්තරය>* — AI image\n✦ *.toimg* — sticker → photo\n✦ *.getdp <number>* — 🖼️ profile photo\n✦ *.vv* — 🕵️ view-once reveal\n✦ *.tourl* — media → 🔗 link\n✦ *.ss <site>* · *.qr* · *.short* · *.calc*\n✦ *.github <user>* · *.del* · *.setpp*\n✦ *.hentai* · *.hneko* · *.hmidriff* · *.pgif* — 🔞 NSFW (18+ only)`],
     ['🎉', 'Fun', `*🎉 FUN*\n\n✦ *.joke* · *.fact* · *.quote*\n✦ *.8ball <ප්‍රශ්නය>* — 🎱`],
     ['👥', 'Group', `*👥 GROUP* — group එකේ ඔයා ගහන්න\n\n✦ *.groupinfo* · *.grouplink* · *.jid*\n✦ *.tagall [msg]* — විනාඩි 10 කට 1\n✦ *.kick @user* · *.promote* · *.demote*\n✦ *.mute* · *.unmute* · *.tagadmins* · *.resetlink*\n\n> @mention නැත්නම් message එකකට reply කරන්න`],
     ['🤖', 'AI', `*🤖 AI*\n\n✦ *.ai <ප්‍රශ්නය>* — සිංහල OK\n✦ message එකකට reply + *.ai* — ඒක ගැනම\n✦ *.anime <ප්‍රශ්නය>* — 🎌 verified anime/manga knowledge (Black Clover 🥇)\n✦ *.ai reset* — අලුත් කතාවක්
