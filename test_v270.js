@@ -85,7 +85,8 @@ const POLLI_OK = (text) => ({ status: 200, body: { choices: [{ message: { conten
         assert.ok(s.includes('...(max_tokens ? { max_tokens } : {})'), 'body spread missing');
     });
     ok('bot.js: vision status text neutral (not Gemini-only)', () => {
-        assert.ok(src('bot.js').includes("'👁 බලනවා... (vision)'"), 'status text not updated');
+        // v2.71 SUPER VISION: status upgraded to deep-vision text — assert current + old gone
+        assert.ok(src('bot.js').includes('බලලා විස්තරේ ලියනවා'), 'status text not updated (v2.71 deep vision)');
     });
 
     // ── ② LIVE behavior — Gemini ladder survives 503 ──
@@ -124,7 +125,7 @@ const POLLI_OK = (text) => ({ status: 200, body: { choices: [{ message: { conten
         assert.strictEqual(r.model, 'Pollinations vision');
         assert.ok(r.text.includes('polli saw a cat'));
         const pc = CALLS.find(c => c.u.includes('gen.pollinations.ai'));
-        assert.ok(pc.body.includes('"max_tokens":900'), 'polli vision must send max_tokens 900');
+        assert.ok(pc.body.includes('"max_tokens":3072'), 'polli vision must send max_tokens 3072 (v2.71 deep)');
         assert.ok(pc.body.includes('image_url'), 'polli vision must carry image part');
     });
 

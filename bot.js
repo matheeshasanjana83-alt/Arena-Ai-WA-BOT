@@ -1073,11 +1073,13 @@ on/off: *.ai roast on* / *.ai roast off*` }, { quoted: msg });
     // 👁 v2.51 — photo/PDF එකකට reply කරලා .ai → Gemini vision එකෙන් කියවනවා
     const att = await quotedMediaOf(msg);
     if (att) {
-        if (!question) question = 'මේක මොකක්ද? පැහැදිලිව කියන්න.';
-        const status = await send(jid, { text: '👁 බලනවා... (vision)' }, { quoted: msg });
+        if (!question) question = 'මේක මොකක්ද? සම්පූර්ණ විස්තරාත්මක විශ්ලේෂණයක් දෙන්න — මොනවද පේන්නේ, ලියවිලි/text තියෙනවා නම් ඒවා, ඇත්තටම මොනවද වෙන්නේ, වැදගත් දේවල් ඔක්කොම.';
+        const status = await send(jid, { text: '👁 බලලා විස්තරේ ලියනවා... 🧠 (deep vision)' }, { quoted: msg });
         try {
             const { text, model } = await ai.askVision(jid, question, att);
-            await send(jid, { text: text + `\n\n${foot('ᴀɪ')}`, edit: status.key });
+            const parts = ai.splitLong(text);   // v2.71: deep answers can be long → split & send in parts
+            await send(jid, { text: parts[0] + (parts.length === 1 ? `\n\n${foot('ᴀɪ')}` : ''), edit: status.key });
+            for (let i2 = 1; i2 < parts.length; i2++) await send(jid, { text: parts[i2] + (i2 === parts.length - 1 ? `\n\n${foot('ᴀɪ')}` : '') });
             reactTo(msg.key, '✅');
             log(`👁 ${model}: ${question.slice(0, 50)} → ${String(text).replace(/\s+/g, ' ').slice(0, 70)}`);
         } catch (e) {

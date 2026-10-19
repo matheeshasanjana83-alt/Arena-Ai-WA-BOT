@@ -33,6 +33,24 @@ const MEM_TTL_DAYS = Math.max(1, parseInt(process.env.ARENA_AI_MEMORY_DAYS || '3
 const TTL_MS = MEM_TTL_DAYS * 86400e3;
 const REFUSE_RE = /i\s*('|a)?m\s+sorry|sorry,?\s|\bsorry\b|i\s+can\s*'?t\s+(help|assist|do|comply|provide)|i\s+cannot|can\s*'?t\s+help|won\s*'?t\s+help|unable\s+to\s+(help|assist|comply|provide)|not\s+able\s+to\s+(help|assist)|inappropriate|harmful|against\s+(my|the|our)\s+(guidelines|policies|principles)|as\s+an\s+ai\b|සමාවෙන්න|කරන්න\s*බෑ|බැරි\s*මට/i;   // 🛡 v2.56
 
+// 👁🦾 v2.71 SUPER VISION — photo/PDF වලට dedicated deep-analysis brain. chat SYSTEM එකේ "BE SHORT 1-4 lines" rule එක
+// vision answers lazy කරනවා (user: "ලොකු විස්තරයක් දෙන්නෙ නැනෙ") → vision calls ට විතරක් මේ prompt එක:
+const VISION_SYSTEM = `You are the SUPER VISION engine of "KAVIZ MD V1" — a world-class image & document analyst living inside WhatsApp. Nobody analyses images better than you.
+- LANGUAGE: ALWAYS reply in Sinhala (spoken, friendly, correct — like a smart Sri Lankan friend). Keep technical terms / product names / code / URLs in English inside the Sinhala explanation. Translate any foreign-language text found in the image into Sinhala as part of your answer.
+- DEPTH: This is the ONE place long answers are WANTED. Give a RICH, DETAILED analysis — 8 to 20 WhatsApp lines when the image has real content. NEVER reply with 1-2 lazy lines. But every line must come from what is ACTUALLY visible — no invented filler, no repetition.
+- STRUCTURE (WhatsApp formatting: *bold* section labels + • lists, no markdown headings):
+  🔍 *මොකක්ද මේ* — image type (photo / screenshot / meme / poster / art / code / document / ID / product...), source app or website if identifiable.
+  👀 *පේන දේවල්* — people, objects, scene, colors, lighting, layout, text style, quality (blurry? edited? watermark? low-res?).
+  🔤 *ලියවිලි* — transcribe ALL visible text exactly (names, numbers, buttons, captions, chat lines, code). Long text → transcribe the important parts fully.
+  🧠 *විශ්ලේෂණය* — what's REALLY going on: context, meaning, the joke/meme explained, UI walkthrough, error diagnosis, code logic, hidden details a normal bot would miss.
+  💡 *මට යෝජනා* — 2-4 useful next-steps / tips / fixes for the user.
+  (Skip sections that truly don't apply — but "මොකක්ද මේ" + "පේන දේවල්" are always there.)
+- IF THE USER ASKED A SPECIFIC QUESTION about the image: answer THAT question first — completely and in depth — then add anything else important you spotted. Use the structure above whenever it helps.
+- SMART MODES (auto-detect): error/screenshot → diagnose root cause + step-by-step fix; code screenshot → transcribe + explain + point out bugs; chat screenshot → who said what and what happened; document/PDF → full summary + key points + any tables; product photo → name/brand/what it does (+ price if visible); math problem → solve step by step; meme → explain the joke in Sinhala; map/location → say where it is.
+- PEOPLE: describe respectfully. NEVER claim to recognize or name a person (unless the name is written in the image itself). Never comment on attractiveness.
+- HONESTY: if something is blurry/unreadable/cut off, say exactly that — never invent text or details you cannot see.
+- You are powered by free models (Gemini / Groq / Pollinations). If asked, say so honestly.`;
+
 const history = new Map(); // chat jid -> [{role:'user'|'assistant', text, t}]
 
 function loadMemory() {
@@ -345,7 +363,7 @@ async function askVision(chatId, question, media) {
     const b64 = String(media?.b64 || '');
     if (!b64) throw new Error('attachment data නෑ');
     const isImg = /^image\//i.test(mime);
-    const q = question || 'මේක මොකක්ද? පැහැදිලිව කියන්න.';
+    const q = question || 'මේක මොකක්ද? සම්පූර්ණ විස්තරාත්මක විශ්ලේෂණයක් දෙන්න — මොනවද පේන්නේ, ලියවිලි/text තියෙනවා නම් ඒවා, ඇත්තටම මොනවද වෙන්නේ, වැදගත් දේවල් ඔක්කොම.';
     const pref = getProvider();
     const mk = memKeyOf(chatId, pref ? 'gemini' : '');   // fixed-select නම් gemini store (AUTO = shared legacy)
     const now = Date.now();
@@ -368,9 +386,9 @@ async function askVision(chatId, question, media) {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'x-goog-api-key': keys.gemini },
                 body: JSON.stringify({
-                    systemInstruction: { parts: [{ text: SYSTEM }] },
+                    systemInstruction: { parts: [{ text: VISION_SYSTEM }] },   // v2.71 SUPER VISION (chat SYSTEM එකේ BE SHORT rule එක vision lazy කරනවා)
                     contents: [...h.map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.text }] })), { role: 'user', parts: [{ text: q }, { inline_data: { mime_type: mime, data: b64 } }] }],
-                    generationConfig: { maxOutputTokens: 2048, temperature: 0.5 }
+                    generationConfig: { maxOutputTokens: 4096, temperature: 0.5 }   // v2.71: 2048 → 4096 (deep answers)
                 })
             };
             let r = await fetch(url, opts);
@@ -399,8 +417,8 @@ async function askVision(chatId, question, media) {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${keys.groq}` },
                 body: JSON.stringify({
-                    model, temperature: 0.5, max_tokens: 2048,
-                    messages: [{ role: 'system', content: SYSTEM }, { role: 'user', content: [{ type: 'text', text: q }, { type: 'image_url', image_url: { url: `data:${mime};base64,${b64}` } }] }]
+                    model, temperature: 0.5, max_tokens: 4096,   // v2.71: 2048 → 4096 (deep answers)
+                    messages: [{ role: 'system', content: VISION_SYSTEM }, { role: 'user', content: [{ type: 'text', text: q }, { type: 'image_url', image_url: { url: `data:${mime};base64,${b64}` } }] }]
                 })
             };
             try {
@@ -421,7 +439,7 @@ async function askVision(chatId, question, media) {
     if (isImg) {
         try {
             const P = require('./pollinations');
-            const r = await P.chat([{ role: 'user', content: [{ type: 'text', text: q }, { type: 'image_url', image_url: { url: `data:${mime};base64,${b64}` } }] }], { model: 'openai', timeout: 90e3, max_tokens: 900 });
+            const r = await P.chat([{ role: 'system', content: VISION_SYSTEM }, { role: 'user', content: [{ type: 'text', text: q }, { type: 'image_url', image_url: { url: `data:${mime};base64,${b64}` } }] }], { model: 'openai', timeout: 120e3, max_tokens: 3072 });   // v2.71: system + 900 → 3072
             return done(r.text, 'Pollinations vision');
         } catch (e) { errs.push('Pollinations ' + e.message); }
     }
@@ -594,4 +612,4 @@ function stats(chatId) { // 🧠 .ai memory card data
     };
 }
 
-module.exports = { ask, askVision, reset, stats, looksLikeImageAsk, looksLikeInsult, imgPromptEn, setKey, getKeys, getProvider, setProvider, getTools, setTools, getRoast, setRoast, splitLong, toWhatsApp, roastGood, mostlyEnglish, cannedRoast, REFUSE_RE, ROAST_BANK, _history: history, _memoryFile: MEM_FILE, _memKey: memKeyOf, _flush: saveMemoryNow, _lastRoast: lastRoast };
+module.exports = { ask, askVision, reset, stats, looksLikeImageAsk, looksLikeInsult, imgPromptEn, setKey, getKeys, getProvider, setProvider, getTools, setTools, getRoast, setRoast, splitLong, toWhatsApp, roastGood, mostlyEnglish, cannedRoast, REFUSE_RE, ROAST_BANK, VISION_SYSTEM, _history: history, _memoryFile: MEM_FILE, _memKey: memKeyOf, _flush: saveMemoryNow, _lastRoast: lastRoast };
