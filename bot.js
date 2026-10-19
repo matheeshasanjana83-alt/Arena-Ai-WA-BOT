@@ -373,6 +373,11 @@ async function onMessages({ messages, type }, send, del = async () => { }) {
                 if (c === '.spamlog') { await send(jid, { text: antispam.logText() }, { quoted: msg }); continue; }
                 if (c === '.react') { await handleReact(send, jid, msg, (rest[0] || '').toLowerCase()); continue; }
                 if (c === '.ai' || c === '.ask' || c === '.gpt') { await runJob(() => handleAI(send, jid, msg, rest.join(' '))); continue; }
+                if (c === '.anime' || c === '.manga') {   // 🎌 v2.72 — anime-expert mode (verified anime KB auto-injected in ai.ask)
+                    const anq = rest.join(' ').trim();
+                    if (!anq) { await send(jid, { text: '🎌 *.anime <ප්‍රශ්නය>* — verified anime/manga knowledge (Black Clover 🥇 + One Piece, JJK, Bleach, Solo Leveling, Frieren...)\n\nඋදා: *.anime black clover season 2*\n     *.anime asta powers*\n     *.anime manga end වුණේ කවදද*' }, { quoted: msg }); continue; }
+                    await runJob(() => handleAI(send, jid, msg, 'ANIME EXPERT MODE — anime+manga දෙකම cover කරන්න: ' + anq)); continue;
+                }
                 if (c === '.setkey' || c === '.delkey') { await handleKey(send, del, jid, msg, c, rest); continue; }
                 if (c === '.autoupdate') { await send(jid, { text: autoupdate.command(rest[0]) }, { quoted: msg }); continue; }
                 if (c === '.update') { await handleUpdate(send, jid, msg, rest[0] === 'force'); continue; }
@@ -457,7 +462,7 @@ const reactTo = (key, emoji) => {   // ⏳ → ✅/❌ pro-bot feedback (respect
     if (!reactOn() || !key?.id) return;
     try { SOCK?.sendMessage(key.remoteJid, { react: { text: emoji, key } }).catch(() => { }); } catch { }
 };
-const HEAVY = new Set(['.download', '.dl', '.dn', '.mediafire', '.mega', '.gdrive', '.moviedex', '.mdx', '.song', '.play', '.yta', '.video', '.ytv', '.yt', '.ytmenu', '.fb', '.facebook', '.faceboock', '.fbvid', '.ig', '.insta', '.x', '.twitter', '.tiktok', '.tt', '.mirror', '.link', '.tourl', '.url', '.gitclone', '.ai', '.ask', '.gpt', '.imagine', '.img', '.s', '.sticker', '.take', '.tts', '.say', '.stt', '.totext', '.ss', '.setcookies', '.setlogo', '.update', '.apk', '.app', '.apkdl', '.getdp', '.dp', '.pp', '.vv', '.viewonce', '.reveal']);
+const HEAVY = new Set(['.download', '.dl', '.dn', '.mediafire', '.mega', '.gdrive', '.moviedex', '.mdx', '.song', '.play', '.yta', '.video', '.ytv', '.yt', '.ytmenu', '.fb', '.facebook', '.faceboock', '.fbvid', '.ig', '.insta', '.x', '.twitter', '.tiktok', '.tt', '.mirror', '.link', '.tourl', '.url', '.gitclone', '.ai', '.ask', '.gpt', '.anime', '.manga', '.imagine', '.img', '.s', '.sticker', '.take', '.tts', '.say', '.stt', '.totext', '.ss', '.setcookies', '.setlogo', '.update', '.apk', '.app', '.apkdl', '.getdp', '.dp', '.pp', '.vv', '.viewonce', '.reveal']);
 // 🆕 v2.59: site-locked download commands — each one downloads ONLY its own site (menu: 📥 DOWNLOAD).
 // resolve() already scrapes all 3 hosts → router just validates the link + brands the progress bubble.
 const SITE_DL = {
@@ -497,7 +502,7 @@ const CATS = [
     ['🛠️', 'Tools', `*🛠️ TOOLS*\n\n✦ *.tr <භාෂාව> <text>* — translate\n✦ *.remind <time> <note>* — ⏰ reminders\n✦ *.stt* — 🎙️ voice note → text\n✦ *.tts <text>* — voice (සිංහල OK)\n✦ *.weather <නගරය>* — කාලගුණය · දින 3\n✦ *.lyrics <සින්දුව>* — lyrics\n✦ *.imagine <විස්තරය>* — AI image\n✦ *.toimg* — sticker → photo\n✦ *.getdp <number>* — 🖼️ profile photo\n✦ *.vv* — 🕵️ view-once reveal\n✦ *.tourl* — media → 🔗 link\n✦ *.ss <site>* · *.qr* · *.short* · *.calc*\n✦ *.github <user>* · *.del* · *.setpp*`],
     ['🎉', 'Fun', `*🎉 FUN*\n\n✦ *.joke* · *.fact* · *.quote*\n✦ *.8ball <ප්‍රශ්නය>* — 🎱`],
     ['👥', 'Group', `*👥 GROUP* — group එකේ ඔයා ගහන්න\n\n✦ *.groupinfo* · *.grouplink* · *.jid*\n✦ *.tagall [msg]* — විනාඩි 10 කට 1\n✦ *.kick @user* · *.promote* · *.demote*\n✦ *.mute* · *.unmute* · *.tagadmins* · *.resetlink*\n\n> @mention නැත්නම් message එකකට reply කරන්න`],
-    ['🤖', 'AI', `*🤖 AI*\n\n✦ *.ai <ප්‍රශ්නය>* — සිංහල OK\n✦ message එකකට reply + *.ai* — ඒක ගැනම\n✦ *.ai reset* — අලුත් කතාවක්
+    ['🤖', 'AI', `*🤖 AI*\n\n✦ *.ai <ප්‍රශ්නය>* — සිංහල OK\n✦ message එකකට reply + *.ai* — ඒක ගැනම\n✦ *.anime <ප්‍රශ්නය>* — 🎌 verified anime/manga knowledge (Black Clover 🥇)\n✦ *.ai reset* — අලුත් කතාවක්
 ✦ *.ai memory* — මතකය status · save state
 ✦ photo/PDF එකකට reply + *.ai* — 👁 බලලා කියනවා
 ✦ *.remind 10m <note>* — ⏰ මතක් කරන්න

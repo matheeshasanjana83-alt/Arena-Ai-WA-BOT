@@ -237,7 +237,9 @@ function apiError(provider, status, body) {
 // 🔥 roast request එකකදී SYSTEM එක roast persona එකට swap කරනවා (fn call එක ඇතුළේ විතරයි — imgPromptEn/වෙනත් calls වලට බලපෑමක් නෑ)
 let SYS_OVERRIDE = null;
 let TEMP_OVERRIDE = null;   // 🌡 v2.56 — roast replies වලට temperature 0.95 (creativity); normal 0.6
-const sysOf = () => SYS_OVERRIDE || SYSTEM;
+let KB_OVERRIDE = null;     // 🎌 v2.72 — anime KB context (ask() එකේදී topic-detect කරලා set වෙනවා)
+const KB = (() => { try { return require('./anime_kb'); } catch { return null; } })();   // KB missing → bot එක වැඩ කරනවා, KB නෑ විතරක්
+const sysOf = () => SYS_OVERRIDE || (KB_OVERRIDE && KB ? SYSTEM + '\n\n' + KB_OVERRIDE : SYSTEM);
 const tempOf = () => (TEMP_OVERRIDE != null ? TEMP_OVERRIDE : 0.6);
 
 async function askGemini(key, msgs) {
@@ -297,7 +299,7 @@ async function askGroq(key, msgs) {
  *  ai.js msgs use {role, text} → pollinations wants {role, content}. Baked default key → key param may be ''. */
 async function askPolli(key, msgs) {
     const P = require('./pollinations');
-    const body = (msgs || []).slice(-14).map((m) => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: String(m.text ?? m.content ?? '') }));
+    const body = [...(KB_OVERRIDE ? [{ role: 'system', content: KB_OVERRIDE }] : []), ...(msgs || []).slice(-14).map((m) => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: String(m.text ?? m.content ?? '') }))];   // 🎌 v2.72: KB තියෙනවා නම් system msg එකක් විදිහට
     const r = await P.chat(body);
     return { text: r.text, model: r.model };
 }
@@ -517,9 +519,10 @@ async function ask(chatId, question) {
             // 🔥 roast — බැනුමක්ද → roast persona එකෙන් ආපහු බැනීම (fn call එකට විතරක් override)
             SYS_OVERRIDE = roast ? ROAST_SYSTEM : null;
             TEMP_OVERRIDE = roast ? 0.95 : null;   // roast වලට උණුසුම් creativity
+            KB_OVERRIDE = (!roast && KB) ? KB.contextFor(question) : null;   // 🎌 v2.72 anime KB (roast mode එකට බලපෑමක් නෑ)
             let res;
             try { res = await fn(keys[name], msgs, chatId, keys); }
-            finally { SYS_OVERRIDE = null; TEMP_OVERRIDE = null; }
+            finally { SYS_OVERRIDE = null; TEMP_OVERRIDE = null; KB_OVERRIDE = null; }
             let text = toWhatsApp(res.text);
             let images = Array.isArray(res.images) ? res.images : [];   // 🖼 v2.51.1 FIX: කලින් images drop වෙනවා — GLM generate_image ගහලාත් photo නොගිය හැම්බයි!
             if (!images.length && getTools() && looksLikeImageAsk(question)) {   // 🖼 fallback — provider එක මොකක වුණත් (AUTO/Gemini/Groq) photo එනවා
