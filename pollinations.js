@@ -21,15 +21,16 @@ const hasKey = () => !!key();
 const BASE = 'https://gen.pollinations.ai';
 const auth = (extra) => ({ Authorization: `Bearer ${key()}`, ...(extra || {}) });
 
-/** chat → text (OpenAI-compatible). model alias 'openai' = free nano-class; 429/402 → honest error */
-async function chat(messages, { model = 'openai', timeout = 60e3 } = {}) {
+/** chat → text (OpenAI-compatible). model alias 'openai' = free nano-class; 429/402 → honest error.
+ *  v2.70: max_tokens option (vision වගේ long answers වලට — නැත්නම් finish_reason=length + empty content) */
+async function chat(messages, { model = 'openai', timeout = 60e3, max_tokens = 0 } = {}) {
     const models = [model, 'openai/gpt-5.4-nano'].filter((v, i, a) => v && a.indexOf(v) === i);
     let last = '';
     for (const m of models) {
         const r = await fetch(`${BASE}/v1/chat/completions`, {
             method: 'POST',
             headers: auth({ 'Content-Type': 'application/json' }),
-            body: JSON.stringify({ model: m, messages }),
+            body: JSON.stringify({ model: m, messages, ...(max_tokens ? { max_tokens } : {}) }),
             signal: AbortSignal.timeout(timeout),
         });
         if (r.ok) {

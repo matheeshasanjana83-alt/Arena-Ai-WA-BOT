@@ -9,7 +9,8 @@ const SETTINGS = path.join(__dirname, 'settings.json');
 const loadSettings = () => { try { return JSON.parse(fs.readFileSync(SETTINGS, 'utf8')); } catch { return {}; } };
 const saveSettings = (s) => fs.writeFileSync(SETTINGS, JSON.stringify(s, null, 2));
 
-const GEMINI_MODELS = ['gemini-flash-latest', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-flash-lite-latest'];
+// 👁 v2.70 — 2026-10 probe: gemini-2.5-flash + gemini-2.0-flash DECOMMISSIONED (404 — Google error ම gemini-3.8-flash යොදන්න කියනවා); alive: flash-latest · 3.8-flash · flash-lite-latest · 3.1-flash-lite
+const GEMINI_MODELS = ['gemini-flash-latest', 'gemini-3.8-flash', 'gemini-flash-lite-latest', 'gemini-3.1-flash-lite'];
 const GROQ_MODELS = ['openai/gpt-oss-120b', 'llama-3.3-70b-versatile', 'llama-3.1-8b-instant'];   // v2.56: gpt-oss-120b first — llama-3.3-70b සිංහල කැඩෙනවා (screenshots verified), gpt-oss Sinhala+instructions වඩා හොඳයි; 404 → auto-skip
 const ZAI_MODELS = ['glm-4.6', 'glm-4.5-air', 'glm-4.5-flash']; // best → free; balance-dead models remembered per-session (fail fast)
 const zaiDead = new Set();
@@ -239,7 +240,8 @@ async function askGemini(key, msgs) {
         if (!r.ok && /location is not supported|FAILED_PRECONDITION|forbidden/i.test(body)) {
             try { const rp = await require('./net').viaPool(url, opts); const pb = await rp.text(); if (rp.ok) { r = rp; body = pb; } } catch { } // 🌍 geo-block → free-proxy pool
         }
-        if (!r.ok) { lastErr = apiError('Gemini', r.status, body); if (lastErr.modelMissing) continue; throw lastErr; }
+        // 🛡 v2.70 — 503/overloaded + 429/500 = transient → ඊළඟ Gemini model එකට (ladder); 400/403 bad-key විතරක් hard-throw
+        if (!r.ok) { lastErr = apiError('Gemini', r.status, body); if (lastErr.modelMissing || [429, 500, 503].includes(lastErr.status)) continue; throw lastErr; }
         const j = JSON.parse(body);
         const text = (j.candidates?.[0]?.content?.parts || []).map(p => p.text || '').join('').trim();
         if (!text) throw new Error('Gemini empty answer (' + (j.candidates?.[0]?.finishReason || j.promptFeedback?.blockReason || '?') + ')');
@@ -334,42 +336,100 @@ async function askZai(key, msgs, chatId, allKeys) {
     throw lastErr || new Error('Z.ai: වැඩ කරන model එකක් නෑ (balance/models බලන්න)');
 }
 
-/** 👁 v2.51 vision — photo/PDF එකකට reply + .ai → Gemini inline කියවීම (memory store එකත් එක්කම) */
+/** 👁 v2.51 vision — photo/PDF reply + .ai → v2.70 CHAIN: Gemini model ladder → Groq llama-4 vision → Pollinations (baked key) → friendly error.
+ *  කලින් single Gemini call — Gemini 503 (overloaded) ආපු ගමන් raw error chat එකට. දැන් provider 3 ක් + model ladder. */
+const GROQ_VISION_MODELS = ['meta-llama/llama-4-scout-17b-16e-instruct', 'meta-llama/llama-4-maverick-17b-128e-instruct'];
 async function askVision(chatId, question, media) {
     const keys = getKeys();
-    if (!keys.gemini) { const e = new Error('Gemini key එක නෑ'); e.noGemini = true; throw e; }
     const mime = String(media?.mime || 'image/jpeg');
     const b64 = String(media?.b64 || '');
     if (!b64) throw new Error('attachment data නෑ');
+    const isImg = /^image\//i.test(mime);
+    const q = question || 'මේක මොකක්ද? පැහැදිලිව කියන්න.';
     const pref = getProvider();
-    const mk = memKeyOf(chatId, pref ? 'gemini' : '');   // vision = Gemini → fixed-select නම් gemini store
+    const mk = memKeyOf(chatId, pref ? 'gemini' : '');   // fixed-select නම් gemini store (AUTO = shared legacy)
     const now = Date.now();
     const h = (history.get(mk) || []).filter(m => now - (m.t || now) < TTL_MS);
-    const parts = [{ text: question || 'මේක මොකක්ද? පැහැදිලිව කියන්න.' }, { inline_data: { mime_type: mime, data: b64 } }];
-    const url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent';
-    const opts = {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': keys.gemini },
-        body: JSON.stringify({
-            systemInstruction: { parts: [{ text: SYSTEM }] },
-            contents: [...h.map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.text }] })), { role: 'user', parts }],
-            generationConfig: { maxOutputTokens: 2048, temperature: 0.5 }
-        })
+    const errs = [];
+    const done = (text, model) => {   // common tail — memory push + WhatsApp fmt (provider මොකක වුණත්)
+        const t = Date.now();
+        h.push({ role: 'user', text: (question || '[attachment]').slice(0, 2000) + ' [attachment]', t }, { role: 'assistant', text, t });
+        while (h.length > MAX_TURNS * 2) h.shift();
+        history.set(mk, h);
+        scheduleSave();
+        return { text: toWhatsApp(text), model };
     };
-    let r = await fetch(url, opts);
-    let body = await r.text();
-    if (!r.ok && /location is not supported|FAILED_PRECONDITION|forbidden/i.test(body)) {
-        try { const rp = await require('./net').viaPool(url, opts); const pb = await rp.text(); if (rp.ok) { r = rp; body = pb; } } catch { } // 🌍 geo-block → proxy pool
+
+    // 1️⃣ Gemini ladder (images + PDF) — 503/overloaded · 429 · 500 · 404 → ඊළඟ model; bad-key (400/403) විතරක් hard-throw
+    if (keys.gemini) {
+        for (const model of GEMINI_MODELS) {
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+            const opts = {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'x-goog-api-key': keys.gemini },
+                body: JSON.stringify({
+                    systemInstruction: { parts: [{ text: SYSTEM }] },
+                    contents: [...h.map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.text }] })), { role: 'user', parts: [{ text: q }, { inline_data: { mime_type: mime, data: b64 } }] }],
+                    generationConfig: { maxOutputTokens: 2048, temperature: 0.5 }
+                })
+            };
+            let r = await fetch(url, opts);
+            let body = await r.text();
+            if (!r.ok && /location is not supported|FAILED_PRECONDITION|forbidden/i.test(body)) {
+                try { const rp = await require('./net').viaPool(url, opts); const pb = await rp.text(); if (rp.ok) { r = rp; body = pb; } } catch { } // 🌍 geo-block → proxy pool
+            }
+            if (!r.ok) {
+                const e = apiError('Gemini', r.status, body);
+                errs.push('Gemini/' + model + ' ' + r.status);
+                if (e.modelMissing || [429, 500, 503].includes(e.status)) continue;   // transient/dead → ඊළඟ model
+                throw e;   // bad key → honest error
+            }
+            const text = (JSON.parse(body).candidates?.[0]?.content?.parts || []).map(p => p.text || '').join('').trim();
+            if (!text) { errs.push('Gemini/' + model + ' empty'); continue; }
+            return done(text, 'Gemini vision');
+        }
     }
-    if (!r.ok) throw apiError('Gemini', r.status, body);
-    const text = (JSON.parse(body).candidates?.[0]?.content?.parts || []).map(p => p.text || '').join('').trim();
-    if (!text) throw new Error('Gemini vision empty answer');
-    const t = Date.now();
-    h.push({ role: 'user', text: (question || '[attachment]').slice(0, 2000) + ' [attachment]', t }, { role: 'assistant', text, t });
-    while (h.length > MAX_TURNS * 2) h.shift();
-    history.set(mk, h);
-    scheduleSave();
-    return { text: toWhatsApp(text), model: 'Gemini vision' };
+
+    // 2️⃣ Groq llama-4 vision (images only) — scout → maverick; 403 geo → viaPool retry
+    if (isImg && keys.groq) {
+        for (const model of GROQ_VISION_MODELS) {
+            const short = model.split('/').pop();
+            const url = 'https://api.groq.com/openai/v1/chat/completions';
+            const opts = {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${keys.groq}` },
+                body: JSON.stringify({
+                    model, temperature: 0.5, max_tokens: 2048,
+                    messages: [{ role: 'system', content: SYSTEM }, { role: 'user', content: [{ type: 'text', text: q }, { type: 'image_url', image_url: { url: `data:${mime};base64,${b64}` } }] }]
+                })
+            };
+            try {
+                let r = await fetch(url, opts);
+                let body = await r.text();
+                if (!r.ok && /forbidden/i.test(body)) {
+                    try { const rp = await require('./net').viaPool(url, opts); const pb = await rp.text(); if (rp.ok) { r = rp; body = pb; } } catch { } // 🌍 geo-block
+                }
+                if (!r.ok) { errs.push('Groq/' + short + ' ' + r.status); continue; }
+                const text = (JSON.parse(body).choices?.[0]?.message?.content || '').trim();
+                if (!text) { errs.push('Groq/' + short + ' empty'); continue; }
+                return done(text, 'Groq vision (' + short + ')');
+            } catch (e) { errs.push('Groq/' + short + ' ' + e.message); }
+        }
+    }
+
+    // 3️⃣ Pollinations vision (images only) — baked key → කවදාවත් key නැති බෑ
+    if (isImg) {
+        try {
+            const P = require('./pollinations');
+            const r = await P.chat([{ role: 'user', content: [{ type: 'text', text: q }, { type: 'image_url', image_url: { url: `data:${mime};base64,${b64}` } }] }], { model: 'openai', timeout: 90e3, max_tokens: 900 });
+            return done(r.text, 'Pollinations vision');
+        } catch (e) { errs.push('Pollinations ' + e.message); }
+    }
+
+    // 4️⃣ ඔක්කොම fail — friendly Sinhala (raw 503 dump වෙනුවට)
+    if (!keys.gemini && !isImg) { const e = new Error('PDF vision වලට Gemini key එක ඕනේ — *.setkey gemini <KEY>*'); e.noGemini = true; throw e; }
+    const last = errs.length ? String(errs[errs.length - 1]) : 'unknown';
+    throw new Error(`AI servers ටිකක් busy 😔 — විනාඩියකින් ආයෙත් try කරන්න 🙏\n> ${last.slice(0, 140)}`);
 }
 
 

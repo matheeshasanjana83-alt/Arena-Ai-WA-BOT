@@ -1074,7 +1074,7 @@ on/off: *.ai roast on* / *.ai roast off*` }, { quoted: msg });
     const att = await quotedMediaOf(msg);
     if (att) {
         if (!question) question = 'මේක මොකක්ද? පැහැදිලිව කියන්න.';
-        const status = await send(jid, { text: '👁 බලනවා... (Gemini vision)' }, { quoted: msg });
+        const status = await send(jid, { text: '👁 බලනවා... (vision)' }, { quoted: msg });
         try {
             const { text, model } = await ai.askVision(jid, question, att);
             await send(jid, { text: text + `\n\n${foot('ᴀɪ')}`, edit: status.key });
