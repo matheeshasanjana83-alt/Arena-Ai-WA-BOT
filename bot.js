@@ -1099,7 +1099,7 @@ on/off: *.ai roast on* / *.ai roast off*` }, { quoted: msg });
     const q = quotedText(msg);
     if (q) question = question ? `${question}\n\n"""${q}"""` : `මේ message එක ගැන පැහැදිලි කරන්න:\n"""${q}"""`;
     if (!question) return send(jid, { text: '🤖 *.ai <ප්‍රශ්නය>*\nඋදා: .ai GTA SA වල cheats මොනවද?' }, { quoted: msg });
-    const status = await send(jid, { text: '🤖 හිතනවා...' }, { quoted: msg });
+    const status = await send(jid, { text: (ai.needsWeb && ai.needsWeb(question)) ? '🔎 අන්තර්ජාලයෙන් ඇත්ත හොයලා බලනවා... 🧠 (live web)' : '🤖 හිතනවා...' }, { quoted: msg });
     try {
         const { text, model, images } = await ai.ask(jid, question);
         if (images?.length) {   // 🖼 AI tool image (generate_image) — photo + reply text එකම caption

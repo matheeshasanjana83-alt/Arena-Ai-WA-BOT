@@ -118,7 +118,7 @@ const PROVIDERS = ['gemini', 'groq', 'zai', 'polli'];   // 🌸 v2.69 — polli 
 function getProvider() { const p = String(loadSettings().aiProvider || '').toLowerCase().trim(); return PROVIDERS.includes(p) ? p : ''; }
 
 // 🧰 AI tools (v2.50) — GLM (Z.ai) එකට විතරක් connector abilities (GLM-first per user)
-const { TOOLS, runToolEx } = require('./ai_tools');
+const { TOOLS, runToolEx, _webSearch } = require('./ai_tools');   // 🌍 v2.73 — _webSearch (DDG) grounding වලටත්
 const getTools = () => loadSettings().aiTools !== false;   // default ON
 function setTools(on) { const s = loadSettings(); s.aiTools = !!on; saveSettings(s); return !!on; }
 
@@ -238,9 +238,66 @@ function apiError(provider, status, body) {
 let SYS_OVERRIDE = null;
 let TEMP_OVERRIDE = null;   // 🌡 v2.56 — roast replies වලට temperature 0.95 (creativity); normal 0.6
 let KB_OVERRIDE = null;     // 🎌 v2.72 — anime KB context (ask() එකේදී topic-detect කරලා set වෙනවා)
+let WEB_OVERRIDE = null;    // 🌍 v2.73 — live web-search context (Grok-style truth grounding)
 const KB = (() => { try { return require('./anime_kb'); } catch { return null; } })();   // KB missing → bot එක වැඩ කරනවා, KB නෑ විතරක්
-const sysOf = () => SYS_OVERRIDE || (KB_OVERRIDE && KB ? SYSTEM + '\n\n' + KB_OVERRIDE : SYSTEM);
+const sysOf = () => SYS_OVERRIDE || (SYSTEM + (KB_OVERRIDE && KB ? '\n\n' + KB_OVERRIDE : '') + (WEB_OVERRIDE ? '\n\n' + WEB_OVERRIDE : ''));
 const tempOf = () => (TEMP_OVERRIDE != null ? TEMP_OVERRIDE : 0.6);
+
+// ── 🌍 v2.73 LIVE WEB GROUNDING — user: "grok එකෙ හොදට ඇත්ත කියනවා මූ හරියට කියන්නෙ නෑ".
+// Root cause: KB arc-level විතරයි — ep-level ප්‍රශ්න ("episode 160 මොකද වෙන්නේ") model එක training-memory වලින්
+// invent කරනවා ("Royal Capital Battle" වගේ බොරු). FIX: anime/fact ප්‍රශ්නයක් ආවොත් DuckDuckGo search
+// (ai_tools._webSearch — free, no key) කරලා top snippets system context එකට inject — strict truth rules එක්ක.
+const webCache = new Map();          // normalized query → { t, text } — 6h TTL (එකම ප්‍රශ්නයට දෙපාරක් search කරන්නෙ නෑ)
+const WEB_TTL = 6 * 3600e3;
+function needsWeb(q) {               // anime topic → always; සාමාන්‍ය → explicit search words / year+fact / news words
+    q = String(q || '');
+    if (!q || q.length < 8 || looksLikeImageAsk(q)) return false;
+    if (KB && KB.matches(q)) return true;
+    return q.length > 15 && /\b(search|google|web)\b|හොයන්න|හොයලා|සර්ච්|\b(who|when|where|how many|latest|news|release|air(?:ed|ing)?|born|died)\b|20\d{2}|කවද්?ද|කීයද|කවුද|අලුත්ම/i.test(q);
+}
+function webQueries(q) {             // search queries — bot prefixes / quoted blocks අයින්; latin + raw (සිංහල) දෙකම
+    let s = String(q || '').replace(/^ANIME EXPERT MODE[^:]*:\s*/i, '').replace(/"""[\s\S]*?"""/g, ' ')
+        .replace(/[\n\r]+/g, ' ').replace(/[?!.]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 220);
+    const latin = s.replace(/[^ -~]/g, ' ').replace(/\s+/g, ' ').trim();
+    const out = [];
+    if (latin.length >= 8) out.push(latin);
+    if (s.length >= 8 && s !== latin) out.push(s);
+    if (!out.length) out.push(s || String(q || '').slice(0, 80));
+    return out.slice(0, 2);
+}
+async function cachedSearch(q) {
+    const k = String(q).toLowerCase().trim();
+    const hit = webCache.get(k);
+    if (hit && Date.now() - hit.t < WEB_TTL) return hit.text;
+    const text = await _webSearch(q);
+    webCache.set(k, { t: Date.now(), text });
+    if (webCache.size > 200) webCache.delete(webCache.keys().next().value);
+    return text;
+}
+const WEB_RULES = `⚡ TRUTH RULES (this turn is web-grounded):
+- Episode titles/numbers, dates, chapter counts, plot events, stats MUST come from the LIVE WEB RESULTS above (or the ANIME KNOWLEDGE BASE if attached) — NEVER from your own memory alone.
+- If web results and KB conflict → web results win (fresher); mention it briefly.
+- If nothing covers the exact answer → say honestly "මම 100% sure නෑ — හොයලා බැලුවත් හොයාගන්න බැරි වුණා" — NEVER invent, NEVER guess.
+- Name the source site for key facts (e.g. "Fandom wiki අනුව"). Answer in Sinhala, friendly, WhatsApp-short unless the user asked for detail.`;
+async function buildWebCtx(q) {      // → system-context text or '' (search fail = graceful, KB එකෙන් වැඩේ යනවා)
+    if (typeof _webSearch !== 'function') return '';
+    const settled = await Promise.allSettled(webQueries(q).map(qq => cachedSearch(qq)));
+    const chunks = settled.filter(s => s.status === 'fulfilled' && s.value).map(s => String(s.value));
+    if (!chunks.length) return '';
+    const seen = new Set(), lines = [];
+    for (const ch of chunks) {
+        for (const blk of ch.split(/\n(?=\d+\. )/)) {
+            const url = (blk.match(/https?:\/\/\S+/) || [''])[0].replace(/[).,]+$/, '');
+            if (url && seen.has(url)) continue;
+            if (url) seen.add(url);
+            lines.push(blk.trim());
+            if (lines.length >= 6) break;
+        }
+        if (lines.length >= 6) break;
+    }
+    return lines.length ? `🌍 LIVE WEB RESULTS (searched ${new Date().toISOString().slice(0, 10)}, fresher than any KB or memory):
+${lines.join('\n')}\n\n${WEB_RULES}` : '';
+}
 
 async function askGemini(key, msgs) {
     let lastErr;
@@ -299,7 +356,7 @@ async function askGroq(key, msgs) {
  *  ai.js msgs use {role, text} → pollinations wants {role, content}. Baked default key → key param may be ''. */
 async function askPolli(key, msgs) {
     const P = require('./pollinations');
-    const body = [...(KB_OVERRIDE ? [{ role: 'system', content: KB_OVERRIDE }] : []), ...(msgs || []).slice(-14).map((m) => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: String(m.text ?? m.content ?? '') }))];   // 🎌 v2.72: KB තියෙනවා නම් system msg එකක් විදිහට
+    const body = [...(KB_OVERRIDE ? [{ role: 'system', content: KB_OVERRIDE }] : []), ...(WEB_OVERRIDE ? [{ role: 'system', content: WEB_OVERRIDE }] : []), ...(msgs || []).slice(-14).map((m) => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: String(m.text ?? m.content ?? '') }))];   // 🎌 v2.72 KB + 🌍 v2.73 WEB — system msgs විදිහට
     const r = await P.chat(body);
     return { text: r.text, model: r.model };
 }
@@ -507,6 +564,8 @@ async function ask(chatId, question) {
     // 🔥 v2.56 — roast routing + සිංහල බලහත්කාර gate (screenshots bug: refuse → silent, English leak, garble loop)
     const roast = getRoast() && looksLikeInsult(question) && !looksLikeImageAsk(question);
     const wantsSin = roast || /[\u0D80-\u0DFF]/.test(question) || SINGLISH_RE.test(question) || question.length <= 25;
+    // 🌍 v2.73 — live web grounding (Grok-style truth): search ONCE, හැම provider attempt එකටම context එක
+    const webCtx = (!roast && needsWeb(question)) ? await buildWebCtx(question).catch(() => '') : '';
     const errors = [];
     let mkUsed = null, lastText = '', lastModel = '';
     for (const [name, fn] of order) {
@@ -520,9 +579,10 @@ async function ask(chatId, question) {
             SYS_OVERRIDE = roast ? ROAST_SYSTEM : null;
             TEMP_OVERRIDE = roast ? 0.95 : null;   // roast වලට උණුසුම් creativity
             KB_OVERRIDE = (!roast && KB) ? KB.contextFor(question) : null;   // 🎌 v2.72 anime KB (roast mode එකට බලපෑමක් නෑ)
+            WEB_OVERRIDE = webCtx || null;   // 🌍 v2.73 live web context
             let res;
             try { res = await fn(keys[name], msgs, chatId, keys); }
-            finally { SYS_OVERRIDE = null; TEMP_OVERRIDE = null; KB_OVERRIDE = null; }
+            finally { SYS_OVERRIDE = null; TEMP_OVERRIDE = null; KB_OVERRIDE = null; WEB_OVERRIDE = null; }
             let text = toWhatsApp(res.text);
             let images = Array.isArray(res.images) ? res.images : [];   // 🖼 v2.51.1 FIX: කලින් images drop වෙනවා — GLM generate_image ගහලාත් photo නොගිය හැම්බයි!
             if (!images.length && getTools() && looksLikeImageAsk(question)) {   // 🖼 fallback — provider එක මොකක වුණත් (AUTO/Gemini/Groq) photo එනවා
@@ -615,4 +675,4 @@ function stats(chatId) { // 🧠 .ai memory card data
     };
 }
 
-module.exports = { ask, askVision, reset, stats, looksLikeImageAsk, looksLikeInsult, imgPromptEn, setKey, getKeys, getProvider, setProvider, getTools, setTools, getRoast, setRoast, splitLong, toWhatsApp, roastGood, mostlyEnglish, cannedRoast, REFUSE_RE, ROAST_BANK, VISION_SYSTEM, _history: history, _memoryFile: MEM_FILE, _memKey: memKeyOf, _flush: saveMemoryNow, _lastRoast: lastRoast };
+module.exports = { ask, askVision, reset, stats, looksLikeImageAsk, looksLikeInsult, imgPromptEn, setKey, getKeys, getProvider, setProvider, getTools, setTools, getRoast, setRoast, splitLong, toWhatsApp, roastGood, mostlyEnglish, cannedRoast, needsWeb, buildWebCtx, webQueries, REFUSE_RE, ROAST_BANK, VISION_SYSTEM, _history: history, _memoryFile: MEM_FILE, _memKey: memKeyOf, _flush: saveMemoryNow, _lastRoast: lastRoast, _webCache: webCache };
