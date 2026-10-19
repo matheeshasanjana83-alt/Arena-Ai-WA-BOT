@@ -188,6 +188,166 @@ async function nekobot(type) {
     return '';
 }
 
+// ───────── 🔞 .hentaiv — WatchHentai (senpaiorbit/watchhentai-api in-bot port) ─────────
+// repo targets watchhentai.net: search → watch page → JW player page → whJwSources[{file(ENCODED), label}]
+// 2026-10-20 site reality: player files are OBFUSCATED — whDecodeMediaUrl (base64url → XOR(13+i%17) → reverse → base64)
+// is embedded in the player page itself; ported verbatim + verified live. hstorage CDN needs Referer: watchhentai.net/
+const WH = 'https://watchhentai.net';
+
+function whDecodeMediaUrl(s) {
+    s = String(s || '').replace(/-/g, '+').replace(/_/g, '/');
+    while (s.length % 4) s += '=';
+    const x = Buffer.from(s, 'base64').toString('latin1');          // atob(s)
+    let r = '';
+    for (let i = 0; i < x.length; i++) r += String.fromCharCode(x.charCodeAt(i) ^ ((13 + i % 17) & 255));
+    return Buffer.from(r.split('').reverse().join(''), 'base64').toString('utf8');   // atob(reverse(r))
+}
+
+const stripEnt = (s) => String(s || '')
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(parseInt(n, 10)))
+    .replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#039;|&apos;/g, "'")
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>').trim();
+
+/** search watchhentai.net — /?s=<q> → <article class="item ..."> (site markup 2026-10: h3>a + data-src poster + year) */
+function searchWHFromHtml(html) {
+    const out = [];
+    for (const m of html.matchAll(/<article[^>]*class="item[^"]*"[^>]*>([\s\S]*?)<\/article>/g)) {
+        const b = m[1];
+        const a = /<h3>\s*<a[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/.exec(b);
+        if (!a) continue;
+        const url = a[1].startsWith('http') ? a[1] : WH + a[1];
+        const poster = (/data-src="(https?:\/\/[^"]+\/uploads\/[^"]+)"/.exec(b) || [])[1] || '';
+        const year = (/<span[^>]*>(\d{4})<\/span>/.exec(b) || [])[1] || '';
+        const title = stripEnt(a[2].replace(/<[^>]+>/g, ' '));
+        if (title && /\/(series|videos)\//.test(url)) out.push({ title, url, poster, year });
+    }
+    return out.slice(0, 10);
+}
+async function searchWH(q) {
+    const html = await getText(WH + '/?s=' + encodeURIComponent(q), { referer: WH + '/' });
+    return searchWHFromHtml(html);
+}
+
+/** series page → /videos/ episode links (EP N sorted) */
+function epsWHFromHtml(html) {
+    const seen = new Set(); const out = [];
+    for (const m of html.matchAll(/href="((https?:\/\/[^"]*watchhentai\.net)?\/videos\/[^"#?]+)"/g)) {
+        const url = m[1].startsWith('http') ? m[1] : WH + m[1];
+        if (seen.has(url)) continue;
+        seen.add(url);
+        const n = /episode-(\d+)/i.exec(url);
+        out.push({ n: n ? parseInt(n[1], 10) : out.length + 1, url, label: 'EP ' + (n ? parseInt(n[1], 10) : '?') });
+    }
+    out.sort((a, b) => a.n - b.n);
+    return out;
+}
+async function epsWH(seriesUrl) {
+    const html = await getText(seriesUrl, { referer: WH + '/' });
+    return epsWHFromHtml(html);
+}
+
+/** watch page → player url → player page → decoded quality sources [{label, src, bytes}] (best first) */
+async function qualitiesWH(videoUrl) {
+    const html = await getText(videoUrl, { referer: WH + '/' });
+    const playerUrl = (/data-primary-player-url="([^"]+)"/.exec(html) || [])[1]
+        || (/itemprop="contentUrl"\s+content="([^"]+)"/.exec(html) || [])[1] || '';
+    let sources = [];
+    let title = stripEnt((/property="og:title"\s+content="([^"]+)"/.exec(html) || [])[1] || '');
+    if (playerUrl && /\/player\//.test(playerUrl)) {
+        try {
+            const p = await getText(playerUrl, { referer: videoUrl });
+            const arr = /var\s+whJwSources\s*=\s*(\[[\s\S]*?\]);/.exec(p);
+            if (arr) {
+                for (const s of JSON.parse(arr[1])) {
+                    try { const src = whDecodeMediaUrl(s.file); if (/^https?:\/\//.test(src)) sources.push({ label: s.label || 'default', src }); } catch { }
+                }
+            }
+            if (!sources.length) {   // older layout: plain jw.file / ld+json
+                const cf = /"contentUrl"\s*:\s*"([^"]+\.mp4[^"]*)"/.exec(p);
+                if (cf) sources.push({ label: (cf[1].match(/_(\d+p)\./) || [])[1] || 'default', src: cf[1].replace(/\\\//g, '/') });
+            }
+        } catch { /* fall through */ }
+    }
+    if (!sources.length && playerUrl) {   // direct ?source= style player URLs
+        try { const s = new URL(playerUrl).searchParams.get('source'); if (s) sources.push({ label: 'default', src: s }); } catch { }
+    }
+    if (!sources.length) {   // last resort: ld+json on the watch page itself
+        const cf = /"contentUrl"\s*:\s*"([^"]+\.mp4[^"]*)"/.exec(html);
+        if (cf) sources.push({ label: 'default', src: cf[1].replace(/\\\//g, '/') });
+    }
+    if (!sources.length) throw new Error('video sources හොයාගන්න බැරි වුණා');
+    // sizes (HEAD, parallel, 6s cap) — hstorage needs Referer
+    await Promise.allSettled(sources.map(async (s) => {
+        try { const r = await get(s.src, { referer: WH + '/', method: 'HEAD', timeout: 6000 }); s.bytes = parseInt(r.headers.get('content-length') || '0', 10) || 0; } catch { s.bytes = 0; }
+    }));
+    sources.sort((a, b) => (b.bytes || 0) - (a.bytes || 0));
+    return { title, sources };
+}
+
+const humanMB = (b) => b >= 1073741824 ? (b / 1073741824).toFixed(2) + ' GB' : b >= 1048576 ? Math.round(b / 1048576) + ' MB' : b ? Math.max(1, Math.round(b / 1024)) + ' KB' : '? MB';
+const hvSearchCard = (q, list) => `🔞 *WatchHentai — "${cut(q, 40)}"*\n\n` +
+    list.map((x, i) => `*${i + 1}.* ${x.title}${x.year ? '  (' + x.year + ')' : ''}`).join('\n') +
+    `\n\nSeries එකක් තෝරන්න — මේ message එකට *අංකය reply* කරන්න\n${foot('18+ only · watchhentai.net · මිනිත්තු 10 ඇතුලත reply කරන්න')}`;
+const hvEpsCard = (title, list) => `🔞 *${cut(title, 60)}* — Episodes\n\n` +
+    list.slice(0, 60).map((x, i) => `*${i + 1}.* ${x.label}`).join('  ·  ') +
+    `\n\nEpisode එකක් තෝරන්න — *අංකය reply* කරන්න\n${foot('18+ only · watchhentai.net')}`;
+const hvQCard = (title, list) => `🔞 *${cut(title, 60)}*\n\nquality එක තෝරන්න — *අංකය reply* කරන්න:\n\n` +
+    list.map((x, i) => `*${i + 1}.* ${x.label}  (${humanMB(x.bytes)})`).join('\n') +
+    `\n\n${foot('තෝරාගත්තම file එක WhatsApp එකට එවනවා · 18+ only')}`;
+const HV_USAGE = `🔞 *.hentaiv <name / title>* — watchhentai.net video + quality menu\n\nඋදා: \`.hentaiv tsuki kagerou\`\n\n${foot('search → series → episode → quality → file')}`;
+
+async function handleHV(send, jid, msg, arg, react, download) {
+    const arg0 = (arg || '').trim();
+    if (/^go\s+\d{1,3}$/i.test(arg0)) return hvGo(send, jid, msg, parseInt(arg0.split(/\s+/)[1], 10), download);
+    if (!arg0) return send(jid, { text: HV_USAGE }, { quoted: msg });
+
+    gcSessions();
+    const st = await status(send, jid, msg);
+    try {
+        const list = searchWHFromHtml(await getText(WH + '/?s=' + encodeURIComponent(arg0), { referer: WH + '/' }));
+        if (!list.length) return done(st, send, jid, msg, `❌ *"${cut(arg0, 40)}"* හොයාගන්න බැරි වුණා (watchhentai.net)\n\n${foot('අඩු වචන වලින් try කරන්න — උදා: .hentaiv tsuki')}`, react);
+        sessions.set(jid, { cmd: 'hv', stage: 'series', items: list.map((x) => ({ label: x.title, url: x.url, title: x.title })), title: arg0, at: Date.now(), cardId: null });
+        return done(st, send, jid, msg, hvSearchCard(arg0, list), react);
+    } catch (e) { return fail(st, send, jid, msg, e, 'watchhentai.net slow වෙලා'); }
+}
+
+async function hvGo(send, jid, msg, n, download) {
+    gcSessions();
+    const s = sessions.get(jid);
+    if (!s || s.cmd !== 'hv' || !s.items?.length) return send(jid, { text: HV_USAGE }, { quoted: msg });
+    const pick = s.items[n - 1];
+    if (!pick) return send(jid, { text: `❌ ${n} කියන අංකේ නෑ — list එකේ අංකයක් එවන්න (1-${s.items.length})` }, { quoted: msg });
+    const st = await status(send, jid, msg);
+    try {
+        if (s.stage === 'series') {
+            const eps = epsWHFromHtml(await getText(pick.url, { referer: WH + '/' }));
+            if (!eps.length) throw new Error('episodes නෑ');
+            const title = pick.title || s.title;
+            if (eps.length === 1) {   // single-episode series → straight to quality menu
+                const { title: t, sources } = await qualitiesWH(eps[0].url);
+                sessions.set(jid, { cmd: 'hv', stage: 'quality', items: sources, title: t || title, at: Date.now(), cardId: null });
+                return done(st, send, jid, msg, hvQCard(t || title, sources), null);
+            }
+            sessions.set(jid, { cmd: 'hv', stage: 'ep', items: eps, title, at: Date.now(), cardId: null });
+            return done(st, send, jid, msg, hvEpsCard(title, eps), null);
+        }
+        if (s.stage === 'ep') {
+            await st.edit('🔎 Qualities හොයනවා...');
+            const { title, sources } = await qualitiesWH(pick.url);
+            sessions.set(jid, { cmd: 'hv', stage: 'quality', items: sources, title, at: Date.now(), cardId: null });
+            return done(st, send, jid, msg, hvQCard(title, sources), null);
+        }
+        if (s.stage === 'quality') {
+            await st.edit(`⏳ ${pick.label} download වෙනවා... file එක ලොකු නම් වෙලා යනවා`);
+            const cap = `🔞 *${cut(s.title, 60)}* — ${pick.label}`;
+            if (typeof download === 'function') await download(pick.src, '🔞 WatchHentai', cap);
+            else await send(jid, { text: `🔞 *${cut(s.title, 60)}* — ${pick.label}\n${pick.src}\n\n${foot('18+ · hstorage CDN — 1DM/browser වලින් download කරන්න')}` }, { quoted: msg });
+            try { sessions.delete(jid); } catch { }
+            return;
+        }
+    } catch (e) { return fail(st, send, jid, msg, e); }
+}
+
 // ───────── cards ─────────
 const searchCard = (q, list) => `🎌 *AniWorld — "${cut(q, 40)}"*\n\n` +
     list.map((x, i) => `*${i + 1}.* ${x.title}${x.desc ? '\n    _' + x.desc + '_' : ''}`).join('\n') +
@@ -219,8 +379,9 @@ const AW_USAGE = `🎌 *.aniworld <anime නම / aniworld link>*\n\nඋදා: 
 
 // ───────── handle ─────────
 async function handle(c, ctx) {
-    const { send, jid, msg, rest, react } = ctx;
+    const { send, jid, msg, rest, react, download } = ctx;
     if (c === '.aniworld' || c === '.aw') return handleAW(send, jid, msg, rest.join(' ').trim(), react);
+    if (c === '.hentaiv') return handleHV(send, jid, msg, rest.join(' ').trim(), react, download);   // 🔞 v2.76 quality menu flow
     const nsfw = NEKO_TYPES[c];
     if (nsfw) {
         await react?.('🔞');
@@ -235,7 +396,12 @@ async function handle(c, ctx) {
 
 async function handleAW(send, jid, msg, arg, react) {
     const arg0 = (arg || '').trim();
-    if (/^go\s+\d{1,3}$/i.test(arg0)) return goStep(send, jid, msg, parseInt(arg0.split(/\s+/)[1], 10));
+    if (/^go\s+\d{1,3}$/i.test(arg0)) {
+        gcSessions();
+        const s = sessions.get(jid);
+        if (s && s.cmd === 'hv') return hvGo(send, jid, msg, parseInt(arg0.split(/\s+/)[1], 10), null);   // manual .aniworld go while hv session live → route right
+        return goStep(send, jid, msg, parseInt(arg0.split(/\s+/)[1], 10));
+    }
     if (!arg0) return send(jid, { text: AW_USAGE }, { quoted: msg });
 
     gcSessions();
@@ -249,14 +415,14 @@ async function handleAW(send, jid, msg, arg, react) {
                 const title = (await epTitle(url)) || 'AniWorld';
                 await st.edit('🔎 Hosters හොයනවා...');
                 const { streams, pageOnly } = await resolveEpisode(url);
-                sessions.set(jid, { stage: 'ep', items: [], title, at: Date.now(), cardId: null });
+                sessions.set(jid, { cmd: 'aw', stage: 'ep', items: [], title, at: Date.now(), cardId: null });
                 return done(st, send, jid, msg, linksCard(title, url, streams, pageOnly), react);
             }
             if (/staffel-\d+|film[/-]\d+/.test(url)) {
                 const title = decodeURIComponent(url.split('/anime/stream/')[1].split('/')[0]).replace(/-/g, ' ');
                 const eps = await episodesOf(url);
                 if (!eps.length) throw new Error('no episodes');
-                sessions.set(jid, { stage: 'ep', items: eps, title, at: Date.now(), cardId: null });
+                sessions.set(jid, { cmd: 'aw', stage: 'ep', items: eps, title, at: Date.now(), cardId: null });
                 return done(st, send, jid, msg, epsCard(title, eps), react);
             }
             return seriesStep(send, jid, msg, st, url, decodeURIComponent(url.split('/anime/stream/')[1] || '').replace(/-/g, ' '), react);
@@ -266,7 +432,7 @@ async function handleAW(send, jid, msg, arg, react) {
     // search
     const list = await searchAW(arg0);
     if (!list.length) return done(st, send, jid, msg, `❌ *"${cut(arg0, 40)}"* හොයාගන්න බැරි වුණා (AniWorld)\n\n${foot('English නමෙන් try කරන්න — උදා: .aniworld solo leveling')}`, react);
-    sessions.set(jid, { stage: 'series', items: list.map((x) => ({ label: x.title, url: x.link })), title: arg0, at: Date.now(), cardId: null });
+    sessions.set(jid, { cmd: 'aw', stage: 'series', items: list.map((x) => ({ label: x.title, url: x.link })), title: arg0, at: Date.now(), cardId: null });
     return done(st, send, jid, msg, searchCard(arg0, list), react);
 }
 
@@ -274,6 +440,7 @@ async function goStep(send, jid, msg, n) {
     gcSessions();
     const s = sessions.get(jid);
     if (!s || !s.items?.length) return send(jid, { text: AW_USAGE }, { quoted: msg });
+    if (s.cmd === 'hv') return hvGo(send, jid, msg, n, null);   // safety: never run AW logic on a hentaiv session
     const pick = s.items[n - 1];
     if (!pick) return send(jid, { text: `❌ ${n} කියන අංකේ නෑ — list එකේ තියෙන අංකයක් එවන්න (1-${s.items.length})` }, { quoted: msg });
     const st = await status(send, jid, msg);
@@ -282,7 +449,7 @@ async function goStep(send, jid, msg, n) {
         if (s.stage === 'season') {
             const eps = await episodesOf(pick.url);
             if (!eps.length) throw new Error('no episodes');
-            sessions.set(jid, { stage: 'ep', items: eps, title: s.title + ' ' + pick.label.replace('📺 ', '').replace('🎬 ', ''), at: Date.now(), cardId: null });
+            sessions.set(jid, { cmd: 'aw', stage: 'ep', items: eps, title: s.title + ' ' + pick.label.replace('📺 ', '').replace('🎬 ', ''), at: Date.now(), cardId: null });
             return done(st, send, jid, msg, epsCard(s.title, eps), null);
         }
         if (s.stage === 'ep') {
@@ -302,7 +469,7 @@ async function seriesStep(send, jid, msg, st, seriesUrl, fallbackTitle, react) {
     } catch { }
     const seasons = await seasonsOf(seriesUrl);
     if (!seasons.length) throw new Error('no seasons');
-    sessions.set(jid, { stage: 'season', items: seasons, title: title || 'AniWorld', at: Date.now(), cardId: null });
+    sessions.set(jid, { cmd: 'aw', stage: 'season', items: seasons, title: title || 'AniWorld', at: Date.now(), cardId: null });
     return done(st, send, jid, msg, seasonsCard(title, seasons), react);
 }
 
@@ -340,7 +507,7 @@ function bridge(jid, qid, digits) {
     const d = parseInt(digits, 10);
     if (!Number.isFinite(d) || d < 1) return null;
     if (qid && s.cardId && String(qid) !== String(s.cardId)) return null;   // 🔒 reply-only: card එකට ම quote කරලා එන්න ඕන
-    return `.aniworld go ${d}`;
+    return (s.cmd === 'hv' ? '.hentaiv go ' : '.aniworld go ') + d;
 }
 
 module.exports = {
@@ -348,6 +515,7 @@ module.exports = {
     // test hooks
     _sessions: sessions, searchAW, seasonsOf, episodesOf, providersOf, providersFromHtml, resolveEpisode,
     resolveRedirect, vidmolyHls, doodMp4, nekobot, LANGS, TTL,
-    _cards: { searchCard, seasonsCard, epsCard, linksCard },
+    searchWH, searchWHFromHtml, epsWH, epsWHFromHtml, qualitiesWH, whDecodeMediaUrl,
+    _cards: { searchCard, seasonsCard, epsCard, linksCard, hvSearchCard, hvEpsCard, hvQCard },
     _reset: () => sessions.clear(),
 };

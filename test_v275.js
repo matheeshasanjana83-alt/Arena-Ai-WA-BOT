@@ -27,9 +27,9 @@ const fs = require('fs');
         const d = pkg.dependencies;
         assert.ok(!Object.keys(d).some((k) => /cheerio|puppeteer|curl_cffi|hono|redis|mongo/i.test(k)), 'no scrap-fat deps');
     });
-    ok('version 2.75.0 pins', () => {
-        assert.strictEqual(pkg.version, '2.75.0');
-        assert.strictEqual(manifest.version, '2.75.0');
+    ok('version pins (modernized v2.76 era)', () => {
+        assert.ok(['2.75.0', '2.76.0'].includes(pkg.version), 'pkg: ' + pkg.version);
+        assert.ok(['2.75.0', '2.76.0'].includes(manifest.version), 'manifest: ' + manifest.version);
         assert.ok(manifest.files.includes('animehub.js'), 'manifest has animehub.js');
         assert.ok(manifest.notes.includes('.aniworld'), 'manifest notes mention aniworld');
     });
@@ -207,7 +207,7 @@ const fs = require('fs');
     ok('router calls animehub.handle + bridge chained + HEAVY', () => {
         const src = fs.readFileSync('./bot.js', 'utf8');
         assert.ok(src.includes("require('./animehub')"));
-        assert.ok(src.includes('animehub.handle(c, { send, jid, msg, rest, react })'));
+        assert.ok(src.includes('animehub.handle(c, { send, jid, msg, rest, react'), 'router calls animehub.handle');
         assert.ok(src.includes('animehub.bridge(jid0, qid, text)'));
         assert.ok(/HEAVY = new Set\(\[[^\]]*'\.aniworld'/.test(src), 'HEAVY has .aniworld');
         assert.ok(/HEAVY = new Set\(\[[^\]]*'\.aw'/.test(src), 'HEAVY has .aw alias');

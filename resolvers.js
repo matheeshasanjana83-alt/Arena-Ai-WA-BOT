@@ -85,6 +85,10 @@ async function resolve(raw) {
         return { kind: 'video', url: raw };   // video page → yt-dlp path (.download handles kind 'video')
     }
 
+    // ── hstorage.xyz / watchhentai.net CDN (v2.76 .hentaiv) ── drops requests without Referer (403)
+    if (host.endsWith('hstorage.xyz') || host.endsWith('watchhentai.net'))
+        return { kind: 'http', url: raw, referer: 'https://watchhentai.net/' };
+
     // ── everything else: treat as direct link ──
     return { kind: 'http', url: raw };
 }
