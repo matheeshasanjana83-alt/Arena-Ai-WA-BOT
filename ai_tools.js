@@ -276,7 +276,7 @@ async function readUrl(u) {
         text = raw
             .replace(/<script[\s\S]*?<\/script>/gi, ' ').replace(/<style[\s\S]*?<\/style>/gi, ' ')
             .replace(/<noscript[\s\S]*?<\/noscript>/gi, ' ')
-            .replace(/<\/(p|div|li|h[1-6]|tr|section|article)>/gi, '\n').replace(/<br\s*\/?>/gi, '\n')
+            .replace(/<\/(p|div|li|h[1-6]|tr|section|article|nav|ul|ol|table|form|header|footer|blockquote)>/gi, '\n').replace(/<br\s*\/?>/gi, '\n')
             .replace(/<[^>]+>/g, ' ');
         text = text.replace(/&(amp|lt|gt|quot|#x27|#39|nbsp);/g, (m) => ENT[m] || m)
             .replace(/[ \t]+/g, ' ').replace(/\n\s*\n+/g, '\n').trim();

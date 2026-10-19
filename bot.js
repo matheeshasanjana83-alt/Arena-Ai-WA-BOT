@@ -828,7 +828,7 @@ function maybeAiReply({ msg, jid, text, owner, send }) {
             if (imgs.length) {
                 await send(jid, { image: imgs[0], caption: out || '🖼 හදලා දුන්නා!' }, { quoted: msg });
                 for (let i = 1; i < Math.min(imgs.length, 3); i++) await send(jid, { image: imgs[i] }, { quoted: msg });
-            } else if (out) await send(jid, { text: ai.splitLong(out)[0] }, { quoted: msg });   // v2.54: reply-bar — අදාල කෙනාටම reply විදිහට
+            } else if (out) { const ps = ai.splitLong(out); await send(jid, { text: ps[0] }, { quoted: msg }); for (let i2 = 1; i2 < ps.length; i2++) await send(jid, { text: ps[i2] }, { quoted: msg }); }   // v2.74: සම්පූර්ණ උත්තරේම යනවා (කලින් [0] විතරයි — deep answers cut වෙනවා) · v2.54: reply-bar
             log(`🤖 AI chat → ${jid.slice(0, 24)}`);
         }).catch(() => { });
     } catch { }

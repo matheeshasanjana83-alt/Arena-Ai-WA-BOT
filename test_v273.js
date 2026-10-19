@@ -185,9 +185,9 @@ const forcePolli = (ai) => { for (const p of ['gemini', 'groq', 'zai']) ai.setKe
         assert.ok(ai.VISION_SYSTEM.includes('SUPER VISION'), 'vision brain missing');
     });
 
-    ok('version 2.73.0 in package.json + manifest.json', () => {
-        assert.strictEqual(JSON.parse(src('package.json')).version, '2.73.0', 'package version');
-        assert.strictEqual(JSON.parse(src('manifest.json')).version, '2.73.0', 'manifest version');
+    ok('version 2.74.0 in package.json + manifest.json', () => {
+        assert.strictEqual(JSON.parse(src('package.json')).version, '2.74.0', 'package version');   // v2.74 pin modernized
+        assert.strictEqual(JSON.parse(src('manifest.json')).version, '2.74.0', 'manifest version');
         assert.ok(src('manifest.json').includes('LIVE WEB GROUNDING'), 'manifest notes missing');
     });
 

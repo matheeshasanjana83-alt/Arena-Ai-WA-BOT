@@ -88,7 +88,7 @@ const POLLI_OK = (text) => ({ status: 200, body: { choices: [{ message: { conten
         assert.ok(opCtx.includes('ONE PIECE') && opCtx.includes('1180'), 'One Piece ctx missing');
         assert.ok(!KB.contextFor('weather in colombo'), 'non-anime should be empty');
         assert.ok(KB.contextFor('ඇනිමේ එකක් recommend කරන්න').includes('BLACK CLOVER'), 'generic anime ask should include BC flaghship');
-        assert.ok(bcCtx.length < 8000, 'ctx too big for every turn: ' + bcCtx.length);   // v2.73: ep-anchors + S2 progress added (user wants MORE knowledge)
+        assert.ok(bcCtx.length < 11000, 'ctx too big for every turn: ' + bcCtx.length);   // v2.74: S2 corrected anchors + ep3 full plot added (Grok-class depth)
     });
 
     // ── ai.js wiring: KB reaches Gemini/Groq/Z.ai system + Polli system msg; roast immune ──
@@ -140,10 +140,10 @@ const POLLI_OK = (text) => ({ status: 200, body: { choices: [{ message: { conten
     });
     ok('manifest 2.72.0 + anime_kb.js deployed file', () => {
         const man = JSON.parse(src('manifest.json'));
-        assert.strictEqual(man.version, '2.73.0');   // v2.73 pin modernized
+        assert.strictEqual(man.version, '2.74.0');   // v2.74 pin modernized
         assert.ok(man.files.includes('anime_kb.js'), 'anime_kb.js not in manifest.files');
         const pkg = JSON.parse(src('package.json'));
-        assert.strictEqual(pkg.version, '2.73.0');   // v2.73 pin modernized
+        assert.strictEqual(pkg.version, '2.74.0');   // v2.74 pin modernized
     });
 
     console.log(`\n${'═'.repeat(46)}\n  ${pass} passed, ${fail} failed\n`);

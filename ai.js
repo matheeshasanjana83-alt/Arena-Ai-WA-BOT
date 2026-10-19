@@ -21,7 +21,10 @@ const SYSTEM = `You are "KAVIZ MD V1", a friendly WhatsApp AI assistant living i
 - ALWAYS reply in Sinhala (සිංහලෙන්ම උත්තර දෙන්න) — ALWAYS means ALWAYS: even greetings ("hi", "Hy", "hello", "good morning") get Sinhala replies (e.g. "හායි! 😊 මොකද වෙන්නේ?"), even short/broken messages get Sinhala replies. NEVER reply in English unless the user wrote full proper English sentences AND clearly expects an English answer. Never switch to English just because the question has English words in it.
 - SINHALA QUALITY: use correct everyday spoken Sinhala with real words only. NEVER invent non-existent Sinhala words, never write broken/garbled sentences that don't make sense, never repeat the same sentence twice in a row. If a sentence you wrote wouldn't make sense to a Sri Lankan friend, rewrite it simply. Write like a real Sri Lankan friend types on WhatsApp, not like a machine.
 - If the user's message is unreadable gibberish, say playfully in ONE Sinhala line that you can't read it (e.g. "බන් ඔයා ලියපු එක කියවන්නත් බෑ 😂 ආයෙ ලියන්න").
-- BE SHORT like a friend texting on WhatsApp: 1-4 short lines by default. NO long lectures, NO huge lists. Give long/step-by-step answers ONLY when the user explicitly asks for details/steps. If someone says "කෙටියෙන්" (shortly), reply in 1-2 lines max. Simple formatting: *bold*, _italic_, lists with • .
+- ANSWER DEPTH (v2.74 — match the answer to the QUESTION, never be lazy):
+  • Casual chat (greetings "hi", "මොකද වෙන්නේ", thanks, small talk, jokes) → 1-4 short friend-like lines.
+  • KNOWLEDGE questions (anime episode/plot/story, facts, "what happened / why / how / explain", how-to, tech help, news, comparisons, lists) → give a RICH DETAILED answer: 6-16 WhatsApp lines, organized as NUMBERED points (1. 2. 3. ...) in time/logic order, *bold* key names/titles, concrete specifics (names, numbers, places, what exactly happened). NEVER answer a real knowledge question with 1-2 lazy lines — that is the one thing users hate. End with a one-line "කෙටි සාරාංශය:" summary.
+  • If the user explicitly says "කෙටියෙන්" (shortly) → 1-2 lines max. Simple formatting: *bold*, _italic_, numbered points, lists with • .
 - If you don't know or are not sure, say so honestly. Never invent facts.
 - You are powered by free models (Google Gemini / Groq / Z.ai GLM). If asked, say so honestly.
 - Memory: you keep the recent chat history of THIS conversation (up to ~30 turns, auto-cleared after 3 days). If the user asks about something that is NOT in this conversation history, honestly say you don't have it in memory — never pretend to remember or invent past events.`;
@@ -118,7 +121,7 @@ const PROVIDERS = ['gemini', 'groq', 'zai', 'polli'];   // 🌸 v2.69 — polli 
 function getProvider() { const p = String(loadSettings().aiProvider || '').toLowerCase().trim(); return PROVIDERS.includes(p) ? p : ''; }
 
 // 🧰 AI tools (v2.50) — GLM (Z.ai) එකට විතරක් connector abilities (GLM-first per user)
-const { TOOLS, runToolEx, _webSearch } = require('./ai_tools');   // 🌍 v2.73 — _webSearch (DDG) grounding වලටත්
+const { TOOLS, runToolEx, _webSearch, _readUrl } = require('./ai_tools');   // 🌍 v2.73 _webSearch (DDG) · 📖 v2.74 _readUrl (page grounding)
 const getTools = () => loadSettings().aiTools !== false;   // default ON
 function setTools(on) { const s = loadSettings(); s.aiTools = !!on; saveSettings(s); return !!on; }
 
@@ -255,14 +258,18 @@ function needsWeb(q) {               // anime topic → always; සාමාන�
     if (KB && KB.matches(q)) return true;
     return q.length > 15 && /\b(search|google|web)\b|හොයන්න|හොයලා|සර්ච්|\b(who|when|where|how many|latest|news|release|air(?:ed|ing)?|born|died)\b|20\d{2}|කවද්?ද|කීයද|කවුද|අලුත්ම/i.test(q);
 }
-function webQueries(q) {             // search queries — bot prefixes / quoted blocks අයින්; latin + raw (සිංහල) දෙකම
+function webQueries(q) {             // search queries — bot prefixes / quoted blocks අයින්; latin + raw (සිංහල) දෙකම; "s2 ep3" → "season 2 episode 3" expand (DDG recall)
     let s = String(q || '').replace(/^ANIME EXPERT MODE[^:]*:\s*/i, '').replace(/"""[\s\S]*?"""/g, ' ')
         .replace(/[\n\r]+/g, ' ').replace(/[?!.]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 220);
-    const latin = s.replace(/[^ -~]/g, ' ').replace(/\s+/g, ' ').trim();
+    const expand = (t) => t.replace(/\bseason\s*(\d{1,2})\b/gi, 'season $1').replace(/\b(?:s|season)\s*(\d{1,2})\s*[- ]?(?:ep|episode|e)\.?\s*(\d{1,4})\b/gi, 'season $1 episode $2').replace(/\b(?:ep|e)\.?\s*(\d{1,4})\b/gi, 'episode $1');
+    const latin0 = s.replace(/[^ -~]/g, ' ').replace(/\s+/g, ' ').trim();
+    const latin = expand(latin0).replace(/\s+/g, ' ').trim();
     const out = [];
     if (latin.length >= 8) out.push(latin);
     if (s.length >= 8 && s !== latin) out.push(s);
     if (!out.length) out.push(s || String(q || '').slice(0, 80));
+    // 🥊 v2.74 — episode-shape question → 2වන slot එක recap-targeted query එකකට swap (recap/wiki pages වලට වැඩි recall — Grok-class plot detail ඕනේ)
+    if (/season \d+ episode \d+/i.test(latin) && out.length >= 1 && !/recap/i.test(out.join(' '))) out[out.length - 1] = latin + ' recap plot summary';
     return out.slice(0, 2);
 }
 async function cachedSearch(q) {
@@ -274,13 +281,47 @@ async function cachedSearch(q) {
     if (webCache.size > 200) webCache.delete(webCache.keys().next().value);
     return text;
 }
+// 📖 v2.74 — page-fetch grounding: snippets thin නම් Grok වගේ recap detail ඕනේ → top result PAGES කියවලා
+// real paragraph content (recap/wiki) context එකට එකතු කරනවා. BLOCKED domains (login-wall/JS-only) skip.
+const PAGE_SKIP_RE = /(^|\/\/|\.)(facebook|reddit|instagram|x|twitter|tiktok|youtube|pinterest|quora|linkedin)\./i;
+function pageUrls(lines, max = 2) {  // snippet blocks වලින් content-rich urls — fandom/wiki/recap/review පළමුව
+    const urls = [];
+    for (const l of lines) { const u = (String(l).match(/https?:\/\/[^\s)]+/) || [''])[0].replace(/[).,]+$/, ''); if (u && !PAGE_SKIP_RE.test(u) && !urls.includes(u)) urls.push(u); }
+    urls.sort((a, b) => (/(fandom|wiki|recap|review|cbr|crunchyroll|otaku|episode)/i.test(b) ? 1 : 0) - (/(fandom|wiki|recap|review|cbr|crunchyroll|otaku|episode)/i.test(a) ? 1 : 0));
+    return urls.slice(0, max);
+}
+async function pageText(u) {         // page text → compact: title + relevant ~1300 chars (episode/recap keywords වටේ focus)
+    if (typeof _readUrl !== 'function') return '';
+    const t = await _readUrl(u);      // PAGE: <title>\nURL: <u>\n\n<text 4500c>
+    const body = t.slice(t.indexOf('\n\n') + 2 || 0);
+    const kw = /(episode|recap|summary|plot|devils?|asta|clover|season|chapter|review)/i;
+    let cut = body;
+    const firstNl = body.indexOf('\n');
+    const hay = firstNl > 0 ? body.slice(firstNl + 1) : body;   // title line එක skip — 'Black Clover Wiki' title එකම kw match වෙනවා
+    const off = firstNl > 0 ? firstNl + 1 : 0;
+    const m = hay.match(kw);
+    const idx = m ? off + m.index : -1;
+    if (idx > 600) {                  // relevance window — junk (nav/menus) පස්සේ keyword එකේ paragraph එකේ ඉඳලා
+        const nl = body.lastIndexOf('\n', idx);
+        const start = (nl > 0 && idx - nl < 500) ? nl + 1 : Math.max(0, idx - 300);
+        cut = '…' + body.slice(start, start + 1300);
+    } else cut = body.slice(0, 1300);
+    const title = (t.match(/^PAGE: (.*)$/m) || [''])[1] || u;
+    return cut.length > 200 ? `📖 PAGE CONTENT — "${title.slice(0, 110)}":\n${cut.replace(/\s+\n/g, '\n').trim()}` : '';
+}
 const WEB_RULES = `⚡ TRUTH RULES (this turn is web-grounded):
 - Episode titles/numbers, dates, chapter counts, plot events, stats MUST come from the LIVE WEB RESULTS above (or the ANIME KNOWLEDGE BASE if attached) — NEVER from your own memory alone.
+- If the web results DON'T clearly state an episode title/number/date → take it from the ANIME KNOWLEDGE BASE's EPISODE ANCHORS (they were web-verified when baked) — don't leave it out.
 - If web results and KB conflict → web results win (fresher); mention it briefly.
 - If nothing covers the exact answer → say honestly "මම 100% sure නෑ — හොයලා බැලුවත් හොයාගන්න බැරි වුණා" — NEVER invent, NEVER guess.
-- Name the source site for key facts (e.g. "Fandom wiki අනුව"). Answer in Sinhala, friendly, WhatsApp-short unless the user asked for detail.`;
+- Name the source site for key facts (e.g. "Fandom wiki අනුව"). Answer in Sinhala.
+- DEPTH: knowledge/episode questions get the FULL DETAILED treatment — numbered points (1. 2. 3. ...) walking through what happened start-to-end with names/scenes, *bold* key names, 6-16 lines, "කෙටි සාරාංශය:" line at the end. NEVER a lazy 1-2 line answer to a plot question (only go short if the user said "කෙටියෙන්").`;
+const ctxCache = new Map();          // 📖 v2.74 — raw question → full buildWebCtx result (snippets+pages) — repeat asks instant + pages not re-fetched
 async function buildWebCtx(q) {      // → system-context text or '' (search fail = graceful, KB එකෙන් වැඩේ යනවා)
     if (typeof _webSearch !== 'function') return '';
+    const ckey = String(q).toLowerCase().trim();
+    const chit = ctxCache.get(ckey);
+    if (chit && Date.now() - chit.t < WEB_TTL) return chit.text;
     const settled = await Promise.allSettled(webQueries(q).map(qq => cachedSearch(qq)));
     const chunks = settled.filter(s => s.status === 'fulfilled' && s.value).map(s => String(s.value));
     if (!chunks.length) return '';
@@ -295,8 +336,18 @@ async function buildWebCtx(q) {      // → system-context text or '' (search fa
         }
         if (lines.length >= 6) break;
     }
-    return lines.length ? `🌍 LIVE WEB RESULTS (searched ${new Date().toISOString().slice(0, 10)}, fresher than any KB or memory):
-${lines.join('\n')}\n\n${WEB_RULES}` : '';
+    let head = lines.join('\n');
+    // 📖 v2.74 — snippets වලට වඩා ගැඹුරු: top 2 result PAGES කියවලා real recap text (best-effort, fail = silent)
+    const pages = pageUrls(lines);
+    if (pages.length) {
+        const pset = await Promise.allSettled(pages.map(u => pageText(u)));
+        const good = pset.filter(s => s.status === 'fulfilled' && s.value).map(s => s.value);
+        if (good.length) head += '\n\n' + good.join('\n\n');
+    }
+    const out = head.trim() ? `🌍 LIVE WEB RESULTS (searched ${new Date().toISOString().slice(0, 10)}, fresher than any KB or memory):
+${head}\n\n${WEB_RULES}` : '';
+    if (out) { ctxCache.set(ckey, { t: Date.now(), text: out }); if (ctxCache.size > 200) ctxCache.delete(ctxCache.keys().next().value); }
+    return out;
 }
 
 async function askGemini(key, msgs) {
@@ -309,7 +360,7 @@ async function askGemini(key, msgs) {
             body: JSON.stringify({
                 systemInstruction: { parts: [{ text: sysOf() }] },
                 contents: msgs.map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.text }] })),
-                generationConfig: { maxOutputTokens: 2048, temperature: tempOf() }
+                generationConfig: { maxOutputTokens: 4096, temperature: tempOf() }   // v2.74: 2048 → 4096 (Grok-class detail)
             })
         };
         let r = await fetch(url, opts);
@@ -335,7 +386,7 @@ async function askGroq(key, msgs) {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
             body: JSON.stringify({
-                model, temperature: tempOf(), max_tokens: 2048,
+                model, temperature: tempOf(), max_tokens: 4096,   // v2.74: 2048 → 4096 (Grok-class detail)
                 messages: [{ role: 'system', content: sysOf() }, ...msgs.map(m => ({ role: m.role, content: m.text }))]
             })
         };
@@ -357,7 +408,7 @@ async function askGroq(key, msgs) {
 async function askPolli(key, msgs) {
     const P = require('./pollinations');
     const body = [...(KB_OVERRIDE ? [{ role: 'system', content: KB_OVERRIDE }] : []), ...(WEB_OVERRIDE ? [{ role: 'system', content: WEB_OVERRIDE }] : []), ...(msgs || []).slice(-14).map((m) => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: String(m.text ?? m.content ?? '') }))];   // 🎌 v2.72 KB + 🌍 v2.73 WEB — system msgs විදිහට
-    const r = await P.chat(body);
+    const r = await P.chat(body, { max_tokens: 3072, timeout: 120e3 });   // v2.74: default cap → 3072 (Grok-class detail)
     return { text: r.text, model: r.model };
 }
 
@@ -371,7 +422,7 @@ async function askZai(key, msgs, chatId, allKeys) {
         const images = [];
         for (let iter = 0; iter < 4 && !answer; iter++) {
             const payload = {
-                model, temperature: tempOf(), max_tokens: 2048,
+                model, temperature: tempOf(), max_tokens: 4096,   // v2.74: 2048 → 4096 (Grok-class detail)
                 thinking: { type: 'disabled' }, // GLM hybrid-reasoning OFF → WhatsApp speed (reasoning_content එක tokens කනවා)
                 messages
             };
