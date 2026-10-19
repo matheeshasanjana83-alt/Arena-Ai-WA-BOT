@@ -47,7 +47,7 @@ async function seasonsOf(seriesUrl) {
     const path = seriesUrl.replace(/^https?:\/\/[^/]+/, '').replace(/\/$/, '');   // '/anime/stream/naruto'
     const esc = path.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const seen = new Set(); const out = [];
-    const re = new RegExp('href="((?:https?://[^/"]+)?' + esc + '\/staffel-(\\d+)[^"]*)"', 'g');
+    const re = new RegExp('href="((?:https?://[^/"]+)?' + esc + '\/staffel-(\\d+)(?:\\?[^"/]*)?)"', 'g');   // end-quote anchored — episode links must NOT match
     let m;
     while ((m = re.exec(html))) {
         const url = m[1].startsWith('http') ? m[1].split('?')[0] : AW + m[1].split('?')[0];
@@ -55,12 +55,15 @@ async function seasonsOf(seriesUrl) {
         seen.add(url);
         out.push({ label: '📺 Staffel ' + m[2], url, n: parseInt(m[2], 10) });
     }
-    out.sort((a, b) => a.n - b.n);
+    // safety net: same label twice (mixed absolute/relative) → keep first
+    const byLabel = new Set();
+    const uniq = out.filter((x) => (byLabel.has(x.label) ? false : (byLabel.add(x.label), true)));
+    uniq.sort((a, b) => a.n - b.n);
     if (new RegExp('href="(?:https?://[^"]+)?' + esc + '\/filme"').test(html)) {
         const fm = AW + path + '/filme';
-        if (!seen.has(fm)) { seen.add(fm); out.push({ label: '🎬 Filme', url: fm }); }
+        if (!seen.has(fm)) { seen.add(fm); uniq.push({ label: '🎬 Filme', url: fm }); }
     }
-    return out;
+    return uniq;
 }
 
 /** season/filme page → items sorted by N (episode-N = 'EP N' · film-N = '🎬 Film N') — hrefs are RELATIVE */
@@ -69,7 +72,7 @@ async function episodesOf(seasonUrl) {
     const path = seasonUrl.replace(/^https?:\/\/[^/]+/, '').replace(/\/$/, '');
     const esc = path.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const seen = new Set(); const out = [];
-    const re = new RegExp('href="((?:https?://[^"]+)?' + esc + '\\/(?:episode-|film-)(\\d+)[^"]*)"', 'g');
+    const re = new RegExp('href="((?:https?://[^"]+)?' + esc + '\\/(?:episode-|film-)(\\d+)(?:\\?[^"/]*)?)"', 'g');   // end-quote anchored
     let m;
     while ((m = re.exec(html))) {
         const url = m[1].startsWith('http') ? m[1].split('?')[0] : AW + m[1].split('?')[0];
