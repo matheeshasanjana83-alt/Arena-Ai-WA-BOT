@@ -1,5 +1,5 @@
 /**
- * animehub.js — KAVIZ MD V1 v2.75.0
+ * animehub.js — KAVIZ MD V1 v2.79.0
  * 🎌 .aniworld — AniWorld-Downloader (github.com/phoenixthrush/AniWorld-Downloader) → in-bot Node port
  *      search → series → season → episode → real provider extraction (Vidmoly HLS / Dood mp4 best-effort)
  *      NOTE: aniworld h4 labels LIE — every /redirect/<id> is resolved and routed by FINAL HOST.
@@ -7,6 +7,8 @@
  * 🔞 sulvii/hentai-api style NSFW → in-bot port on LIVE-verified free source nekobot.xyz
  *      (repo's hanime/rule34 endpoints are dead/CF-walled since 2025 — verified 2026-10-20)
  *      .hentai · .hneko · .hmidriff · .pgif — 18+ disclaimers on every result
+ *      v2.79 FIX: .hentaiv episode menu — Dooplay ul.episodios single-quoted hrefs now parsed
+ *      (title → episode menu → quality menu; single-episode still auto-jumps straight to quality)
  * No new deps: global fetch (undici) only. Sessions = same quote-reply grammar as moviedex.
  */
 const { foot, cut } = require('./style');
@@ -228,15 +230,25 @@ async function searchWH(q) {
     return searchWHFromHtml(html);
 }
 
-/** series page → /videos/ episode links (EP N sorted) */
+/** series page → episode list (EP N sorted)
+ * v2.79 FIX: watchhentai is Dooplay-style — episode cards live in <ul class='episodios'> with
+ * SINGLE-quoted hrefs. Old double-quote-only regex caught just 1 stray link → false "single
+ * episode" → auto-jumped past the episode menu (Kazoku 6-eps bug, user report 2026-10-20).
+ * Now: quote-agnostic + scoped to ul.episodios (kills related-video noise on watch pages)
+ * + /feed/ links excluded + season-aware labels (S2 EP1) when season-N in slug. */
 function epsWHFromHtml(html) {
+    let scope = html;
+    const blocks = [...html.matchAll(/<ul[^>]*class=['"][^'"]*episodios[^'"]*['"][^>]*>([\s\S]*?)<\/ul>/g)];
+    if (blocks.length) scope = blocks.map((b) => b[1]).join('\n');   // real episode list only
     const seen = new Set(); const out = [];
-    for (const m of html.matchAll(/href="((https?:\/\/[^"]*watchhentai\.net)?\/videos\/[^"#?]+)"/g)) {
-        const url = m[1].startsWith('http') ? m[1] : WH + m[1];
+    for (const m of scope.matchAll(/<a\s[^>]*href=(['"])\s*((?:https?:\/\/[^'"]*watchhentai\.net)?\/videos\/[^'">]+?)\s*\1/g)) {
+        const url = m[2].startsWith('http') ? m[2] : WH + m[2];
+        if (/\/feed\/?([?#]|$)/.test(url)) continue;                 // watch pages link their own RSS
         if (seen.has(url)) continue;
         seen.add(url);
-        const n = /episode-(\d+)/i.exec(url);
-        out.push({ n: n ? parseInt(n[1], 10) : out.length + 1, url, label: 'EP ' + (n ? parseInt(n[1], 10) : '?') });
+        const sn = /season-(\d+)/i.exec(url), n = /episode-(\d+)/i.exec(url);
+        const num = n ? parseInt(n[1], 10) : out.length + 1;
+        out.push({ n: (sn ? parseInt(sn[1], 10) * 1000 : 0) + num, url, label: (sn ? 'S' + parseInt(sn[1], 10) + ' ' : '') + 'EP ' + num });
     }
     out.sort((a, b) => a.n - b.n);
     return out;
@@ -259,7 +271,10 @@ async function qualitiesWH(videoUrl) {
             const arr = /var\s+whJwSources\s*=\s*(\[[\s\S]*?\]);/.exec(p);
             if (arr) {
                 for (const s of JSON.parse(arr[1])) {
-                    try { const src = whDecodeMediaUrl(s.file); if (/^https?:\/\//.test(src)) sources.push({ label: s.label || 'default', src }); } catch { }
+                    try {
+                        const src = whDecodeMediaUrl(s.file);
+                        if (/^https?:\/\//.test(src)) sources.push({ label: s.label || (src.match(/_(\d{3,4}p)\./) || [])[1] || 'default', src });   // v2.79: site dropped labels on newer uploads — URL suffix carries the quality
+                    } catch { }
                 }
             }
             if (!sources.length) {   // older layout: plain jw.file / ld+json
@@ -288,9 +303,10 @@ const humanMB = (b) => b >= 1073741824 ? (b / 1073741824).toFixed(2) + ' GB' : b
 const hvSearchCard = (q, list) => `🔞 *WatchHentai — "${cut(q, 40)}"*\n\n` +
     list.map((x, i) => `*${i + 1}.* ${x.title}${x.year ? '  (' + x.year + ')' : ''}`).join('\n') +
     `\n\nSeries එකක් තෝරන්න — මේ message එකට *අංකය reply* කරන්න\n${foot('18+ only · watchhentai.net · මිනිත්තු 10 ඇතුලත reply කරන්න')}`;
-const hvEpsCard = (title, list) => `🔞 *${cut(title, 60)}* — Episodes\n\n` +
-    list.slice(0, 60).map((x, i) => `*${i + 1}.* ${x.label}`).join('  ·  ') +
-    `\n\nEpisode එකක් තෝරන්න — *අංකය reply* කරන්න\n${foot('18+ only · watchhentai.net')}`;
+const hvEpsCard = (title, list) => `🔞 *${cut(title, 60)}* — Episodes (${list.length})\n\n` +
+    list.slice(0, EP_CAP).map((x, i) => `*${i + 1}.* ${x.label}`).join('  ·  ') +
+    (list.length > EP_CAP ? `\n\n_තව ${list.length - EP_CAP}ක් තියෙනවා — පළවෙනි ${EP_CAP} විතරයි පෙන්නුවේ_` : '') +
+    `\n\nEpisode එකක් තෝරන්න — *අංකය reply* කරන්න → ඊට පස්සේ quality menu\n${foot('18+ only · watchhentai.net')}`;
 const hvQCard = (title, list) => `🔞 *${cut(title, 60)}*\n\nquality එක තෝරන්න — *අංකය reply* කරන්න:\n\n` +
     list.map((x, i) => `*${i + 1}.* ${x.label}  (${humanMB(x.bytes)})`).join('\n') +
     `\n\n${foot('තෝරාගත්තම file එක WhatsApp එකට එවනවා · 18+ only')}`;
@@ -321,15 +337,16 @@ async function hvGo(send, jid, msg, n, download) {
     try {
         if (s.stage === 'series') {
             const eps = epsWHFromHtml(await getText(pick.url, { referer: WH + '/' }));
-            if (!eps.length) throw new Error('episodes නෑ');
             const title = pick.title || s.title;
-            if (eps.length === 1) {   // single-episode series → straight to quality menu
-                const { title: t, sources } = await qualitiesWH(eps[0].url);
-                sessions.set(jid, { cmd: 'hv', stage: 'quality', items: sources, title: t || title, at: Date.now(), cardId: null });
-                return done(st, send, jid, msg, hvQCard(t || title, sources), null);
+            if (eps.length > 1) {   // v2.79: real episode menu (was silently skipped — quote bug)
+                sessions.set(jid, { cmd: 'hv', stage: 'ep', items: eps.slice(0, EP_CAP), title, at: Date.now(), cardId: null });
+                return done(st, send, jid, msg, hvEpsCard(title, eps), null);
             }
-            sessions.set(jid, { cmd: 'hv', stage: 'ep', items: eps, title, at: Date.now(), cardId: null });
-            return done(st, send, jid, msg, hvEpsCard(title, eps), null);
+            // 1 episode (or none) → pick IS the video → straight to quality menu
+            await st.edit(eps.length === 1 ? '🔎 Qualities හොයනවා...' : '🔎 Episode list එකක් නෑ — Qualities හොයනවා...');
+            const { title: t, sources } = await qualitiesWH(eps.length === 1 ? eps[0].url : pick.url);
+            sessions.set(jid, { cmd: 'hv', stage: 'quality', items: sources, title: t || title, at: Date.now(), cardId: null });
+            return done(st, send, jid, msg, hvQCard(t || title, sources), null);
         }
         if (s.stage === 'ep') {
             await st.edit('🔎 Qualities හොයනවා...');
