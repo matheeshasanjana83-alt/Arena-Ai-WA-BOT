@@ -54,6 +54,8 @@ function setCfg(patch) { const d = readSet(); d.antibug = { ...cfg(), ...patch }
 const STATE_F = path.join(__dirname, 'antibug_state.json');
 const state = (() => { try { const j = JSON.parse(fs.readFileSync(STATE_F, 'utf8')); return j && typeof j === 'object' ? j : {}; } catch { return {}; } })();
 state.reports = Array.isArray(state.reports) ? state.reports : [];
+state.catches = Array.isArray(state.catches) ? state.catches : [];      // v2.77: persistent catch log (survives restarts — .antibug scan shows the TRUTH)
+state.reportsLog = Array.isArray(state.reportsLog) ? state.reportsLog : [];   // v2.77: every retaliation outcome {at,who,want,ok,fails,aborted,err,blockedNow}
 const saveState = () => { try { fs.writeFileSync(STATE_F, JSON.stringify(state)); } catch { } };
 const DAILY_CAP = () => cfg().dailyCap;
 function reportBudget() {   // reports left in the rolling 24h window
@@ -307,12 +309,12 @@ async function retaliate(sender, ctx, meta = {}) {
     retaliated.set(sNorm, Date.now());
     const asked = c.report ? c.reportCount : 0;
     const want = Math.min(asked, reportBudget());                                // v2.55: 24h budget — mass-reporting gets the REPORTER flagged
-    let ok = 0, blockedNow = false, blockErr = '', fails = 0, aborted = false;
+    let ok = 0, blockedNow = false, blockErr = '', fails = 0, aborted = false, firstErr = '';
     for (let i = 0; i < want; i++) {
         if (Date.now() < retalPauseUntil) { aborted = true; break; }
         try { await reportSpam(sock, sender, meta.key); ok++; fails = 0; state.reports.push(Date.now()); if (ok % 5 === 0) saveState(); }
         catch (e) {
-            fails++; log(`antibug report ${i + 1}/${want}: ${e.message}`);
+            fails++; if (!firstErr) firstErr = String(e.message || '').slice(0, 140); log(`antibug report ${i + 1}/${want}: ${e.message}`);
             if (fails >= 3) {                                                     // server rejects ×3 → something is wrong — stop hammering
                 retalPauseUntil = Date.now() + 3600e3; aborted = true;
                 log('antibug: reports failing ×3 — reports paused 1h (account safety)');
@@ -326,6 +328,10 @@ async function retaliate(sender, ctx, meta = {}) {
         try { await sock.updateBlockStatus(sender, 'block'); blocked.add(sNorm); blockedNow = true; }
         catch (e) { blockErr = e.message; log('antibug block: ' + e.message); }
     }
+    // v2.77: persistent outcome — .antibug scan/status shows whether reports actually LAND
+    state.reportsLog.unshift({ at: Date.now(), who: sNorm.split('@')[0], want, ok, fails, aborted, err: firstErr || '', blockedNow });
+    if (state.reportsLog.length > 15) state.reportsLog.length = 15;
+    saveState();
     if (send && me?.pn) {                                                        // honest final card
         const who = sNorm.split('@')[0];
         const rLine = !asked ? '│ 📨 report: OFF'
@@ -431,8 +437,12 @@ async function guard(msg, ctx) {
     }
     const num = String(sender || jid).split('@')[0].split(':')[0];
     log(`🛡️ anti-bug: ${num} ${isGroup ? '(group ' + jid.split('@')[0] + ')' : isStatus ? '(status)' : isNews ? '(newsletter)' : ''} — ${r.reasons.join(', ')} → ${done.join(', ') || 'no action'}`);
-    recent.push({ at: new Date(), num, where: isGroup ? 'group' : isStatus ? 'status' : isNews ? 'newsletter' : 'private', reasons: r.reasons.join(' · '), done: done.join(' · ') || '-' });
+    const hit = { at: Date.now(), num, where: isGroup ? 'group' : isStatus ? 'status' : isNews ? 'newsletter' : 'private', reasons: r.reasons.join(' · '), done: done.join(' · ') || '-' };
+    recent.push({ at: new Date(), num, where: hit.where, reasons: hit.reasons, done: hit.done });
     if (recent.length > 20) recent.shift();
+    state.catches.unshift(hit);                                            // v2.77: survives restarts → .antibug scan always has evidence
+    if (state.catches.length > 30) state.catches.length = 30;
+    saveState();
     const now = Date.now();
     if (send && me?.pn && now - (lastReport.get(sender) || 0) > 5 * 60e3) {   // max 1 report / sender / 5 min
         lastReport.set(sender, now);
@@ -443,11 +453,25 @@ async function guard(msg, ctx) {
     return true;
 }
 
+const whenStr = (t) => { const d = new Date(t); return d.toISOString().slice(5, 16).replace('T', ' '); };   // MM-DD HH:MM
 function scanText() {
-    if (!recent.length) return ['╭─❖ 🛡️ *ANTI-BUG SCAN* ❖', '╰─ caught bugs nothing — clean ✅'].join('\n');
-    const rows = recent.slice(-10).reverse().map((e) =>
-        `│ 🕐 ${e.at.toTimeString().slice(0, 8)} ${e.where === 'group' ? '👥 group' : e.where === 'status' ? '📍 status' : e.where === 'newsletter' ? '📰 newsletter' : '👤 private'} ${e.num}\n│ ⚠️ ${e.reasons}\n│ ✅ ${e.done}`);
-    return ['╭─❖ 🛡️ *ANTI-BUG SCAN* ❖', `│ caught bugs ${recent.length} (last 10)`, ...rows, '╰─ report eke bug text penne ne'].join('\n');
+    const out = ['╭─❖ 🛡️ *ANTI-BUG SCAN* ❖'];
+    // v2.77: last retaliation outcome — did the auto-report actually LAND?
+    const rl = state.reportsLog[0];
+    if (rl) {
+        const verdict = rl.ok > 0 ? `🚀 report ${rl.ok}/${rl.want} ලෑන්ඩ් වුණා ✅` : rl.want === 0 ? '⏳ budget ඉවර' : `❌ report 0/${rl.want} — server reject${rl.err ? ': ' + rl.err.slice(0, 60) : ''}`;
+        out.push(`│ 📨 last: ${whenStr(rl.at)} · ${rl.who} → ${verdict}${rl.blockedNow ? ' · ⛔ block ✅' : ''}`);
+    } else out.push('│ 📨 last: — (report කවදාවත් fire වෙලා නෑ)');
+    // persistent catches (survive restarts) — newest first
+    const rows = state.catches.slice(0, 10).map((e) =>
+        `│ 🕐 ${whenStr(e.at)} ${e.where === 'group' ? '👥' : e.where === 'status' ? '📍' : e.where === 'newsletter' ? '📰' : '👤'} ${e.num}
+│ ⚠️ ${e.reasons}
+│ ✅ ${e.done}`);
+    if (rows.length) out.push(`│ 📋 caught ${state.catches.length} (last ${rows.length})`, ...rows);
+    else if (!recent.length) out.push('╰─ caught bugs nothing — clean ✅');
+    else out.push('│ 📋 (session එකේ පමණයි)');
+    if (rows.length) out.push('╰─ report eke bug text penne ne');
+    return out.join('\n');
 }
 
 // ── .antibug test — synthetic crasher-payload self-test (IN-MEMORY ONLY, nothing is ever sent) ──
@@ -529,9 +553,14 @@ async function command(arg, arg2) {
     else if (a === 'report' && (b === 'on' || b === 'off')) setCfg({ report: b === 'on' });
     else if ((a === 'count' || a === 'reports') && /^\d+$/.test(b)) setCfg({ reportCount: Number(b) });
     const c = cfg(), budget = reportBudget();
+    const rl = state.reportsLog[0];
+    const rlLine = !rl ? '│ 📨 last report: — (තාම severe bug එකක් fire වෙලා නෑ)'
+        : rl.ok > 0 ? `│ 📨 last report: ${rl.ok}/${rl.want} ✅ (${whenStr(rl.at)})`
+            : `│ 📨 last report: ❌ 0/${rl.want}${rl.aborted ? ' (abort)' : ''} — ${rl.err ? rl.err.slice(0, 50) : 'server reject'} (${whenStr(rl.at)})`;
     return ['╭─❖ 🛡️ *ANTI-BUG* ❖',
         `│ තත්ත්වය: ${c.on ? '✅ ON' : '❌ OFF'}`,
         `│ Bug ගහපු එකාට auto report ×${c.reportCount}: ${c.report ? '✅' : '❌'} (24h budget: ${budget}/${DAILY_CAP()})`,
+        rlLine,
         `│ Report ඉවර උනාම block (private): ${c.block ? '✅' : '❌'}`,
         `│ 🛡️ OUT-GUARD: යන හැම message එකක්ම sanitize (bot එකෙන් bug යන්නේ නෑ) ✅`,
         `│ 🌩️ storm lock: ${lockedDown() ? '⚠️ ON (AI silent)' : '—'}`,
@@ -547,4 +576,4 @@ async function command(arg, arg2) {
         '╰─ Bug → delete + report (24h budget) → block · යන messages ඔක්කොම sanitize'].join('\n');
 }
 
-module.exports = { detect, guard, command, cfg, setCfg, floodCheck, selfTest, reportSpam, retaliate, startRetaliate, sanitizeOut, cleanOut, clearChat, unblockAll, lockedDown, noteSevere, reportBudget, L, _flood: flood, _blocked: blocked, _recent: recent, _retalRunning: retalRunning, _retaliated: retaliated, _state: state };
+module.exports = { detect, guard, command, cfg, setCfg, floodCheck, selfTest, reportSpam, retaliate, startRetaliate, sanitizeOut, cleanOut, clearChat, unblockAll, lockedDown, noteSevere, reportBudget, L, _flood: flood, _blocked: blocked, _recent: recent, _retalRunning: retalRunning, _retaliated: retaliated, _state: state, _resetPause: () => { retalPauseUntil = 0; } };
