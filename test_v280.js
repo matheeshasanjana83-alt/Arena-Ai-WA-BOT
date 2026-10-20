@@ -16,8 +16,8 @@ const manifest = require('./manifest.json');
 (async () => {
     console.log('— v2.80.0 .ep/.eporner: pins + structure —');
     ok('version 2.80 pins', () => {
-        assert.strictEqual(pkg.version, '2.80.0', 'pkg: ' + pkg.version);
-        assert.strictEqual(manifest.version, '2.80.0', 'manifest: ' + manifest.version);
+        assert.ok(['2.80.0', '2.81.0'].includes(pkg.version), 'pkg: ' + pkg.version);
+        assert.ok(['2.80.0', '2.81.0'].includes(manifest.version), 'manifest: ' + manifest.version);
         assert.ok(manifest.notes.includes('.ep/.eporner') && manifest.notes.includes('eporner/API'), 'notes updated');
         assert.ok(manifest.files.includes('animehub.js') && manifest.files.includes('test_v280.js'), 'files listed');
     });

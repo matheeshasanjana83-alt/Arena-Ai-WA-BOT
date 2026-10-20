@@ -1,5 +1,5 @@
 /**
- * animehub.js — KAVIZ MD V1 v2.79.0
+ * animehub.js — KAVIZ MD V1 v2.81.0
  * 🎌 .aniworld — AniWorld-Downloader (github.com/phoenixthrush/AniWorld-Downloader) → in-bot Node port
  *      search → series → season → episode → real provider extraction (Vidmoly HLS / Dood mp4 best-effort)
  *      NOTE: aniworld h4 labels LIE — every /redirect/<id> is resolved and routed by FINAL HOST.
@@ -12,6 +12,9 @@
  * 🔞 v2.80: .ep/.eporner — Eporner OFFICIAL public API v2 (github.com/eporner/API, keyless JSON)
  *      search → video → quality menu (page hash → site's own calcHash → /xhr/video/<id> → cdn mp4)
  *      ⚠️ CDN ETIMEDOUTs without Referer (verified 2026-10-20) — resolvers rule sends it.
+ * 🔞 v2.81: .hentaimng/.hmanga — hitomi.la (github.com/h2owater425/node-hitomi → in-bot port)
+ *      title search = galleriesindex B-tree (sha256 word keys) + nozomi tag lists → gallery info
+ *      → cover card → pages sent as webp images. gg.js `b:` = ephemeral epoch dir → 10-min cache.
  * No new deps: global fetch (undici) only. Sessions = same quote-reply grammar as moviedex.
  */
 const { foot, cut } = require('./style');
@@ -334,6 +337,7 @@ async function hvGo(send, jid, msg, n, download) {
     gcSessions();
     const s = sessions.get(jid);
     if (s && s.cmd === 'ep') return epGo(send, jid, msg, n, download);   // v2.80: manual .hentaiv go on eporner session → route right
+    if (s && s.cmd === 'hm') return hmGo(send, jid, msg, n, download);   // v2.81: …on hitomi session
     if (s && s.cmd === 'aw') return goStep(send, jid, msg, n);
     if (!s || s.cmd !== 'hv' || !s.items?.length) return send(jid, { text: HV_USAGE }, { quoted: msg });
     const pick = s.items[n - 1];
@@ -451,6 +455,7 @@ async function epGo(send, jid, msg, n, download) {
     gcSessions();
     const s = sessions.get(jid);
     if (s && s.cmd === 'hv') return hvGo(send, jid, msg, n, download);   // manual .ep go on hv session → route right
+    if (s && s.cmd === 'hm') return hmGo(send, jid, msg, n, download);   // v2.81: …on hitomi session
     if (s && s.cmd === 'aw') return goStep(send, jid, msg, n);
     if (!s || s.cmd !== 'ep' || !s.items?.length) return send(jid, { text: EP_USAGE }, { quoted: msg });
     const pick = s.items[n - 1];
@@ -472,6 +477,243 @@ async function epGo(send, jid, msg, n, download) {
             return;
         }
     } catch (e) { return fail(st, send, jid, msg, e, null, 'Eporner'); }
+}
+
+// ───────── 🔞 .hentaimng/.hmanga — hitomi.la (h2owater425/node-hitomi → in-bot port) ─────────
+// title search = galleriesindex B-tree: sha256(word)[0..4) keys, 464-byte nodes (keys → data
+// [addr,len] → 17 subnode addrs), id blocks in galleries.{ver}.data (big-endian int32).
+// nozomi files = binary id lists, byte-range reads. gg.js gives the EPHEMERAL image base dir
+// (`b: '1792465201/'` — rotates!) + subdomain bit → image URLs live for hours, not forever
+// → gg.js cached 10 min + 1 force-refresh retry on image 403/404. Images are WEBP-only
+// (hitomi dropped jpeg serving) — sent as WhatsApp image messages (webp renders fine).
+// tagindex.hitomi.la = CF-walled from datacenter IPs (live 2026-10-20) → tag suggest skipped.
+const HM_RES = 'ltn.gold-usergeneratedcontent.net';
+const HM_REF = 'https://hitomi.la';
+const HM_URL = 'https://hitomi.la/galleries/';
+const PG_CAP = 50;                                        // max pages per gallery send (anti-flood)
+const HM_DELAY = parseInt(process.env.ARENA_HM_DELAY || '1200', 10);   // pacing between page sends (antiban)
+const crypto = require('crypto');
+
+const hmReq = async (path, { range, timeout = 25000 } = {}) => {
+    const headers = { referer: HM_REF, 'user-agent': UA, accept: '*/*' };
+    if (range) headers.range = 'bytes=' + range;
+    const r = await fetch('https://' + HM_RES + path, { headers, signal: AbortSignal.timeout(timeout) });
+    if (r.status !== 200 && r.status !== 206) throw new Error('HTTP ' + r.status + ' @ ' + path.slice(0, 60));
+    return Buffer.from(await r.arrayBuffer());
+};
+
+/** gg.js → { codes:Set, o, b } — b: is the rotating epoch base dir (verified live 2026-10-20) */
+let hmCtx = null;
+async function hmImageCtx(force) {
+    if (!force && hmCtx && Date.now() - hmCtx.at < 10 * 60e3) return hmCtx;
+    const s = (await hmReq('/gg.js')).toString();
+    const codes = new Set();
+    let ci = 0;
+    while ((ci = s.indexOf('case ', ci) + 5) !== 4) {
+        const ni = s.indexOf(':', ci);
+        if (ni === -1) break;
+        const code = +s.slice(ci, ni);
+        if (Number.isInteger(code)) codes.add(code);
+    }
+    const oi = s.indexOf('var o = ');
+    const o = oi === -1 ? 0 : +s.slice(oi + 8, s.indexOf(';', oi));
+    const bi = s.lastIndexOf("b: '") + 4;
+    const b = bi === 3 ? '' : s.slice(bi, s.indexOf("'", bi));
+    if (!codes.size || !b) throw new Error('gg.js parse fail');
+    hmCtx = { codes, o: o || 0, b, at: Date.now() };
+    return hmCtx;
+}
+
+/** full-size webp URL (real_full_path_from_hash + gg.js context — node-hitomi Image.resolveUrl port) */
+async function hmImageUrl(hash) {
+    const c = await hmImageCtx(false);
+    const code = parseInt(hash.slice(-1) + hash.slice(-3, -1), 16);
+    const sub = 'w' + (c.codes.has(code) === !c.o ? '2' : '1');
+    return `https://${sub}.gold-usergeneratedcontent.net/${c.b}${code}/${hash}.webp`;
+}
+
+async function hmImageBuf(hash) {
+    for (let i = 0; i < 2; i++) {                 // retry 2: epoch dir may have rotated → force re-fetch gg.js
+        if (i) { hmCtx = null; }
+        try {
+            const url = await hmImageUrl(hash);
+            const r = await fetch(url, { headers: { referer: HM_REF, 'user-agent': UA }, signal: AbortSignal.timeout(45000) });
+            if (!r.ok) throw new Error('image HTTP ' + r.status);
+            return Buffer.from(await r.arrayBuffer());
+        } catch (e) { if (i) throw e; }
+    }
+}
+
+/** galleries/{id}.js (var galleryinfo = JSON) → normalized gallery */
+async function hmGallery(id) {
+    const s = (await hmReq('/galleries/' + id + '.js')).toString();
+    const g = JSON.parse(s.slice(s.indexOf('{')));
+    return {
+        id: +g.id, title: g.title || '', jp: g.japanese_title || '', type: g.type || '',
+        lang: g.language || '',
+        artists: (g.artists || []).map((a) => a.artist), groups: (g.groups || []).map((a) => a.group),
+        series: (g.parodys || []).map((a) => a.parody), chars: (g.characters || []).map((a) => a.character),
+        tags: (g.tags || []).map((t) => (t.female ? '♀ ' : t.male ? '♂ ' : '') + t.tag),
+        pages: (g.files || []).map((f) => ({ hash: f.hash, w: f.width, h: f.height })),
+        blocked: !!g.blocked, date: (g.date || '').slice(0, 10),
+    };
+}
+
+const hmCmp = (a, b) => { const n = Math.min(a.length, b.length); for (let i = 0; i < n; i++) { if (a[i] < b[i]) return -1; if (a[i] > b[i]) return 1; } return a.length - b.length; };
+
+/** 464-byte B-tree node → { ks:[Uint8Array], ds:[[addr,len]], ss:[17 addr] } (decode_node port) */
+function hmNode(buf) {
+    const dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+    const kc = dv.getInt32(0); let o = 4; const ks = [], ds = [], ss = [];
+    for (let i = 0; i < kc; i++) { const sz = dv.getInt32(o); o += 4; ks.push(new Uint8Array(buf.buffer, buf.byteOffset + o, sz)); o += sz; }
+    const dc = dv.getInt32(o); o += 4;
+    for (let i = 0; i < dc; i++) { ds.push([dv.getBigUint64(o), dv.getInt32(o + 8)]); o += 12; }
+    for (let i = 0; i < 17; i++) { ss.push(dv.getBigUint64(o)); o += 8; }
+    return { ks, ds, ss };
+}
+
+const HM_NODE_RE = /\bgalleries\.(\d+)\.index/;   // test/hooks: index node url version capture
+
+/** one word → int32 ids from galleries.{ver}.data (binarySearch port: sha256(word)[0..4) keys) */
+async function hmTermIds(version, word, root) {
+    const key = crypto.createHash('sha256').update(word).digest().subarray(0, 4);
+    const hit = await (async function walk(node) {
+        let i = 0, c = -1;
+        for (; i < node.ks.length && (c = hmCmp(key, node.ks[i])) === 1; i++);
+        if (c === 0) return node.ds[i];
+        const sub = node.ss[i];
+        if (!sub || !node.ss.some(Boolean)) return null;
+        return walk(hmNode(await hmReq(`/galleriesindex/galleries.${version}.index`, { range: sub + '-' + (sub + 463n) })));
+    })(root);
+    if (!hit || hit[1] < 8) return [];   // len = 4-byte count prefix + ≥1 int32 id → <8 = empty
+    const buf = await hmReq(`/galleriesindex/galleries.${version}.data`, { range: (hit[0] + 4n) + '-' + (hit[0] + BigInt(hit[1]) - 1n) });
+    const ids = [];
+    for (let i = 0; i + 4 <= buf.byteLength; i += 4) ids.push(buf.readInt32BE(i));
+    return ids;
+}
+
+const hmNozomiIds = async (path) => {
+    const buf = await hmReq(path);
+    const ids = [];
+    for (let i = 0; i + 4 <= buf.byteLength; i += 4) ids.push(buf.readInt32BE(i));
+    return ids;
+};
+
+/** query → ordered gallery ids (newest first). plain words → B-tree AND; type:name → nozomi AND;
+ *  bare → /n/index-all.nozomi first 30 (latest) */
+async function hmSearch(q) {
+    const words = String(q || '').toLowerCase().trim().split(/\s+/).filter(Boolean);
+    const plain = [], tags = [];
+    for (const w of words) {
+        const m = /^(artist|group|series|parody|character|male|female|tag):(.+)$/.exec(w);
+        if (m && m[2]) tags.push({ type: m[1] === 'parody' ? 'series' : m[1], name: m[2].replace(/_/g, ' ') });
+        else plain.push(w);
+    }
+    let order = null;
+    if (plain.length) {
+        const ver = (await hmReq('/galleriesindex/version')).toString().trim();
+        const root = hmNode(await hmReq(`/galleriesindex/galleries.${ver}.index`, { range: '0-463' }));
+        const sets = [];
+        for (const w of plain) sets.push(new Set(await hmTermIds(ver, w, root)));
+        order = [...sets[0]];
+        for (let i = 1; i < sets.length; i++) order = order.filter((id) => sets[i].has(id));
+    }
+    if (tags.length) {
+        const tsets = [];
+        for (const t of tags) {
+            const area = (t.type === 'male' || t.type === 'female') ? 'tag/' + t.type + ':' : t.type + '/';
+            tsets.push(new Set(await hmNozomiIds(`/n/${area}${encodeURIComponent(t.name)}-all.nozomi`)));
+        }
+        if (order) order = order.filter((id) => tsets.every((s) => s.has(id)));
+        else { order = [...tsets[0]]; for (let i = 1; i < tsets.length; i++) order = order.filter((id) => tsets[i].has(id)); }
+    }
+    if (!order) order = await hmNozomiIds('/n/index-all.nozomi').then((a) => a.slice(0, 30));
+    return order.slice(0, 30);
+}
+
+/** ids → ≤10 non-blocked gallery metas (parallel info fetch) */
+async function hmList(q) {
+    const ids = await hmSearch(q);
+    const metas = await Promise.allSettled(ids.map((id) => hmGallery(id)));
+    return metas.filter((m) => m.status === 'fulfilled' && m.value && !m.value.blocked).map((m) => m.value).slice(0, 10);
+}
+
+const hmMeta = (g) => [g.type, g.lang, g.pages.length + 'p'].filter(Boolean).join(' · ');
+const hmSearchCard = (q, list) => `🔞 *Hitomi — "${cut(q || 'latest', 40)}"*\n\n` +
+    list.map((g, i) => `*${i + 1}.* ${cut(g.title || g.jp, 70)}\n    _${hmMeta(g)}${g.artists.length ? ' · ' + g.artists.slice(0, 2).join(', ') : ''}_`).join('\n') +
+    `\n\nManga එකක් තෝරන්න — මේ message එකට *අංකය reply* කරන්න\n${foot('18+ only · hitomi.la · මිනිත්තු 10 ඇතුලත reply කරන්න')}`;
+const hmGalleryCard = (g) => `🔞 *${cut(g.title || g.jp, 60)}*\n` +
+    (g.jp && g.jp !== g.title ? `_${cut(g.jp, 60)}_\n` : '') +
+    (g.artists.length ? `👩 ${g.artists.join(', ')}\n` : '') +
+    `📚 ${g.type || '?'} · 🌐 ${g.lang || '?'} · 📄 ${g.pages.length} pages\n` +
+    (g.series.length ? `📺 ${g.series.join(', ')}\n` : '') +
+    (g.tags.length ? `🏷 ${g.tags.slice(0, 8).join(', ')}\n` : '') +
+    (g.date ? `📅 ${g.date}\n` : '') +
+    `\n*1* — pages ටික එවන්න (උපරිම ${PG_CAP})\n*2* — link එක විතරයි\n\n${foot('18+ only · hitomi.la · මිනිත්තු 10 ඇතුලත reply කරන්න')}`;
+const HM_USAGE = `🔞 *.hentaimng <name / tag>* — hitomi.la manga pages\n\nඋදා: \`.hentaimng naruto\`\n     \`.hmanga artist:shindol\` · \`.hmanga\` (අලුත්ම 10)\n\n${foot('search → cover → pages → images · alias .hmanga · 18+ only')}`;
+
+async function handleHM(send, jid, msg, arg, react, download) {
+    const arg0 = (arg || '').trim();
+    if (/^go\s+\d{1,3}$/i.test(arg0)) return hmGo(send, jid, msg, parseInt(arg0.split(/\s+/)[1], 10), download);
+    gcSessions();
+    const st = await status(send, jid, msg, 'Hitomi');
+    try {
+        const list = await hmList(arg0);
+        if (!list.length) return done(st, send, jid, msg, `❌ *"${cut(arg0 || 'latest', 40)}"* හොයාගන්න බැරි වුණා (hitomi.la)\n\n${foot('අඩු වචන වලින් try කරන්න — උදා: .hmanga naruto')}`, react);
+        sessions.set(jid, { cmd: 'hm', stage: 'search', items: list.map((g) => ({ label: g.title || g.jp, id: g.id })), title: arg0, at: Date.now(), cardId: null });
+        return done(st, send, jid, msg, hmSearchCard(arg0, list), react);
+    } catch (e) { return fail(st, send, jid, msg, e, 'hitomi.la slow වෙලා', 'Hitomi'); }
+}
+
+async function hmGo(send, jid, msg, n, download) {
+    gcSessions();
+    const s = sessions.get(jid);
+    if (s && s.cmd === 'hv') return hvGo(send, jid, msg, n, download);   // manual .hmanga go on hv session → route right
+    if (s && s.cmd === 'ep') return epGo(send, jid, msg, n, download);
+    if (s && s.cmd === 'aw') return goStep(send, jid, msg, n);
+    if (!s || s.cmd !== 'hm' || !s.items?.length) return send(jid, { text: HM_USAGE }, { quoted: msg });
+    const pick = s.items[n - 1];
+    if (!pick) return send(jid, { text: `❌ ${n} කියන අංකේ නෑ — list එකේ අංකයක් එවන්න (1-${s.items.length})` }, { quoted: msg });
+    const st = await status(send, jid, msg, 'Hitomi');
+    try {
+        if (s.stage === 'search') {
+            await st.edit('🔎 Gallery එක බලනවා...');
+            const g = await hmGallery(pick.id);
+            if (g.blocked) throw new Error('මේ gallery එක hitomi විසින් block කරලා');
+            if (!g.pages.length) throw new Error('pages නෑ');
+            const cap = hmGalleryCard(g);
+            let m = null;
+            try { m = await send(jid, { image: await hmImageBuf(g.pages[0].hash), caption: cap }, { quoted: msg }); } catch { m = await send(jid, { text: cap }, { quoted: msg }); }
+            sessions.set(jid, { cmd: 'hm', stage: 'gallery', items: [{ label: 'pages' }, { label: 'link' }], title: g.title || g.jp || s.title, gallery: g, at: Date.now(), cardId: (m && m.key && m.key.id) || null });
+            await st.del().catch(() => { });
+            try { if (react) react('✅'); } catch { }
+            return m;
+        }
+        if (s.stage === 'gallery') {
+            const g = s.gallery;
+            if (n === 2) {
+                try { sessions.delete(jid); } catch { }
+                await st.del().catch(() => { });
+                return send(jid, { text: `🔞 *${cut(g.title || g.jp, 60)}*\n🌐 ${HM_URL}${g.id}.html\n\n${foot('browser එකෙන් open කරන්න · 18+ only')}` }, { quoted: msg });
+            }
+            const total = g.pages.length;
+            const pages = g.pages.slice(0, PG_CAP);
+            await st.edit(`⏳ Pages ${pages.length} එවනවා... ටිකක් වෙලා යනවා`);
+            let sentN = 0;
+            for (let i = 0; i < pages.length; i++) {
+                try {
+                    const buf = await hmImageBuf(pages[i].hash);
+                    const pcap = i === 0 ? `📖 ${cut(g.title || g.jp, 60)} — 1/${total}` : ((i + 1) % 10 === 0 ? `📖 ${i + 1}/${total}` : undefined);
+                    await send(jid, { image: buf, ...(pcap ? { caption: pcap } : {}) }, i === 0 ? { quoted: msg } : undefined);
+                    sentN++;
+                } catch { /* skip broken page */ }
+                await new Promise((r) => setTimeout(r, HM_DELAY));
+            }
+            try { sessions.delete(jid); } catch { }
+            await st.del().catch(() => { });
+            return send(jid, { text: `✅ *${cut(g.title || g.jp, 50)}* — pages ${sentN}/${total} එවුණා${total > PG_CAP ? `\n_⚠️ gallery එක ${total} pages — පළවෙනි ${PG_CAP} විතරයි. ඉතුරු ටික: ${HM_URL}${g.id}.html_` : ''}\n\n${foot('18+ only · hitomi.la')}` }, { quoted: msg });
+        }
+    } catch (e) { return fail(st, send, jid, msg, e, null, 'Hitomi'); }
 }
 
 // ───────── cards ─────────
@@ -509,6 +751,7 @@ async function handle(c, ctx) {
     if (c === '.aniworld' || c === '.aw') return handleAW(send, jid, msg, rest.join(' ').trim(), react);
     if (c === '.hentaiv') return handleHV(send, jid, msg, rest.join(' ').trim(), react, download);   // 🔞 v2.76 quality menu flow
     if (c === '.ep' || c === '.eporner') return handleEP(send, jid, msg, rest.join(' ').trim(), react, download);   // 🔞 v2.80 eporner API v2 flow
+    if (c === '.hentaimng' || c === '.hmanga') return handleHM(send, jid, msg, rest.join(' ').trim(), react, download);   // 🔞 v2.81 hitomi manga pages
     const nsfw = NEKO_TYPES[c];
     if (nsfw) {
         await react?.('🔞');
@@ -529,6 +772,7 @@ async function handleAW(send, jid, msg, arg, react) {
         const nAW = parseInt(arg0.split(/\s+/)[1], 10);
         if (s && s.cmd === 'hv') return hvGo(send, jid, msg, nAW, null);   // manual .aniworld go while hv session live → route right
         if (s && s.cmd === 'ep') return epGo(send, jid, msg, nAW, null);   // v2.80: …while eporner session live
+        if (s && s.cmd === 'hm') return hmGo(send, jid, msg, nAW, null);   // v2.81: …while hitomi session live
         return goStep(send, jid, msg, nAW);
     }
     if (!arg0) return send(jid, { text: AW_USAGE }, { quoted: msg });
@@ -571,6 +815,7 @@ async function goStep(send, jid, msg, n) {
     if (!s || !s.items?.length) return send(jid, { text: AW_USAGE }, { quoted: msg });
     if (s.cmd === 'hv') return hvGo(send, jid, msg, n, null);   // safety: never run AW logic on a hentaiv session
     if (s.cmd === 'ep') return epGo(send, jid, msg, n, null);   // safety: never run AW logic on an eporner session
+    if (s.cmd === 'hm') return hmGo(send, jid, msg, n, null);   // safety: never run AW logic on a hitomi session
     const pick = s.items[n - 1];
     if (!pick) return send(jid, { text: `❌ ${n} කියන අංකේ නෑ — list එකේ තියෙන අංකයක් එවන්න (1-${s.items.length})` }, { quoted: msg });
     const st = await status(send, jid, msg);
@@ -637,7 +882,7 @@ function bridge(jid, qid, digits) {
     const d = parseInt(digits, 10);
     if (!Number.isFinite(d) || d < 1) return null;
     if (qid && s.cardId && String(qid) !== String(s.cardId)) return null;   // 🔒 reply-only: card එකට ම quote කරලා එන්න ඕන
-    return (s.cmd === 'hv' ? '.hentaiv go ' : s.cmd === 'ep' ? '.ep go ' : '.aniworld go ') + d;
+    return (s.cmd === 'hv' ? '.hentaiv go ' : s.cmd === 'ep' ? '.ep go ' : s.cmd === 'hm' ? '.hentaimng go ' : '.aniworld go ') + d;
 }
 
 module.exports = {
@@ -647,6 +892,7 @@ module.exports = {
     resolveRedirect, vidmolyHls, doodMp4, nekobot, LANGS, TTL,
     searchWH, searchWHFromHtml, epsWH, epsWHFromHtml, qualitiesWH, whDecodeMediaUrl,
     searchEP, qualitiesEP, epCalcHash, epVideoId,
-    _cards: { searchCard, seasonsCard, epsCard, linksCard, hvSearchCard, hvEpsCard, hvQCard, epSearchCard, epQCard },
+    hmGallery, hmSearch, hmList, hmImageUrl, hmImageBuf, hmImageCtx, hmNode, hmTermIds, hmNozomiIds, hmCmp, _hmCtx: () => hmCtx,
+    _cards: { searchCard, seasonsCard, epsCard, linksCard, hvSearchCard, hvEpsCard, hvQCard, epSearchCard, epQCard, hmSearchCard, hmGalleryCard },
     _reset: () => sessions.clear(),
 };
