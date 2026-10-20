@@ -292,6 +292,50 @@ function reportSpam(sock, sender, key) {
     });
 }
 
+// ── v2.78: REPORT VERIFICATION — the in-app dialog ('Thank you for reporting') only shows when the
+// phone's own WhatsApp sends the report. Server-side IQ reports never show a dialog — so the ONLY
+// way to know they land is to TEST the stanza and log the server's answer.
+const logReport = (e) => { state.reportsLog.unshift(e); if (state.reportsLog.length > 15) state.reportsLog.length = 15; saveState(); };
+
+/** .antibug reporttest — stanza handshake: 1 self-report (owner's own chat = harmless no-op). ACCEPT = path works */
+async function reportTest(ctx) {
+    const { sock, me, log = () => { } } = ctx;
+    if (!sock || !me?.pn) return '❌ connection නෑ — පොඩ්ඩකින් ආයෙ try කරන්න';
+    const key = { remoteJid: me.pn, id: '3EB0' + Math.random().toString(16).slice(2, 10).toUpperCase(), fromMe: true };
+    try {
+        await reportSpam(sock, me.pn, key);
+        logReport({ at: Date.now(), who: 'TEST(self)', want: 1, ok: 1, fails: 0, aborted: false, err: '', blockedNow: false, kind: 'test' });
+        log('antibug reporttest: ACCEPTED');
+        return ['╭─❖ 🧪 *REPORT TEST* ❖', '│ ✅ stanza ACCEPTED — server එක ගත්තා', '│ (self-report = no-op — කිසිම දෙයක් වෙන්නේ නෑ)', '│', '╰─ ඒ කියන්නේ severe bug එකක් ආවොත් auto-report ×N ලෑන්ඩ් වෙනවා ✅'].join('\n');
+    } catch (e) {
+        const err = String(e.message || '').slice(0, 140);
+        logReport({ at: Date.now(), who: 'TEST(self)', want: 1, ok: 0, fails: 1, aborted: true, err, blockedNow: false, kind: 'test' });
+        log('antibug reporttest: REJECTED — ' + err);
+        return ['╭─❖ 🧪 *REPORT TEST* ❖', `│ ❌ stanza REJECTED: ${err}`, '│ (මේක තමයි report ලෑන්ඩ් වෙන්නේ නැති නිසා — WhatsApp server මේ format එක දැන් ගන්නේ නෑ)', '╰─ ⛔ block එක තමයි guaranteed protection එක — ඒක දැනටමත් ON'].join('\n');
+    }
+}
+
+/** .antibug report (message එකකට reply) — owner manual report of a REAL received message (in-app button එකම) */
+async function reportManual(quoted, ctx) {
+    const { sock, me, log = () => { } } = ctx;
+    if (!sock || !me?.pn) return '❌ connection නෑ';
+    const q = quoted || {};
+    if (!q.stanzaId || !(q.participantJid || q.participant)) return '❌ report කරන්න ඕන message එකකට *reply* කරලා `.antibug report` ගහන්න';
+    const sender = q.participantJid || q.participant;
+    const key = { remoteJid: q.remoteJid || me.pn, id: q.stanzaId, fromMe: false };
+    try {
+        await reportSpam(sock, sender, key);
+        logReport({ at: Date.now(), who: 'MANUAL:' + String(sender).split('@')[0], want: 1, ok: 1, fails: 0, aborted: false, err: '', blockedNow: false, kind: 'manual' });
+        log('antibug manual report → ' + sender);
+        return ['╭─❖ 🚨 *REPORT SENT* ❖', `│ 👤 ${String(sender).split('@')[0]}`, '│ ✅ යවා දුන්නා (official report call එකම)', '╰─ WhatsApp එක decide කරනවා ඒකෙන් මොකද වෙන්නේ කියලා'].join('\n');
+    } catch (e) {
+        const err = String(e.message || '').slice(0, 140);
+        logReport({ at: Date.now(), who: 'MANUAL:' + String(sender).split('@')[0], want: 1, ok: 0, fails: 1, aborted: true, err, blockedNow: false, kind: 'manual' });
+        return `❌ report fail: ${err}\n\n${foot0()}`;
+    }
+}
+const foot0 = () => '🛡️ .antibug reporttest එකෙන් stanza path එක check කරන්න පුළුවන්';
+
 let retalPauseUntil = 0;      // v2.55: server keeps rejecting reports → 1h pause (protects OUR account from flag-storms)
 
 /**
@@ -460,7 +504,8 @@ function scanText() {
     const rl = state.reportsLog[0];
     if (rl) {
         const verdict = rl.ok > 0 ? `🚀 report ${rl.ok}/${rl.want} ලෑන්ඩ් වුණා ✅` : rl.want === 0 ? '⏳ budget ඉවර' : `❌ report 0/${rl.want} — server reject${rl.err ? ': ' + rl.err.slice(0, 60) : ''}`;
-        out.push(`│ 📨 last: ${whenStr(rl.at)} · ${rl.who} → ${verdict}${rl.blockedNow ? ' · ⛔ block ✅' : ''}`);
+        const kindTag = rl.kind === 'test' ? ' 🧪TEST' : rl.kind === 'manual' ? ' 🚨MANUAL' : '';
+        out.push(`│ 📨 last: ${whenStr(rl.at)} · ${rl.who}${kindTag} → ${verdict}${rl.blockedNow ? ' · ⛔ block ✅' : ''}`);
     } else out.push('│ 📨 last: — (report කවදාවත් fire වෙලා නෑ)');
     // persistent catches (survive restarts) — newest first
     const rows = state.catches.slice(0, 10).map((e) =>
@@ -571,9 +616,11 @@ async function command(arg, arg2) {
         '├─ *.antibug block on / off*',
         '├─ *.antibug clearchat yes* — මේ chat එකම clear (bug වැදලා clear වෙන්නේ නැත්නම්)',
         '├─ *.antibug unblock all* — block කරපු ඔක්කොම unblock (recover)',
-        '├─ *.antibug scan* — recently caught bugs',
+        '├─ *.antibug reporttest* — 🧪 report path එක live test (self-report, no-op)',
+        '├─ *.antibug report* — 🚨 bug message එකකට reply → manual report',
+        '├─ *.antibug scan* — recently caught bugs + report evidence',
         '├─ *.antibug test* — crasher-payload self-test',
         '╰─ Bug → delete + report (24h budget) → block · යන messages ඔක්කොම sanitize'].join('\n');
 }
 
-module.exports = { detect, guard, command, cfg, setCfg, floodCheck, selfTest, reportSpam, retaliate, startRetaliate, sanitizeOut, cleanOut, clearChat, unblockAll, lockedDown, noteSevere, reportBudget, L, _flood: flood, _blocked: blocked, _recent: recent, _retalRunning: retalRunning, _retaliated: retaliated, _state: state, _resetPause: () => { retalPauseUntil = 0; } };
+module.exports = { detect, guard, command, cfg, setCfg, floodCheck, selfTest, reportSpam, reportTest, reportManual, retaliate, startRetaliate, sanitizeOut, cleanOut, clearChat, unblockAll, lockedDown, noteSevere, reportBudget, L, _flood: flood, _blocked: blocked, _recent: recent, _retalRunning: retalRunning, _retaliated: retaliated, _state: state, _resetPause: () => { retalPauseUntil = 0; } };

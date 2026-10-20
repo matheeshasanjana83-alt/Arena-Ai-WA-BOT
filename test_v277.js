@@ -22,9 +22,9 @@ const BUG_MSG = () => ({ conversation: 'x'.repeat(13000) });   // text >12000 �
     process.on('exit', () => { try { if (STATE_SNAP === null) fs.rmSync(STATE_F, { force: true }); else fs.writeFileSync(STATE_F, STATE_SNAP); } catch { } });   // restore real state after tests
 
     console.log('— v2.77.0 pins + evidence exports —');
-    ok('version 2.77.0', () => {
-        assert.strictEqual(pkg.version, '2.77.0');
-        assert.strictEqual(manifest.version, '2.77.0');
+    ok('version pins (2.77/2.78 era)', () => {
+        assert.ok(['2.77.0', '2.78.0'].includes(pkg.version), 'pkg: ' + pkg.version);
+        assert.ok(['2.77.0', '2.78.0'].includes(manifest.version), 'manifest: ' + manifest.version);
         assert.ok(manifest.notes.includes('ANTIBUG EVIDENCE'));
     });
     ok('state has catches + reportsLog arrays', () => {

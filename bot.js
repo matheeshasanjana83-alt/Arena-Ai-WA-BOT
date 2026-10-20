@@ -365,6 +365,16 @@ async function onMessages({ messages, type }, send, del = async () => { }) {
                         await send(jid, { text: out.length ? `🔓 Unblock කළා: ${out.join(', ')}` : 'මේ session එකේ block කරපු කෙනෙක් නෑ' }, { quoted: msg });
                         continue;
                     }
+                    if (sub === 'reporttest') {                                       // 🧪 v2.78: report stanza live handshake (self-report no-op)
+                        await send(jid, { text: await antibug.reportTest({ sock: SOCK, me: ME, log }) }, { quoted: msg });
+                        continue;
+                    }
+                    if (sub === 'report') {                                           // 🚨 v2.78: manual report — bug message එකකට reply → official report call
+                        const ci = msg.message?.extendedTextMessage?.contextInfo;
+                        const quoted = ci ? { stanzaId: ci.stanzaId, participantJid: ci.participantJid, participant: ci.participant, remoteJid: ci.remoteJid } : null;
+                        await send(jid, { text: await antibug.reportManual(quoted, { sock: SOCK, me: ME, log }) }, { quoted: msg });
+                        continue;
+                    }
                     await send(jid, { text: await antibug.command(rest[0], rest[1]) }, { quoted: msg });
                     continue;
                 }
