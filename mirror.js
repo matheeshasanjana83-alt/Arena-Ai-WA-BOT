@@ -54,7 +54,8 @@ async function upTransfer(bufOrPath, name) {
     });
     const t = (await r.text()).trim();
     if (!/^https?:\/\//.test(t)) throw new Error('transfer HTTP ' + r.status + ' ' + t.slice(0, 60));
-    return { url: t, host: 'transfer', days: 7 };
+    const del = r.headers.get('x-url-delete') || null;
+    return { url: t, host: 'transfer', days: 7, del };
 }
 
 /** Buffer → best host (qu.ax 30d first, transfer fallback) */

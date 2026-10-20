@@ -176,6 +176,26 @@ async function cmdToUrl(send, jid, msg, args, react) {
     return send(jid, { text: `🔗 ${r.url}\n${foot(`${(buf.length / 1048576).toFixed(1)} MB · ${r.days}d · ${r.host} · public`)}` }, { quoted: msg });
 }
 
+// ───────── media → transfer.archivete.am link (.uploadtra — v2.82) ─────────
+async function cmdUploadTra(send, jid, msg, args, react) {
+    const m = mediaOf(msg);
+    if (!m) return send(jid, { text: `📤 media එකකට reply කරලා *.uploadtra*\n${foot('photo · video · audio · file → transfer.archivete.am 🔗')}` }, { quoted: msg });
+    const st = await send(jid, { text: '📤 transfer upload…' }, { quoted: msg });
+    const edit = async (t) => { try { await send(jid, { text: t, edit: st.key }); } catch { } };
+    try {
+        const buf = await mediaDownloader(m.src);
+        if (!buf || !buf.length) throw new Error('media එක හිස්');
+        const mm = m.src.message[m.kind + 'Message'] || {};
+        const base = (mm.fileName && path.basename(mm.fileName)) || ('kaviz-' + Date.now().toString(36) + ({ image: '.jpg', video: '.mp4', sticker: '.webp', audio: '.mp3' }[m.kind] || '.bin'));
+        await edit(`📤 ${(buf.length / 1048576).toFixed(1)} MB upload…`);
+        const r = await mirror.upTransfer(buf, base);
+        react?.('✅');
+        return await edit(`🔗 ${r.url}\n${foot(`${(buf.length / 1048576).toFixed(1)} MB · ~${r.days}d · transfer.archivete.am${r.del ? '\n🗑️ delete: ' + r.del : ''}`)}`);
+    } catch (e) {
+        return await edit(`❌ upload fail: ${String(e.message || e).slice(0, 140)}\n> ආයෙත් try කරන්න, නැත්නම් *.tourl* (qu.ax host එක)`);
+    }
+}
+
 // ───────── URL → mirror link (අනිත් bots වල /dl link UX එක) ─────────
 async function cmdMirror(send, jid, msg, args, react) {
     const u = (args.join(' ').match(URL_RE) || [])[0];
@@ -312,7 +332,7 @@ function cmd8ball(send, jid, msg, args) {
     return send(jid, { text: `🎱 _${args.join(' ').slice(0, 200)}_\n\n${BALL[Math.floor(Math.random() * BALL.length)]}` }, { quoted: msg });
 }
 
-const CMDS = { '.tts': cmdTts, '.say': cmdTts, '.stt': cmdStt, '.totext': cmdStt, '.tr': cmdTr, '.translate': cmdTr, '.weather': cmdWeather, '.lyrics': cmdLyrics, '.toimg': cmdToImg, '.tourl': cmdToUrl, '.url': cmdToUrl, '.mirror': cmdMirror, '.link': cmdMirror, '.ss': cmdSs, '.qr': cmdQr, '.short': cmdShort, '.calc': cmdCalc, '.github': cmdGithub, '.imagine': cmdImagine, '.img': cmdImagine, '.joke': cmdJoke, '.fact': cmdFact, '.quote': cmdQuote, '.8ball': cmd8ball, '.del': null, '.delete': null, '.setpp': null };
+const CMDS = { '.tts': cmdTts, '.say': cmdTts, '.stt': cmdStt, '.totext': cmdStt, '.tr': cmdTr, '.translate': cmdTr, '.weather': cmdWeather, '.lyrics': cmdLyrics, '.toimg': cmdToImg, '.tourl': cmdToUrl, '.url': cmdToUrl, '.uploadtra': cmdUploadTra, '.mirror': cmdMirror, '.link': cmdMirror, '.ss': cmdSs, '.qr': cmdQr, '.short': cmdShort, '.calc': cmdCalc, '.github': cmdGithub, '.imagine': cmdImagine, '.img': cmdImagine, '.joke': cmdJoke, '.fact': cmdFact, '.quote': cmdQuote, '.8ball': cmd8ball, '.del': null, '.delete': null, '.setpp': null };
 
 async function handle(c, { send, jid, msg, rest, sock, me, react }) {
     if (!(c in CMDS)) return false;
