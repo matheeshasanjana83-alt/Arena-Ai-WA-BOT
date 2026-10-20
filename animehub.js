@@ -9,6 +9,9 @@
  *      .hentai · .hneko · .hmidriff · .pgif — 18+ disclaimers on every result
  *      v2.79 FIX: .hentaiv episode menu — Dooplay ul.episodios single-quoted hrefs now parsed
  *      (title → episode menu → quality menu; single-episode still auto-jumps straight to quality)
+ * 🔞 v2.80: .ep/.eporner — Eporner OFFICIAL public API v2 (github.com/eporner/API, keyless JSON)
+ *      search → video → quality menu (page hash → site's own calcHash → /xhr/video/<id> → cdn mp4)
+ *      ⚠️ CDN ETIMEDOUTs without Referer (verified 2026-10-20) — resolvers rule sends it.
  * No new deps: global fetch (undici) only. Sessions = same quote-reply grammar as moviedex.
  */
 const { foot, cut } = require('./style');
@@ -330,6 +333,8 @@ async function handleHV(send, jid, msg, arg, react, download) {
 async function hvGo(send, jid, msg, n, download) {
     gcSessions();
     const s = sessions.get(jid);
+    if (s && s.cmd === 'ep') return epGo(send, jid, msg, n, download);   // v2.80: manual .hentaiv go on eporner session → route right
+    if (s && s.cmd === 'aw') return goStep(send, jid, msg, n);
     if (!s || s.cmd !== 'hv' || !s.items?.length) return send(jid, { text: HV_USAGE }, { quoted: msg });
     const pick = s.items[n - 1];
     if (!pick) return send(jid, { text: `❌ ${n} කියන අංකේ නෑ — list එකේ අංකයක් එවන්න (1-${s.items.length})` }, { quoted: msg });
@@ -363,6 +368,110 @@ async function hvGo(send, jid, msg, n, download) {
             return;
         }
     } catch (e) { return fail(st, send, jid, msg, e); }
+}
+
+// ───────── 🔞 .ep — Eporner (official public API v2 · github.com/eporner/API) ─────────
+// search API (JSON, keyless) → video page → 32-hex hash → site's own calcHash (4× 8-hex chunks → base36)
+// → /xhr/video/<id>?hash=… → sources.mp4 {label:{src}} → quality menu (HEAD sizes) → direct cdn mp4.
+// ⚠️ CDN (vid-*-cdn.eporner.com) ETIMEDOUTs requests WITHOUT Referer (live-verified 2026-10-20 —
+// that, not datacenter-IP blocking, was the old v2.19 'residential proxy needed' failure).
+// resolvers.js *.eporner.com rule already sends Referer 'https://www.eporner.com/' → downloader.
+const EP_API = 'https://www.eporner.com/api/v2/video';
+const EP_REF = 'https://www.eporner.com/';
+
+/** site's own hash scheme: 32-hex → 4× 8-hex chunks → each parsed as hex, re-encoded base36, concatenated */
+function epCalcHash(s) {
+    const chars = '0123456789abcdefghijklmnopqrstuvwxyz';
+    let out = '';
+    for (let lb = 0; lb < 32; lb += 8) {
+        let num = parseInt(s.slice(lb, lb + 8), 16), res = num === 0 ? '0' : '';
+        while (num > 0) { res = chars[num % 36] + res; num = Math.floor(num / 36); }
+        out += res;
+    }
+    return out;
+}
+const epVideoId = (pageUrl) => (/eporner\.com\/(?:video-|hd-porn\/|embed\/)([A-Za-z0-9]+)/.exec(pageUrl || '') || [])[1] || '';
+
+const epHuman = (n) => !n ? '0' : n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? (n / 1e3).toFixed(1) + 'K' : String(n);
+
+/** API v2 search → [{id,title,url,len,views}] (keyless; order top-weekly) */
+async function searchEP(q) {
+    const r = await get(`${EP_API}/search/?query=${encodeURIComponent(q)}&per_page=10&thumbsize=big&order=top-weekly&format=json`, { referer: EP_REF });
+    if (!r.ok) throw new Error('Eporner API HTTP ' + r.status);
+    const j = await r.json();
+    return (j.videos || []).slice(0, 10).map((v) => ({ id: v.id, title: String(v.title || '').trim(), url: v.url, len: v.length_min || '', views: v.views || 0 })).filter((x) => x.title && x.url);
+}
+
+/** video page → hash → xhr → [{label, src, bytes}] (best first). Labels = xhr keys ("1080p HD"…"240p") */
+async function qualitiesEP(pageUrl) {
+    const html = await getText(pageUrl, { referer: EP_REF });
+    const id = epVideoId(pageUrl);
+    const raw = (/hash\s*[:=]\s*['"]([a-f0-9]{32})['"]/i.exec(html) || [])[1];
+    if (!id || !raw) throw new Error('video hash හොයාගන්න බැරි වුණා');
+    const title = stripEnt((/property="og:title"\s+content="([^"]+)"/.exec(html) || [])[1] || '');
+    const xr = await get(`https://www.eporner.com/xhr/video/${id}?hash=${epCalcHash(raw)}&device=generic&domain=www.eporner.com&fallback=false`, { referer: pageUrl });
+    const xj = await xr.json();
+    if (xj.available === false) throw new Error(xj.message || 'video එක available නෑ');
+    const mp4 = (xj.sources && xj.sources.mp4) || {};
+    const sources = [];
+    for (const [label, info] of Object.entries(mp4)) if (info && info.src && /^https?:\/\//.test(info.src)) sources.push({ label: String(label), src: info.src });
+    if (!sources.length) throw new Error('video sources හොයාගන්න බැරි වුණා');
+    // sizes (HEAD, parallel, 6s cap) — CDN drops no-referer probes
+    await Promise.allSettled(sources.map(async (s) => {
+        try { const r = await get(s.src, { referer: EP_REF, method: 'HEAD', timeout: 6000 }); s.bytes = parseInt(r.headers.get('content-length') || '0', 10) || 0; } catch { s.bytes = 0; }
+    }));
+    sources.sort((a, b) => (b.bytes || 0) - (a.bytes || 0));
+    return { title, sources };
+}
+
+const epSearchCard = (q, list) => `🔞 *Eporner — "${cut(q, 40)}"*\n\n` +
+    list.map((x, i) => `*${i + 1}.* ${x.title}\n    _${x.len || '?'} · ${epHuman(x.views)} views_`).join('\n') +
+    `\n\nVideo එකක් තෝරන්න — මේ message එකට *අංකය reply* කරන්න\n${foot('18+ only · eporner.com · මිනිත්තු 10 ඇතුලත reply කරන්න')}`;
+const epQCard = (title, list) => `🔞 *${cut(title, 60)}*\n\nquality එක තෝරන්න — *අංකය reply* කරන්න:\n\n` +
+    list.map((x, i) => `*${i + 1}.* ${x.label}  (${humanMB(x.bytes)})`).join('\n') +
+    `\n\n${foot('තෝරාගත්තම file එක WhatsApp එකට එවනවා · 18+ only')}`;
+const EP_USAGE = `🔞 *.ep <query>* — eporner.com video + quality menu\n\nඋදා: \`.ep sakamoto days\`\n\n${foot('search → video → quality → file · alias .eporner · 18+ only')}`;
+
+async function handleEP(send, jid, msg, arg, react, download) {
+    const arg0 = (arg || '').trim();
+    if (/^go\s+\d{1,3}$/i.test(arg0)) return epGo(send, jid, msg, parseInt(arg0.split(/\s+/)[1], 10), download);
+    if (!arg0) return send(jid, { text: EP_USAGE }, { quoted: msg });
+
+    gcSessions();
+    const st = await status(send, jid, msg, 'Eporner');
+    try {
+        const list = await searchEP(arg0);
+        if (!list.length) return done(st, send, jid, msg, `❌ *"${cut(arg0, 40)}"* හොයාගන්න බැරි වුණා (eporner.com)\n\n${foot('අඩු වචන වලින් try කරන්න — උදා: .ep hentai parody')}`, react);
+        sessions.set(jid, { cmd: 'ep', stage: 'search', items: list.map((x) => ({ label: x.title, url: x.url, title: x.title })), title: arg0, at: Date.now(), cardId: null });
+        return done(st, send, jid, msg, epSearchCard(arg0, list), react);
+    } catch (e) { return fail(st, send, jid, msg, e, 'eporner API slow වෙලා', 'Eporner'); }
+}
+
+async function epGo(send, jid, msg, n, download) {
+    gcSessions();
+    const s = sessions.get(jid);
+    if (s && s.cmd === 'hv') return hvGo(send, jid, msg, n, download);   // manual .ep go on hv session → route right
+    if (s && s.cmd === 'aw') return goStep(send, jid, msg, n);
+    if (!s || s.cmd !== 'ep' || !s.items?.length) return send(jid, { text: EP_USAGE }, { quoted: msg });
+    const pick = s.items[n - 1];
+    if (!pick) return send(jid, { text: `❌ ${n} කියන අංකේ නෑ — list එකේ අංකයක් එවන්න (1-${s.items.length})` }, { quoted: msg });
+    const st = await status(send, jid, msg, 'Eporner');
+    try {
+        if (s.stage === 'search') {
+            await st.edit('🔎 Qualities හොයනවා...');
+            const { title, sources } = await qualitiesEP(pick.url);
+            sessions.set(jid, { cmd: 'ep', stage: 'quality', items: sources, title: title || pick.title || s.title, at: Date.now(), cardId: null });
+            return done(st, send, jid, msg, epQCard(title || pick.title || s.title, sources), null);
+        }
+        if (s.stage === 'quality') {
+            await st.edit(`⏳ ${pick.label} download වෙනවා... file එක ලොකු නම් වෙලා යනවා`);
+            const cap = `🔞 *${cut(s.title, 60)}* — ${pick.label}`;
+            if (typeof download === 'function') await download(pick.src, '🔞 Eporner', cap);
+            else await send(jid, { text: `🔞 *${cut(s.title, 60)}* — ${pick.label}\n${pick.src}\n\n${foot('18+ · eporner CDN — browser/1DM වලින් download කරන්න')}` }, { quoted: msg });
+            try { sessions.delete(jid); } catch { }
+            return;
+        }
+    } catch (e) { return fail(st, send, jid, msg, e, null, 'Eporner'); }
 }
 
 // ───────── cards ─────────
@@ -399,6 +508,7 @@ async function handle(c, ctx) {
     const { send, jid, msg, rest, react, download } = ctx;
     if (c === '.aniworld' || c === '.aw') return handleAW(send, jid, msg, rest.join(' ').trim(), react);
     if (c === '.hentaiv') return handleHV(send, jid, msg, rest.join(' ').trim(), react, download);   // 🔞 v2.76 quality menu flow
+    if (c === '.ep' || c === '.eporner') return handleEP(send, jid, msg, rest.join(' ').trim(), react, download);   // 🔞 v2.80 eporner API v2 flow
     const nsfw = NEKO_TYPES[c];
     if (nsfw) {
         await react?.('🔞');
@@ -416,8 +526,10 @@ async function handleAW(send, jid, msg, arg, react) {
     if (/^go\s+\d{1,3}$/i.test(arg0)) {
         gcSessions();
         const s = sessions.get(jid);
-        if (s && s.cmd === 'hv') return hvGo(send, jid, msg, parseInt(arg0.split(/\s+/)[1], 10), null);   // manual .aniworld go while hv session live → route right
-        return goStep(send, jid, msg, parseInt(arg0.split(/\s+/)[1], 10));
+        const nAW = parseInt(arg0.split(/\s+/)[1], 10);
+        if (s && s.cmd === 'hv') return hvGo(send, jid, msg, nAW, null);   // manual .aniworld go while hv session live → route right
+        if (s && s.cmd === 'ep') return epGo(send, jid, msg, nAW, null);   // v2.80: …while eporner session live
+        return goStep(send, jid, msg, nAW);
     }
     if (!arg0) return send(jid, { text: AW_USAGE }, { quoted: msg });
 
@@ -458,6 +570,7 @@ async function goStep(send, jid, msg, n) {
     const s = sessions.get(jid);
     if (!s || !s.items?.length) return send(jid, { text: AW_USAGE }, { quoted: msg });
     if (s.cmd === 'hv') return hvGo(send, jid, msg, n, null);   // safety: never run AW logic on a hentaiv session
+    if (s.cmd === 'ep') return epGo(send, jid, msg, n, null);   // safety: never run AW logic on an eporner session
     const pick = s.items[n - 1];
     if (!pick) return send(jid, { text: `❌ ${n} කියන අංකේ නෑ — list එකේ තියෙන අංකයක් එවන්න (1-${s.items.length})` }, { quoted: msg });
     const st = await status(send, jid, msg);
@@ -495,8 +608,8 @@ const epTitle = async (url) => {
 };
 
 // status bubble (self-edits, deletes) — moviedex/features pattern
-async function status(send, jid, msg) {
-    const s = await send(jid, { text: '🌐 AniWorld බලනවා...' }, { quoted: msg });
+async function status(send, jid, msg, label = 'AniWorld') {
+    const s = await send(jid, { text: '🌐 ' + label + ' බලනවා...' }, { quoted: msg });
     return {
         key: s.key,
         edit: async (t) => { try { await send(jid, { text: t, edit: s.key }); } catch { } },
@@ -511,9 +624,9 @@ async function done(st, send, jid, msg, text, react) {
     try { if (react) react('✅'); } catch { }
     return m;
 }
-function fail(st, send, jid, msg, e, extra) {
+function fail(st, send, jid, msg, e, extra, label) {
     try { st.del(); } catch { }
-    return send(jid, { text: `❌ AniWorld error — ${extra || cut(e.message, 90)}\n\n${foot('ආයෙ try කරන්න — site එක slow උනොත් මේක එනවා')}` }, { quoted: msg });
+    return send(jid, { text: `❌ ${label || 'AniWorld'} error — ${extra || cut(e.message, 90)}\n\n${foot('ආයෙ try කරන්න — site එක slow උනොත් මේක එනවා')}` }, { quoted: msg });
 }
 
 /** numeric quote bridge — bot.js chain: apkMenuBridge → ytMenuBridge → moviedex.bridgeReply → animehub.bridge */
@@ -524,7 +637,7 @@ function bridge(jid, qid, digits) {
     const d = parseInt(digits, 10);
     if (!Number.isFinite(d) || d < 1) return null;
     if (qid && s.cardId && String(qid) !== String(s.cardId)) return null;   // 🔒 reply-only: card එකට ම quote කරලා එන්න ඕන
-    return (s.cmd === 'hv' ? '.hentaiv go ' : '.aniworld go ') + d;
+    return (s.cmd === 'hv' ? '.hentaiv go ' : s.cmd === 'ep' ? '.ep go ' : '.aniworld go ') + d;
 }
 
 module.exports = {
@@ -533,6 +646,7 @@ module.exports = {
     _sessions: sessions, searchAW, seasonsOf, episodesOf, providersOf, providersFromHtml, resolveEpisode,
     resolveRedirect, vidmolyHls, doodMp4, nekobot, LANGS, TTL,
     searchWH, searchWHFromHtml, epsWH, epsWHFromHtml, qualitiesWH, whDecodeMediaUrl,
-    _cards: { searchCard, seasonsCard, epsCard, linksCard, hvSearchCard, hvEpsCard, hvQCard },
+    searchEP, qualitiesEP, epCalcHash, epVideoId,
+    _cards: { searchCard, seasonsCard, epsCard, linksCard, hvSearchCard, hvEpsCard, hvQCard, epSearchCard, epQCard },
     _reset: () => sessions.clear(),
 };
