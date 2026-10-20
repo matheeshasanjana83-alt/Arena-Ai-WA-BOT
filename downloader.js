@@ -116,6 +116,9 @@ function planRanges(total, max = PAR_MAX, chunkMin = PAR_CHUNK) {
     return parts;
 }
 
+// 🍪 v2.84 TeraBox dlink → resolve() attaches { cookie: 'ndus=…' } → every request carries it
+const tbx = (r, extra) => ({ ...(r.cookie ? { Cookie: r.cookie } : {}), ...(extra || {}) });
+
 async function downloadParallel(r, ua, dest, total, onProgress) {
     const parts = planRanges(total);
     const fd = fs.openSync(dest, 'w'); fs.closeSync(fd);   // preallocate (sparse)
@@ -126,7 +129,7 @@ async function downloadParallel(r, ua, dest, total, onProgress) {
     const idle = setInterval(() => { if (Date.now() - lastData > PAR_IDLE) { dead = true; } }, 5000);
     try {
         await Promise.all(parts.map(async ([s, e]) => {
-            const res = await httpGet(r.url, ua, r.referer, { Range: `bytes=${s}-${e}` });
+            const res = await httpGet(r.url, ua, r.referer, tbx(r, { Range: `bytes=${s}-${e}` }));
             if (res.status !== 206) { try { await res.body?.cancel(); } catch { } throw fail(`HTTP ${res.status} (206 ඕනේ)`); }
             const ws = fs.createWriteStream(dest, { flags: 'r+', start: s });
             const src = Readable.fromWeb(res.body);   // ⚠️ undici fetch body = WEB stream (.on නෑ) — fromWeb ඕනේ
@@ -153,7 +156,7 @@ async function downloadHttp(r, dest, onProgress, allowStream) {
     let res, ct, goodUa = UA_BROWSER;
     // try browser UA, then curl UA (some hosts give a "warning page" to browsers, e.g. filebin)
     for (const ua of [UA_BROWSER, UA_CURL]) {
-        res = await httpGet(r.url, ua, r.referer);
+        res = await httpGet(r.url, ua, r.referer, tbx(r));
         ct = (res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
         if (res.ok && ct !== 'text/html') { goodUa = ua; break; }
         if (res.ok && ct === 'text/html' && r.drive) {
@@ -176,7 +179,7 @@ async function downloadHttp(r, dest, onProgress, allowStream) {
     if (total >= PAR_MIN && !/bytes/i.test(res.headers.get('accept-ranges') || '')) {
         // some real CDNs answer 206 WITHOUT advertising accept-ranges (thinkbroadband, OVH…) → cheap 1-byte probe
         try {
-            const p = await httpGet(r.url, goodUa, r.referer, { Range: 'bytes=0-0' });
+            const p = await httpGet(r.url, goodUa, r.referer, tbx(r, { Range: 'bytes=0-0' }));
             if (p.status === 206) res.headers.set('accept-ranges', 'bytes');
             try { await p.body?.cancel(); } catch { }
         } catch { }
@@ -188,7 +191,7 @@ async function downloadHttp(r, dest, onProgress, allowStream) {
             try { await res.body?.cancel(); } catch { }
             try { const size = await downloadParallel(r, goodUa, dest, total, onProgress); return { name, size, mime }; }
             catch { /* fall through — fresh single GET below */ }
-            const retry = await httpGet(r.url, goodUa, r.referer);
+            const retry = await httpGet(r.url, goodUa, r.referer, tbx(r));
             if (retry.ok) { res = retry; ct = (res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase(); }
             else { try { await retry.body?.cancel(); } catch { } throw new Error(`server එකෙන් ${retry.status} ආවා (link එක expire වෙලා / private / වැරදියි)`); }   // original body එක cancel කරලා ඉවරයි → retry fail නම් clear error
         }
@@ -243,4 +246,4 @@ async function download(link, onProgress, { stream = false } = {}) {
     }
 }
 
-module.exports = { explainNetErr, download, human, maxBytes, maxMB, freeDisk, WA_MAX_MB, planRanges, downloadParallel, PAR_MIN, PAR_CHUNK, PAR_MAX, get MAX_BYTES() { return maxBytes(); } };
+module.exports = { explainNetErr, download, human, maxBytes, maxMB, freeDisk, WA_MAX_MB, planRanges, downloadParallel, PAR_MIN, PAR_CHUNK, PAR_MAX, _httpGet: httpGet, get MAX_BYTES() { return maxBytes(); } };

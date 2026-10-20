@@ -89,6 +89,12 @@ async function resolve(raw) {
     if (host.endsWith('hstorage.xyz') || host.endsWith('watchhentai.net'))
         return { kind: 'http', url: raw, referer: 'https://watchhentai.net/' };
 
+    // ── TeraBox (v2.84 .terabox) — dlink URLs need the owner's ndus cookie header ──
+    if (/^(?:[\w-]+\.)*(?:terabox\.app|terabox\.com|teraboxshare\.com|1024terabox\.com|teraboxlink\.com|4funbox\.com|mirrobox\.com|nephobox\.com)$/i.test(host)) {
+        const ndus = require('./terabox').readNdus();
+        return { kind: 'http', url: raw, ...(ndus ? { cookie: 'ndus=' + ndus } : {}) };
+    }
+
     // ── everything else: treat as direct link ──
     return { kind: 'http', url: raw };
 }
