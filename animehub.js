@@ -338,6 +338,7 @@ async function hvGo(send, jid, msg, n, download) {
     const s = sessions.get(jid);
     if (s && s.cmd === 'ep') return epGo(send, jid, msg, n, download);   // v2.80: manual .hentaiv go on eporner session → route right
     if (s && s.cmd === 'hm') return hmGo(send, jid, msg, n, download);   // v2.81: …on hitomi session
+    if (s && s.cmd === 'jv') return jvGo(send, jid, msg, n, download);   // v2.83: …on javbus session
     if (s && s.cmd === 'aw') return goStep(send, jid, msg, n);
     if (!s || s.cmd !== 'hv' || !s.items?.length) return send(jid, { text: HV_USAGE }, { quoted: msg });
     const pick = s.items[n - 1];
@@ -456,6 +457,7 @@ async function epGo(send, jid, msg, n, download) {
     const s = sessions.get(jid);
     if (s && s.cmd === 'hv') return hvGo(send, jid, msg, n, download);   // manual .ep go on hv session → route right
     if (s && s.cmd === 'hm') return hmGo(send, jid, msg, n, download);   // v2.81: …on hitomi session
+    if (s && s.cmd === 'jv') return jvGo(send, jid, msg, n, download);   // v2.83: …on javbus session
     if (s && s.cmd === 'aw') return goStep(send, jid, msg, n);
     if (!s || s.cmd !== 'ep' || !s.items?.length) return send(jid, { text: EP_USAGE }, { quoted: msg });
     const pick = s.items[n - 1];
@@ -670,6 +672,7 @@ async function hmGo(send, jid, msg, n, download) {
     const s = sessions.get(jid);
     if (s && s.cmd === 'hv') return hvGo(send, jid, msg, n, download);   // manual .hmanga go on hv session → route right
     if (s && s.cmd === 'ep') return epGo(send, jid, msg, n, download);
+    if (s && s.cmd === 'jv') return jvGo(send, jid, msg, n, download);   // v2.83: …on javbus session
     if (s && s.cmd === 'aw') return goStep(send, jid, msg, n);
     if (!s || s.cmd !== 'hm' || !s.items?.length) return send(jid, { text: HM_USAGE }, { quoted: msg });
     const pick = s.items[n - 1];
@@ -716,6 +719,143 @@ async function hmGo(send, jid, msg, n, download) {
     } catch (e) { return fail(st, send, jid, msg, e, null, 'Hitomi'); }
 }
 
+// ───────── 🔞 .javdn — JavBus search → detail → magnets (javbus.com, v2.83; in-bot port of ovnrain/javbus-api as used by jtl1207/JavBusDownloader) ─────────
+const JV_URL = 'https://www.javbus.com';
+const JV_MAG_CAP = 8;                                     // magnets shown per card
+const jvH = () => ({ 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.114 Safari/537.36', 'accept-language': 'zh-CN,zh;q=0.9,en;q=0.7', Cookie: 'existmag=mag' });
+const jvStrip = (s) => (s || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+const jvBytes = (sz) => { const m = /([\d.]+)\s*(TB|GB|MB|KB)/i.exec(sz || ''); return m ? Math.round(parseFloat(m[1]) * { TB: 1099511627776, GB: 1073741824, MB: 1048576, KB: 1024 }[m[2].toUpperCase()]) : null; };
+
+async function jvSearch(q) {
+    const r = await fetch(JV_URL + '/search/' + encodeURIComponent(q) + '/1&type=1', { headers: jvH(), signal: AbortSignal.timeout(20000) });
+    if (!r.ok) throw new Error('javbus HTTP ' + r.status);
+    const html = await r.text();
+    const out = [];
+    for (const it of html.split('<div class="item">').slice(1)) {
+        const id = /<a class="movie-box" href="https:\/\/www\.javbus\.com\/([^"?\/]+)"/.exec(it)?.[1];
+        if (!id) continue;
+        const title = /<div class="photo-frame">\s*<img src="[^"]*"\s+title="([^"]*)"/.exec(it)?.[1] || '';
+        const dates = [...it.matchAll(/<date>\s*([^<]+?)\s*<\/date>/g)].map((x) => x[1]);
+        out.push({ id, title: title || id, date: dates[1] || null, hd: /高清/.test(it), sub: /字幕/.test(it) });
+        if (out.length >= 10) break;
+    }
+    return out;
+}
+
+async function jvDetail(id) {
+    const r = await fetch(JV_URL + '/' + encodeURIComponent(id), { headers: jvH(), signal: AbortSignal.timeout(20000) });
+    if (!r.ok) throw new Error('javbus HTTP ' + r.status);
+    const html = await r.text();
+    const title = jvStrip(/<h3>([\s\S]*?)<\/h3>/.exec(html)?.[1]) || id;
+    const imgRaw = /<a class="bigImage" href="([^"]+)"/.exec(html)?.[1] || null;
+    const img = imgRaw ? (/^https?:/.test(imgRaw) ? imgRaw : JV_URL + imgRaw) : null;
+    const seg = (label) => { const m = new RegExp('<span class="header">' + label + '<\\/span>([\\s\\S]*?)<\\/p>').exec(html); return m ? jvStrip(m[1]) : null; };
+    const date = seg('發行日期:') || null;
+    const length = parseInt(/(\d+)/.exec(seg('長度:') || '')?.[1] || '', 10) || null;
+    const producer = seg('製作商:') || null;
+    const uniq = (arr) => arr.filter((v, i, a) => v && a.indexOf(v) === i);
+    const stars = uniq([...html.matchAll(/<a href="(?:https:\/\/www\.javbus\.com)?\/star\/[^"]+"[^>]*>([^<]+)<\/a>/g)].map((x) => x[1].trim()));
+    const genres = uniq([...html.matchAll(/<a href="(?:https:\/\/www\.javbus\.com)?\/genre\/[^"]+"[^>]*>([^<]+)<\/a>/g)].map((x) => x[1].trim()));
+    const gid = /var gid = (\d+);/.exec(html)?.[1] || null;
+    const uc = /var uc = (\d+);/.exec(html)?.[1] || null;
+    return { id, title, img, date, length, producer, stars, genres, gid, uc };
+}
+
+async function jvMagnets(id, gid, uc) {
+    if (!gid) return [];
+    const r = await fetch(JV_URL + '/ajax/uncledatoolsbyajax.php?lang=zh&gid=' + gid + '&uc=' + (uc || '0'), { headers: { ...jvH(), Referer: JV_URL + '/' + encodeURIComponent(id) }, signal: AbortSignal.timeout(20000) });
+    if (!r.ok) throw new Error('javbus HTTP ' + r.status);
+    const html = await r.text();
+    const out = [];
+    for (const m of html.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g)) {
+        const row = m[1];
+        const link = /magnet:\?xt=urn:btih:[0-9A-Za-z]+(?:&dn=[^"'\s<>]*)?/.exec(row)?.[0];
+        if (!link) continue;
+        const tds = [...row.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map((x) => x[1]);
+        const t0 = tds[0] || row;
+        const t0c = t0.replace(/<a(?![^>]*magnet:)[^>]*>[\s\S]*?<\/a>/g, ' ');   // drop tag anchors (高清/字幕) — nested or sibling
+        const title = jvStrip(/href="magnet:[^"]*"[^>]*>([\s\S]*?)<\/a>/.exec(t0c)?.[1]) || jvStrip(t0c.replace(/<a[^>]*>[\s\S]*?<\/a>/g, ' ')) || id;
+        const size = jvStrip(tds[1]) || null;
+        out.push({ link, title, size, numberSize: jvBytes(size), date: jvStrip(tds[2]) || null, hd: /高清/.test(t0), sub: /字幕/.test(t0) });
+        if (out.length >= 30) break;
+    }
+    return out;
+}
+
+async function jvCover(url) {
+    const r = await fetch(url, { headers: { 'User-Agent': jvH()['User-Agent'], Referer: JV_URL + '/' }, signal: AbortSignal.timeout(20000) });
+    if (!r.ok) throw new Error('cover HTTP ' + r.status);
+    return Buffer.from(await r.arrayBuffer());
+}
+
+const jvSearchCard = (q, list) => `🔞 *JavBus — "${cut(q || '', 40)}"*\n\n` +
+    list.map((m, i) => `*${i + 1}.* ${m.id}${m.date ? ' · ' + m.date : ''}${m.hd ? ' · HD' : ''}${m.sub ? ' · 字幕' : ''}\n    _${cut(m.title, 76)}_`).join('\n') +
+    `\n\nඑකක් තෝරන්න — මේ message එකට *අංකය reply* කරන්න\n${foot('18+ only · javbus.com · මිනිත්තු 10 ඇතුලත reply කරන්න')}`;
+const jvDetailCard = (d, mags) => `🔞 *${d.id}*\n_${cut(d.title, 84)}_\n` +
+    (d.date ? `📅 ${d.date}${d.length ? ' · ⏱ ' + d.length + ' min' : ''}\n` : '') +
+    (d.stars.length ? `👩 ${d.stars.slice(0, 4).join(', ')}\n` : '') +
+    (d.producer ? `🏢 ${d.producer}\n` : '') +
+    (d.genres.length ? `🏷 ${d.genres.slice(0, 8).join(', ')}\n` : '') +
+    `\n*1* — 🧲 magnets ටික (ගාන ${mags ? mags.length : '?'} · උපරිම ${JV_MAG_CAP})\n*2* — javbus link එක විතරයි\n\n${foot('18+ only · javbus.com · මිනිත්තු 10 ඇතුලත reply කරන්න')}`;
+const jvMagnetCard = (d, mags) => `🧲 *${d.id}* — magnets\n\n` +
+    (mags || []).slice(0, JV_MAG_CAP).map((m, i) => `*${i + 1}.* ${m.size || '?'}${m.hd ? ' · HD' : ''}${m.sub ? ' · 字幕' : ''}${m.date ? ' · ' + m.date : ''}\n\`${m.link}\``).join('\n\n') +
+    `\n\n${foot('torrent client එකකට magnet link එක paste කරන්න · 18+ only')}`;
+const JV_USAGE = `🔞 *.javdn <code / නම>* — JavBus magnets\n\nඋදා: \`.javdn SSIS-001\`\n     \`.javdn SSIS\` · \`.javdn 葵つかさ\`\n\n${foot('search → cover+details → magnets/link · 18+ only')}`;
+
+async function handleJV(send, jid, msg, arg, react, download) {
+    const arg0 = (arg || '').trim();
+    if (/^go\s+\d{1,3}$/i.test(arg0)) return jvGo(send, jid, msg, parseInt(arg0.split(/\s+/)[1], 10), download);
+    gcSessions();
+    const st = await status(send, jid, msg, 'JavBus');
+    try {
+        const list = await jvSearch(arg0);
+        if (!list.length) return done(st, send, jid, msg, `❌ *"${cut(arg0, 40)}"* හොයාගන්න බැරි වුණා (javbus.com)\n\n${foot('code එකක් හෝ නමක් try කරන්න — උදා: .javdn SSIS-001')}`, react);
+        sessions.set(jid, { cmd: 'jv', stage: 'search', items: list.map((m) => ({ label: m.id, id: m.id })), title: arg0, at: Date.now(), cardId: null });
+        return done(st, send, jid, msg, jvSearchCard(arg0, list), react);
+    } catch (e) { return fail(st, send, jid, msg, e, 'javbus.com slow වෙලා', 'JavBus'); }
+}
+
+async function jvGo(send, jid, msg, n, download) {
+    gcSessions();
+    const s = sessions.get(jid);
+    if (s && s.cmd === 'hv') return hvGo(send, jid, msg, n, download);   // manual .javdn go on hv session → route right
+    if (s && s.cmd === 'ep') return epGo(send, jid, msg, n, download);
+    if (s && s.cmd === 'hm') return hmGo(send, jid, msg, n, download);
+    if (s && s.cmd === 'aw') return goStep(send, jid, msg, n);
+    if (!s || s.cmd !== 'jv' || !s.items?.length) return send(jid, { text: JV_USAGE }, { quoted: msg });
+    const pick = s.items[n - 1];
+    if (!pick) return send(jid, { text: `❌ ${n} කියන අංකේ නෑ — list එකේ අංකයක් එවන්න (1-${s.items.length})` }, { quoted: msg });
+    const st = await status(send, jid, msg, 'JavBus');
+    try {
+        if (s.stage === 'search') {
+            await st.edit('🔎 Details බලනවා...');
+            const d = await jvDetail(pick.id);
+            if (!d.gid) throw new Error('gid හම්බුණේ නෑ (page එක වෙනස් වෙලා ඇති)');
+            const mags = await jvMagnets(pick.id, d.gid, d.uc);
+            const cap = jvDetailCard(d, mags);
+            let m = null;
+            try { m = await send(jid, { image: await jvCover(d.img), caption: cap }, { quoted: msg }); } catch { m = await send(jid, { text: cap }, { quoted: msg }); }
+            sessions.set(jid, { cmd: 'jv', stage: 'gallery', items: [{ label: 'magnets' }, { label: 'link' }], title: d.id, detail: d, magnets: mags, at: Date.now(), cardId: (m && m.key && m.key.id) || null });
+            await st.del().catch(() => { });
+            try { if (react) react('✅'); } catch { }
+            return m;
+        }
+        if (s.stage === 'gallery') {
+            const d = s.detail;
+            if (n === 2) {
+                try { sessions.delete(jid); } catch { }
+                await st.del().catch(() => { });
+                return send(jid, { text: `🔞 *${d.id}*\n🌐 ${JV_URL}/${encodeURIComponent(d.id)}\n\n${foot('browser එකෙන් open කරන්න · 18+ only')}` }, { quoted: msg });
+            }
+            const mags = s.magnets || [];
+            try { sessions.delete(jid); } catch { }
+            await st.del().catch(() => { });
+            if (!mags.length) return send(jid, { text: `❌ magnets හම්බුණේ නෑ (${d.id})\n\n${foot('මේ එකට තාම magnets share වෙලා නෑ වෙන්න ඇති')}` }, { quoted: msg });
+            return send(jid, { text: jvMagnetCard(d, mags) }, { quoted: msg });
+        }
+    } catch (e) { return fail(st, send, jid, msg, e, null, 'JavBus'); }
+}
+
 // ───────── cards ─────────
 const searchCard = (q, list) => `🎌 *AniWorld — "${cut(q, 40)}"*\n\n` +
     list.map((x, i) => `*${i + 1}.* ${x.title}${x.desc ? '\n    _' + x.desc + '_' : ''}`).join('\n') +
@@ -752,6 +892,7 @@ async function handle(c, ctx) {
     if (c === '.hentaiv') return handleHV(send, jid, msg, rest.join(' ').trim(), react, download);   // 🔞 v2.76 quality menu flow
     if (c === '.ep' || c === '.eporner') return handleEP(send, jid, msg, rest.join(' ').trim(), react, download);   // 🔞 v2.80 eporner API v2 flow
     if (c === '.hentaimng' || c === '.hmanga') return handleHM(send, jid, msg, rest.join(' ').trim(), react, download);   // 🔞 v2.81 hitomi manga pages
+    if (c === '.javdn') return handleJV(send, jid, msg, rest.join(' ').trim(), react, download);   // 🔞 v2.83 javbus magnets
     const nsfw = NEKO_TYPES[c];
     if (nsfw) {
         await react?.('🔞');
@@ -773,6 +914,7 @@ async function handleAW(send, jid, msg, arg, react) {
         if (s && s.cmd === 'hv') return hvGo(send, jid, msg, nAW, null);   // manual .aniworld go while hv session live → route right
         if (s && s.cmd === 'ep') return epGo(send, jid, msg, nAW, null);   // v2.80: …while eporner session live
         if (s && s.cmd === 'hm') return hmGo(send, jid, msg, nAW, null);   // v2.81: …while hitomi session live
+        if (s && s.cmd === 'jv') return jvGo(send, jid, msg, nAW, null);   // v2.83: …while javbus session live
         return goStep(send, jid, msg, nAW);
     }
     if (!arg0) return send(jid, { text: AW_USAGE }, { quoted: msg });
@@ -816,6 +958,7 @@ async function goStep(send, jid, msg, n) {
     if (s.cmd === 'hv') return hvGo(send, jid, msg, n, null);   // safety: never run AW logic on a hentaiv session
     if (s.cmd === 'ep') return epGo(send, jid, msg, n, null);   // safety: never run AW logic on an eporner session
     if (s.cmd === 'hm') return hmGo(send, jid, msg, n, null);   // safety: never run AW logic on a hitomi session
+    if (s.cmd === 'jv') return jvGo(send, jid, msg, n, null);   // safety: never run AW logic on a javbus session
     const pick = s.items[n - 1];
     if (!pick) return send(jid, { text: `❌ ${n} කියන අංකේ නෑ — list එකේ තියෙන අංකයක් එවන්න (1-${s.items.length})` }, { quoted: msg });
     const st = await status(send, jid, msg);
@@ -882,7 +1025,7 @@ function bridge(jid, qid, digits) {
     const d = parseInt(digits, 10);
     if (!Number.isFinite(d) || d < 1) return null;
     if (qid && s.cardId && String(qid) !== String(s.cardId)) return null;   // 🔒 reply-only: card එකට ම quote කරලා එන්න ඕන
-    return (s.cmd === 'hv' ? '.hentaiv go ' : s.cmd === 'ep' ? '.ep go ' : s.cmd === 'hm' ? '.hentaimng go ' : '.aniworld go ') + d;
+    return (s.cmd === 'hv' ? '.hentaiv go ' : s.cmd === 'ep' ? '.ep go ' : s.cmd === 'hm' ? '.hentaimng go ' : s.cmd === 'jv' ? '.javdn go ' : '.aniworld go ') + d;
 }
 
 module.exports = {
@@ -893,6 +1036,7 @@ module.exports = {
     searchWH, searchWHFromHtml, epsWH, epsWHFromHtml, qualitiesWH, whDecodeMediaUrl,
     searchEP, qualitiesEP, epCalcHash, epVideoId,
     hmGallery, hmSearch, hmList, hmImageUrl, hmImageBuf, hmImageCtx, hmNode, hmTermIds, hmNozomiIds, hmCmp, _hmCtx: () => hmCtx,
-    _cards: { searchCard, seasonsCard, epsCard, linksCard, hvSearchCard, hvEpsCard, hvQCard, epSearchCard, epQCard, hmSearchCard, hmGalleryCard },
+    jvSearch, jvDetail, jvMagnets, jvCover, jvGo,
+    _cards: { searchCard, seasonsCard, epsCard, linksCard, hvSearchCard, hvEpsCard, hvQCard, epSearchCard, epQCard, hmSearchCard, hmGalleryCard, jvSearchCard, jvDetailCard, jvMagnetCard },
     _reset: () => sessions.clear(),
 };

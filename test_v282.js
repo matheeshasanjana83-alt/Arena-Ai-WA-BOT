@@ -38,8 +38,8 @@ const plainMsg = () => ({ key: { remoteJid: JID, id: 'A3', fromMe: true }, messa
 (async () => {
     console.log('— v2.82.0 pins —');
     ok('version + manifest', () => {
-        assert.ok(['2.81.0', '2.82.0'].includes(pkg.version), 'pkg ' + pkg.version);
-        assert.ok(['2.81.0', '2.82.0'].includes(manifest.version), 'manifest ' + manifest.version);
+        assert.ok(['2.81.0', '2.82.0', '2.83.0'].includes(pkg.version), 'pkg ' + pkg.version);
+        assert.ok(['2.81.0', '2.82.0', '2.83.0'].includes(manifest.version), 'manifest ' + manifest.version);
         assert.ok(/UPLOADTRA/i.test(manifest.notes), 'notes');
         assert.ok(manifest.files.includes('test_v282.js'), 'files');
     });

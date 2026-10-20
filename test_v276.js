@@ -29,8 +29,8 @@ const manifest = require('./manifest.json');
 
     console.log('— v2.76.0 .hentaiv: pins + structure —');
     ok('version 2.76/77 pins', () => {
-        assert.ok(['2.76.0', '2.77.0', '2.78.0', '2.79.0', '2.80.0', '2.81.0', '2.82.0'].includes(pkg.version), 'pkg: ' + pkg.version);
-        assert.ok(['2.76.0', '2.77.0', '2.78.0', '2.79.0', '2.80.0', '2.81.0', '2.82.0'].includes(manifest.version), 'manifest: ' + manifest.version);
+        assert.ok(['2.76.0', '2.77.0', '2.78.0', '2.79.0', '2.80.0', '2.81.0', '2.82.0', '2.83.0'].includes(pkg.version), 'pkg: ' + pkg.version);
+        assert.ok(['2.76.0', '2.77.0', '2.78.0', '2.79.0', '2.80.0', '2.81.0', '2.82.0', '2.83.0'].includes(manifest.version), 'manifest: ' + manifest.version);
         assert.ok(manifest.notes.includes('.hentaiv'));
         assert.ok(manifest.files.includes('animehub.js'));
     });
