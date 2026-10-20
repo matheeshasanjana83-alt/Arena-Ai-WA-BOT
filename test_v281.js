@@ -91,8 +91,8 @@ function hitomiMock({ galleries = {}, extraIndex = null, tagSets = {}, latest = 
 (async () => {
     console.log('— v2.81.0 .hentaimng/.hmanga: pins + structure —');
     ok('version 2.81 pins', () => {
-        assert.ok(['2.81.0','2.82.0', '2.83.0', '2.84.0', '2.85.0'].includes(pkg.version), 'pkg: ' + pkg.version);
-        assert.ok(['2.81.0','2.82.0', '2.83.0', '2.84.0', '2.85.0'].includes(manifest.version), 'manifest: ' + manifest.version);
+        assert.ok(['2.81.0','2.82.0', '2.83.0', '2.84.0', '2.85.0', '2.86.0'].includes(pkg.version), 'pkg: ' + pkg.version);
+        assert.ok(['2.81.0','2.82.0', '2.83.0', '2.84.0', '2.85.0', '2.86.0'].includes(manifest.version), 'manifest: ' + manifest.version);
         assert.ok(manifest.notes.includes('.hentaimng') && manifest.notes.includes('node-hitomi'), 'notes updated');
         assert.ok(manifest.files.includes('animehub.js') && manifest.files.includes('test_v281.js'), 'files listed');
     });

@@ -44,6 +44,7 @@ const tools = require('./tools');
 const moviedex = require('./moviedex');
 const animehub = require('./animehub');   // 🎌 v2.75 AniWorld + 🔞 NSFW (hentai-api style)
 const terabox = require('./terabox');   // ☁️ v2.84 TeraBox (jsToken → share/list → dlink)
+const metdn = require('./metdn');   // 🔞 v2.86 mat6tube (window.playlist → signed mp4)
 const antibug = require('./antibug');
 const antispam = require('./antispam');
 const { BRAND, foot, cut } = require('./style');
@@ -130,7 +131,7 @@ function getText(m) {
 
 const HELP = `*◈ KAVIZ MD V1 ◈* — commands
 
-📥 *.download <link>* (*.dl*) · *.mediafire* · *.mega* · *.gdrive* · *.terabox* · *.video* (yt) · *.song* (yt) · *.apk <app>*
+📥 *.download <link>* (*.dl*) · *.mediafire* · *.mega* · *.gdrive* · *.terabox* · *.metdn* · *.video* (yt) · *.song* (yt) · *.apk <app>*
 📥 *.mirror <link>* · *.gitclone user/repo*
 🍿 *.moviedex* <movie/series name> — movie & 📺 TV download
 🎬 *.yts* <නම> · *.song* <නම/link> — 🎧 M4A/MP3 menu · *.video* <නම/link> — 🎬 quality menu [2160..144]
@@ -432,6 +433,7 @@ async function onMessages({ messages, type }, send, del = async () => { }) {
                 if (await runJob(() => moviedex.handle(c, { send, jid, msg, rest, react }))) continue;
                 if (await runJob(() => animehub.handle(c, { send, jid, msg, rest, react, download: (link, tag) => dlQueue(() => handleDownload(send, jid, msg, link, tag)) }))) continue;   // 🎌 .aniworld + 🔞 .hentaiv (quality menu → file) + NSFW (v2.75/76)
                 if (await runJob(() => terabox.handle(c, { send, jid, msg, rest, react, download: (link, tag) => dlQueue(() => handleDownload(send, jid, msg, link, tag)) }))) continue;   // ☁️ .terabox (v2.84 — info card → file)
+                if (await runJob(() => metdn.handle(c, { send, jid, msg, rest, react, download: (link, tag) => dlQueue(() => handleDownload(send, jid, msg, link, tag)) }))) continue;   // 🔞 .metdn (v2.86 — mat6tube card → best mp4)
                 if (c === '.tbcookie') { await terabox.cmdCookie(send, jid, msg, rest.join(' ').trim()); continue; }   // 🔑 owner-only (v2.84)
 
                 // 🆕 v2.59: site-locked downloaders — .mediafire / .mega / .gdrive
@@ -479,7 +481,7 @@ const reactTo = (key, emoji) => {   // ⏳ → ✅/❌ pro-bot feedback (respect
     if (!reactOn() || !key?.id) return;
     try { SOCK?.sendMessage(key.remoteJid, { react: { text: emoji, key } }).catch(() => { }); } catch { }
 };
-const HEAVY = new Set(['.download', '.dl', '.dn', '.mediafire', '.mega', '.gdrive', '.moviedex', '.mdx', '.song', '.play', '.yta', '.video', '.ytv', '.yt', '.ytmenu', '.fb', '.facebook', '.faceboock', '.fbvid', '.ig', '.insta', '.x', '.twitter', '.tiktok', '.tt', '.mirror', '.link', '.tourl', '.url', '.uploadtra', '.gitclone', '.ai', '.ask', '.gpt', '.anime', '.manga', '.imagine', '.img', '.s', '.sticker', '.take', '.tts', '.say', '.stt', '.totext', '.ss', '.setcookies', '.setlogo', '.update', '.apk', '.app', '.apkdl', '.getdp', '.dp', '.pp', '.vv', '.viewonce', '.reveal', '.aniworld', '.aw', '.hentaiv', '.ep', '.eporner', '.hentaimng', '.hmanga', '.javdn', '.terabox', '.tbcookie']);
+const HEAVY = new Set(['.download', '.dl', '.dn', '.mediafire', '.mega', '.gdrive', '.moviedex', '.mdx', '.song', '.play', '.yta', '.video', '.ytv', '.yt', '.ytmenu', '.fb', '.facebook', '.faceboock', '.fbvid', '.ig', '.insta', '.x', '.twitter', '.tiktok', '.tt', '.mirror', '.link', '.tourl', '.url', '.uploadtra', '.gitclone', '.ai', '.ask', '.gpt', '.anime', '.manga', '.imagine', '.img', '.s', '.sticker', '.take', '.tts', '.say', '.stt', '.totext', '.ss', '.setcookies', '.setlogo', '.update', '.apk', '.app', '.apkdl', '.getdp', '.dp', '.pp', '.vv', '.viewonce', '.reveal', '.aniworld', '.aw', '.hentaiv', '.ep', '.eporner', '.hentaimng', '.hmanga', '.javdn', '.terabox', '.tbcookie', '.metdn']);
 // 🆕 v2.59: site-locked download commands — each one downloads ONLY its own site (menu: 📥 DOWNLOAD).
 // resolve() already scrapes all 3 hosts → router just validates the link + brands the progress bubble.
 const SITE_DL = {
@@ -510,13 +512,13 @@ async function handleReact(send, jid, msg, arg) {
 }
 
 const CATS = [
-    ['📥', 'Download', `*📥 DOWNLOAD*\n\n✦ *.download <link>* — file එක එවනවා (*.dl*)\n✦ *.mediafire <link>* — 🔥 MediaFire\n✦ *.mega <link>* — 🟢 MEGA\n✦ *.gdrive <link>* — 🔵 Google Drive\n✦ *.terabox <link>* — ☁️ TeraBox → file (cookie: *.tbcookie*)\n✦ *.video <link/නම>* — 🎬 YouTube quality menu (*.yt*)\n✦ *.song <link/නම>* — 🎧 YouTube audio menu (*.play*)\n✦ *.aniworld <anime>* — 🎌 AniWorld anime → season → episode → stream link (*.aw*)\n✦ *.apk <app නම / package / url>* — 📦 APK downloader\n✦ *.dl link1 link2* — links 5 දක්වා\n✦ *.mirror <link>* — 🔗 direct share link\n✦ *.gitclone user/repo* — repo → zip\n\n> 📏 max {MAX} / file · *.maxmb* වෙනස් කරන්න · ⚡ multi-connection fast download`],
+    ['📥', 'Download', `*📥 DOWNLOAD*\n\n✦ *.download <link>* — file එක එවනවා (*.dl*)\n✦ *.mediafire <link>* — 🔥 MediaFire\n✦ *.mega <link>* — 🟢 MEGA\n✦ *.gdrive <link>* — 🔵 Google Drive\n✦ *.terabox <link>* — ☁️ TeraBox → file (cookie: *.tbcookie*)\n✦ *.metdn <link>* — 🔞 mat6tube → details card → mp4 (18+)\n✦ *.video <link/නම>* — 🎬 YouTube quality menu (*.yt*)\n✦ *.song <link/නම>* — 🎧 YouTube audio menu (*.play*)\n✦ *.aniworld <anime>* — 🎌 AniWorld anime → season → episode → stream link (*.aw*)\n✦ *.apk <app නම / package / url>* — 📦 APK downloader\n✦ *.dl link1 link2* — links 5 දක්වා\n✦ *.mirror <link>* — 🔗 direct share link\n✦ *.gitclone user/repo* — repo → zip\n\n> 📏 max {MAX} / file · *.maxmb* වෙනස් කරන්න · ⚡ multi-connection fast download`],
     ['🎬', 'YouTube', `*🎬 YOUTUBE*\n\n✦ *.yts <නම>* — search\n✦ *.song <නම / link>* — 🎧 format menu — M4A / MP3 320 / 128 (*.play*)\n✦ *.video <නම / link>* — 🎬 quality menu — sizes එක්ක (*.yt*)\n✦ *.video <link> 1080* — instant pick (menu නැතුව)\n\n> menu card එකට අංකය *reply* කරන්න · 2160p → 144p`],
     ['🍿', 'MovieDex', `*🍿 MOVIEDEX* — movies + 📺 series\n\n✦ *.moviedex <නම>* — search (*.mdx*)\n✦ අංකය reply — card → options\n✦ *.moviedex <n> <q#>* — 🍿 movie file\n✦ series: season 🧳 pack files · episode 🎬 files\n✦ *.moviedex <n> <q#> link* — 🔗 share link\n\n> DASH 1080p/720p/480p · ffmpeg mux · *.maxmb* limit`],
     ['📱', 'Social', `*📱 SOCIAL*\n\n✦ *.tiktok <link>* — watermark නෑ (*.tt*)\n✦ *.fb <link>* — Facebook (*.facebook*)\n✦ *.ig <link>* — Instagram\n✦ *.x <link>* — X / Twitter`],
     ['🔍', 'Search', `*🔍 SEARCH*\n\n✦ *.wiki <මාතෘකාව>* — Wikipedia\n✦ *.wiki si <මාතෘකාව>* — සිංහල wiki\n✦ *.yts <නම>* — YouTube search`],
     ['🖼️', 'Sticker', `*🖼️ STICKER*\n\n✦ *.s* — photo/video reply → sticker\n✦ *.take Pack | Author* — නම වෙනස් කරන්න\n\n> video sticker — තත්පර 6 දක්වා`],
-    ['🛠️', 'Tools', `*🛠️ TOOLS*\n\n✦ *.tr <භාෂාව> <text>* — translate\n✦ *.remind <time> <note>* — ⏰ reminders\n✦ *.stt* — 🎙️ voice note → text\n✦ *.tts <text>* — voice (සිංහල OK)\n✦ *.weather <නගරය>* — කාලගුණය · දින 3\n✦ *.lyrics <සින්දුව>* — lyrics\n✦ *.imagine <විස්තරය>* — AI image\n✦ *.toimg* — sticker → photo\n✦ *.getdp <number>* — 🖼️ profile photo\n✦ *.vv* — 🕵️ view-once reveal\n✦ *.tourl* — media → 🔗 link\n✦ *.uploadtra* — file → 📤 transfer.archivete.am link (delete link එකත්)\n✦ *.ss <site>* · *.qr* · *.short* · *.calc*\n✦ *.github <user>* · *.del* · *.setpp*\n✦ *.hentai* · *.hneko* · *.hmidriff* · *.pgif* — 🔞 NSFW (18+ only)\n✦ *.hentaiv <name>* — 🔞 video + quality menu → file එක එවනවා (18+)\n✦ *.ep <query>* — 🔞 eporner video + quality menu → file (18+)\n✦ *.javdn <code>* — 🔞 javbus search → details → 🧲 magnet links (18+)
+    ['🛠️', 'Tools', `*🛠️ TOOLS*\n\n✦ *.tr <භාෂාව> <text>* — translate\n✦ *.remind <time> <note>* — ⏰ reminders\n✦ *.stt* — 🎙️ voice note → text\n✦ *.tts <text>* — voice (සිංහල OK)\n✦ *.weather <නගරය>* — කාලගුණය · දින 3\n✦ *.lyrics <සින්දුව>* — lyrics\n✦ *.imagine <විස්තරය>* — AI image\n✦ *.toimg* — sticker → photo\n✦ *.getdp <number>* — 🖼️ profile photo\n✦ *.vv* — 🕵️ view-once reveal\n✦ *.tourl* — media → 🔗 link\n✦ *.uploadtra* — file → 📤 transfer.archivete.am link (delete link එකත්)\n✦ *.ss <site>* · *.qr* · *.short* · *.calc*\n✦ *.github <user>* · *.del* · *.setpp*\n✦ *.hentai* · *.hneko* · *.hmidriff* · *.pgif* — 🔞 NSFW (18+ only)\n✦ *.hentaiv <name>* — 🔞 video + quality menu → file එක එවනවා (18+)\n✦ *.ep <query>* — 🔞 eporner video + quality menu → file (18+)\n✦ *.javdn <code>* — 🔞 javbus search → details → 🧲 magnet links (18+)\n✦ *.metdn <link>* — 🔞 mat6tube video → mp4 (18+)
 ✦ *.hentaimng <name>* — 🔞 hitomi manga → cover + pages images (18+)`],
     ['🎉', 'Fun', `*🎉 FUN*\n\n✦ *.joke* · *.fact* · *.quote*\n✦ *.8ball <ප්‍රශ්නය>* — 🎱`],
     ['👥', 'Group', `*👥 GROUP* — group එකේ ඔයා ගහන්න\n\n✦ *.groupinfo* · *.grouplink* · *.jid*\n✦ *.tagall [msg]* — විනාඩි 10 කට 1\n✦ *.kick @user* · *.promote* · *.demote*\n✦ *.mute* · *.unmute* · *.tagadmins* · *.resetlink*\n\n> @mention නැත්නම් message එකකට reply කරන්න`],
