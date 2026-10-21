@@ -19,8 +19,8 @@ const dnSrc = fs.readFileSync('./downloader.js', 'utf8');
 (async () => {
     console.log('— v2.85.0 pins —');
     ok('version + manifest + notes + wiring intact', () => {
-        assert.ok(['2.84.0', '2.85.0', '2.86.0'].includes(pkg.version), 'pkg ' + pkg.version);
-        assert.ok(['2.84.0', '2.85.0', '2.86.0'].includes(manifest.version), 'manifest ' + manifest.version);
+        assert.ok(['2.84.0', '2.85.0', '2.86.0', '2.87.0'].includes(pkg.version), 'pkg ' + pkg.version);
+        assert.ok(['2.84.0', '2.85.0', '2.86.0', '2.87.0'].includes(manifest.version), 'manifest ' + manifest.version);
         assert.ok(/FIREFOX/i.test(manifest.notes), 'notes mention Firefox');
         assert.ok(manifest.files.includes('terabox.js') && manifest.files.includes('test_v285.js'), 'files');
         assert.ok(/'\.terabox'/.test(botSrc) && /'\.tbcookie'/.test(botSrc), 'HEAVY lines');
