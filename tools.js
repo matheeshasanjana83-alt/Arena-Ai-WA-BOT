@@ -176,7 +176,7 @@ async function cmdToUrl(send, jid, msg, args, react) {
     return send(jid, { text: `🔗 ${r.url}\n${foot(`${(buf.length / 1048576).toFixed(1)} MB · ${r.days}d · ${r.host} · public`)}` }, { quoted: msg });
 }
 
-// ───────── media → transfer.archivete.am link (.uploadtra — v2.82) ─────────
+// ───────── media → transfer.archivete.am link (.uploadtra — v2.82, bounded v2.87) ─────────
 async function cmdUploadTra(send, jid, msg, args, react) {
     const m = mediaOf(msg);
     if (!m) return send(jid, { text: `📤 media එකකට reply කරලා *.uploadtra*\n${foot('photo · video · audio · file → transfer.archivete.am 🔗')}` }, { quoted: msg });
@@ -185,12 +185,32 @@ async function cmdUploadTra(send, jid, msg, args, react) {
     try {
         const buf = await mediaDownloader(m.src);
         if (!buf || !buf.length) throw new Error('media එක හිස්');
+        if (buf.length > 190 * 1048576) return await edit('❌ 190 MB ට වඩා ලොකුයි — මේ host එකට upload කරන්න බෑ');
         const mm = m.src.message[m.kind + 'Message'] || {};
         const base = (mm.fileName && path.basename(mm.fileName)) || ('kaviz-' + Date.now().toString(36) + ({ image: '.jpg', video: '.mp4', sticker: '.webp', audio: '.mp3' }[m.kind] || '.bin'));
-        await edit(`📤 ${(buf.length / 1048576).toFixed(1)} MB upload…`);
-        const r = await mirror.upTransfer(buf, base);
+        const mb = (buf.length / 1048576).toFixed(1);
+        // v2.87 FIX: 104MB upload එකක් හැම වෙලාවෙම hang වෙනවා — undici fetch වල total-timeout නෑ,
+        // slow/blocked host එකක් (හෝ route-cache එකේ හොරට poolproxy තියෙනවා නම්) card එක හිමින්ම තියනවා.
+        // හැම attempt එකකටම bounded budget + liveness tick + one fresh-route retry → කවදාවත් hang නෑ.
+        const budgetMs = buf.length > 50 * 1048576 ? 420e3 : 150e3;
+        const t0 = Date.now();
+        await edit(`📤 ${mb} MB upload…`);
+        const tick = setInterval(() => edit(`📤 ${mb} MB upload… ⏱ ${Math.round((Date.now() - t0) / 1000)}s (ලොකු files වලට වෙලා යන්න පුළුවන්)`), 20000);
+        let r;
+        try {
+            r = await mirror.upTransfer(buf, base, { signal: AbortSignal.timeout(budgetMs) });
+        } catch (e1) {
+            clearInterval(tick);
+            try {
+                await edit(`📤 ${mb} MB retry… (පළවෙනි attempt එක slow වෙලා)`);
+                r = await mirror.upTransfer(buf, base, { signal: AbortSignal.timeout(180e3) });
+            } catch (e2) {
+                return await edit(`❌ upload fail: ${String(e2.message || e2).slice(0, 120)}\n> transfer.archivete.am මේ file එකට දැනට slow/block — ටිකකින් නැවත try කරන්න, නැත්නම් *.tourl* (qu.ax)`);
+            }
+        }
+        clearInterval(tick);
         react?.('✅');
-        return await edit(`🔗 ${r.url}\n${foot(`${(buf.length / 1048576).toFixed(1)} MB · ~${r.days}d · transfer.archivete.am${r.del ? '\n🗑️ delete: ' + r.del : ''}`)}`);
+        return await edit(`🔗 ${r.url}\n${foot(`${mb} MB · ~${r.days}d · ${r.host === 'transfer' ? 'transfer.archivete.am' : r.host}${r.del ? '\n🗑️ delete: ' + r.del : ''}`)}`);
     } catch (e) {
         return await edit(`❌ upload fail: ${String(e.message || e).slice(0, 140)}\n> ආයෙත් try කරන්න, නැත්නම් *.tourl* (qu.ax host එක)`);
     }

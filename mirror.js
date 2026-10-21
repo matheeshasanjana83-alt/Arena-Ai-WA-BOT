@@ -43,14 +43,17 @@ async function upQuax(buf, name) {
     return { url: u, host: 'qu.ax', days: 30 };
 }
 
-/** transfer.archivete.am — PUT /<name> → plain-text link (Buffer or file path, streams big files) */
-async function upTransfer(bufOrPath, name) {
+/** transfer.archivete.am — PUT /<name> → plain-text link (Buffer or file path, streams big files)
+ *  v2.87: opts passthrough (signal) — callers bound the upload time so a slow/blocked host can
+ *  never hang the command forever (.uploadtra 104MB stall fix). */
+async function upTransfer(bufOrPath, name, opts = {}) {
     const body = typeof bufOrPath === 'string'
         ? Readable.toWeb(fs.createReadStream(bufOrPath))
         : bufOrPath;
     const r = await fetchFn('https://transfer.archivete.am/' + safeName(name), {
         method: 'PUT', body, duplex: 'half',
         headers: { ...UA, 'Content-Type': 'application/octet-stream' },
+        ...opts,
     });
     const t = (await r.text()).trim();
     if (!/^https?:\/\//.test(t)) throw new Error('transfer HTTP ' + r.status + ' ' + t.slice(0, 60));

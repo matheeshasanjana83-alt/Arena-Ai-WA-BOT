@@ -131,14 +131,18 @@ async function viaRoute(kind, url, opts) {
     return undici.fetch(url, { ...opts, dispatcher: pa });
 }
 
+const BIG_BODY = 20 * 1048576;   // >20MB uploads never go through proxy/pool — a 100MB PUT via a free
+                                 // proxy stalls forever (v2.87 .uploadtra hang root cause)
 async function smartFetch(url, opts = {}) {
     const host = hostOf(url);
+    const bigBody = Buffer.isBuffer(opts.body) && opts.body.length > BIG_BODY;
     const order = ['direct', 'doh', 'ipv6', 'proxy', 'poolproxy'];
     const pref = route.get(host);
     if (pref && (pref !== 'poolproxy' || require('./proxypool').hasCandidates())) order.sort((a, b) => (b === pref) - (a === pref));
     const errors = [];
     let poolWaited = false;
     for (const kind of order) {
+        if (bigBody && (kind === 'proxy' || kind === 'poolproxy')) { errors.push({ kind, code: 'SKIP_BIG', msg: 'big body → proxy route එක skip' }); continue; }
         if (kind === 'proxy' && !getProxy()) continue;
         if (kind === 'poolproxy' && !require('./proxypool').hasCandidates()) {
             // pool empty → normally skip fast; BUT after real network failures give it ONE short window
@@ -158,6 +162,9 @@ async function smartFetch(url, opts = {}) {
         } catch (e) {
             const c = errCode(e);
             errors.push({ kind, code: c, msg: e?.cause?.message || e.message });
+            // 🕐 v2.87: a big-body upload that died on timeout/abort leaves a poisoned route pref —
+            // forget it so the next attempt starts fresh from direct.
+            if (bigBody && (c === 'ABORT_ERR' || e?.name === 'AbortError' || c === 'ETIMEDOUT')) route.delete(host);
             // 🌐 v2.65: DoH IPs are cached 10 min — a CDN edge IP that dies mid-window would poison every
             // retry (eporner CDN connect timeouts). on a doh-route connect failure → re-resolve next time.
             if (kind === 'doh' && NET_ERR.test(c)) dohCache.delete(host + '/A');

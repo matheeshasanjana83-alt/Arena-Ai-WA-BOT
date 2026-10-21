@@ -80,7 +80,7 @@ async function shareList(surl) {
 const human = (b) => !b ? '?' : b >= 1073741824 ? (b / 1073741824).toFixed(2) + ' GB' : b >= 1048576 ? (b / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB';
 const dur = (s) => s ? `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}` : '';
 const qres = (h) => !h ? '' : h >= 2000 ? '4K' : h >= 1400 ? '2K' : h >= 1000 ? '1080p' : h >= 700 ? '720p' : h >= 450 ? '480p' : h >= 350 ? '360p' : h + 'p';
-const COOKIE_HELP = '🔑 download කරන්න ndus cookie එකක් ඕනේ:\n1. terabox.com login කරන්න (browser)\n2. F12 → Application → Cookies → ndus value එක copy\n3. *.tbcookie <ndus>* ගහන්න';
+const COOKIE_HELP = '🔑 download කරන්න ndus cookie එකක් ඕනේ:\n1. terabox.com login කරන්න (browser)\n2. F12 → Cookies → ndus value එක copy\n    Chrome: Application → Cookies\n    Firefox: Storage → Cookies (terabox.com)\n3. *.tbcookie <ndus>* ගහන්න';
 
 function infoCard(info) {
     const fl = info.files;
@@ -190,5 +190,5 @@ async function cmdCookie(send, jid, msg, arg) {
 
 module.exports = {
     handle, bridge, cmdCookie, surlOf, jsToken, shareList, infoCard,
-    readNdus, saveNdus, clearNdus, setFetcher, HOST_RE, TTL, TB_USAGE, _sessions: sessions,
+    readNdus, saveNdus, clearNdus, setFetcher, HOST_RE, TTL, TB_USAGE, COOKIE_HELP, _sessions: sessions,
 };
