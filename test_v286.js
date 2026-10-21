@@ -44,14 +44,14 @@ const sendMock = (sent) => { let n = 0; return async (j, c) => { const k = 'K' +
 (async () => {
     console.log('— v2.86.0 pins —');
     ok('version + manifest + notes + wiring greps', () => {
-        assert.ok(['2.85.0', '2.86.0', '2.87.0'].includes(pkg.version), 'pkg ' + pkg.version);
-        assert.ok(['2.85.0', '2.86.0', '2.87.0'].includes(manifest.version), 'manifest ' + manifest.version);
+        assert.ok(['2.85.0', '2.86.0', '2.87.0', '2.88.0'].includes(pkg.version), 'pkg ' + pkg.version);
+        assert.ok(['2.85.0', '2.86.0', '2.87.0', '2.88.0'].includes(manifest.version), 'manifest ' + manifest.version);
         assert.ok(/METDN/i.test(manifest.notes), 'notes');
         assert.ok(manifest.files.includes('metdn.js') && manifest.files.includes('test_v286.js'), 'files');
         assert.ok(botSrc.includes("require('./metdn')") && botSrc.includes('metdn.handle'), 'router');
         assert.ok(/'\.metdn'/.test(botSrc), 'HEAVY');
-        assert.ok(botSrc.includes('*.metdn <link>* — 🔞 mat6tube → details card → mp4 (18+)'), 'Download cat');
-        assert.ok(botSrc.includes('*.metdn <link>* — 🔞 mat6tube video → mp4 (18+)'), 'Tools cat');
+        assert.ok(botSrc.includes('*.metdn <නම/link>* — 🔞 mat6tube search → quality menu → mp4 (18+)'), 'Download cat');
+        assert.ok(botSrc.includes('metdn.bridge'), 'bridge chain');
         assert.ok(botSrc.includes('*.metdn*'), 'HELP summary');
     });
 
@@ -105,31 +105,41 @@ const sendMock = (sent) => { let n = 0; return async (j, c) => { const k = 'K' +
     });
 
     console.log('— flow (.metdn handle) —');
-    await okA('.metdn <link> → progress + thumb image card + BEST mp4 auto-download', async () => {
+    await okA('.metdn <link> → progress + thumb image card + QUALITY MENU (no auto-download) → go 1 = BEST 480p', async () => {
         const seen = []; const prev = md.setFetcher(mockFetcher(PAGE, seen));
         try {
             const sent = []; const dled = [];
-            await md.handle('.metdn', { send: sendMock(sent), jid: JID, msg: {}, rest: ['https://mat6tube.com/watch/-1_2'], react: async () => { }, download: async (l, tag) => dled.push({ l, tag }) });
+            const ctx = { send: sendMock(sent), jid: JID, msg: {}, rest: ['https://mat6tube.com/watch/-1_2'], react: async () => { }, download: async (l, tag) => dled.push({ l, tag }) };
+            await md.handle('.metdn', ctx);
             const prog = sent[0].c;
             assert.ok(prog.text.includes('page එක කියවනවා'), 'progress first');
             const img = sent.find((x) => x.c.image);
             assert.ok(img, 'thumb image card');
-            assert.ok(img.c.caption.includes('480p') && img.c.caption.includes('Girl b j + sex') && img.c.caption.includes('එවනවා'), 'caption');
+            assert.ok(img.c.caption.includes('480p') && img.c.caption.includes('Girl b j + sex') && img.c.caption.includes('Quality එක තෝරන්න'), 'quality menu caption');
+            assert.ok(img.c.caption.includes('1. 480p ⭐ BEST'), 'best first');
             assert.ok(sent.some((x) => x.c.delete), 'progress bubble deleted');
-            assert.strictEqual(dled.length, 1, 'auto-download');
-            assert.strictEqual(dled[0].l, 'https://cdn77-pr.pvvstream.pro/videos/480/-1_2.mp4?url=dmt2&sig=B', 'BEST signed url');
-            assert.strictEqual(dled[0].tag, '🔞 mat6tube');
+            assert.strictEqual(dled.length, 0, 'NO auto-download (v2.88 quality menu)');
             assert.ok(seen.every((s) => s.h['User-Agent'] === UA), 'UA sent');
+            // quote pick 1 (bridge grammar) → fresh fetch → 480p download
+            const st = md._sessions.get(JID);
+            assert.ok(st && st.stage === 'quality' && st.labels[0] === 480, 'quality session');
+            assert.strictEqual(md.bridge(JID, st.cardId, '1'), '.metdn go 1', 'bridge ok');
+            const d2 = [];
+            await md.handle('.metdn', { send: sendMock([]), jid: JID, msg: {}, rest: ['go', '1'], react: async () => { }, download: async (l, tag) => d2.push({ l, tag }) });
+            assert.strictEqual(d2.length, 1, 'picked download');
+            assert.strictEqual(d2[0].l, 'https://cdn77-pr.pvvstream.pro/videos/480/-1_2.mp4?url=dmt2&sig=B', 'BEST signed url (fresh fetch)');
+            assert.strictEqual(d2[0].tag, '🔞 mat6tube');
+            assert.ok(!md._sessions.has(JID), 'session cleared after pick');
         } finally { md.setFetcher(prev); }
     });
-    await okA('.metdn no-image page → edited text card + download', async () => {
+    await okA('.metdn no-image page → edited text quality card, NO download', async () => {
         const prev = md.setFetcher(mockFetcher(PAGE_NOIMG));
         try {
             const sent = []; const dled = [];
             await md.handle('.metdn', { send: sendMock(sent), jid: JID, msg: {}, rest: ['https://mat6tube.com/watch/-1_2'], react: async () => { }, download: async (l) => dled.push(l) });
             const edited = sent.find((x) => x.c.edit);
-            assert.ok(edited && edited.c.text.includes('480p') && edited.c.text.includes('mat6tube'), 'text card');
-            assert.strictEqual(dled.length, 1, 'download still happens');
+            assert.ok(edited && edited.c.text.includes('480p') && edited.c.text.includes('mat6tube'), 'text quality card');
+            assert.strictEqual(dled.length, 0, 'no download until pick');
         } finally { md.setFetcher(prev); }
     });
     await okA('.metdn deleted video → honest card, NO download', async () => {
@@ -155,7 +165,7 @@ const sendMock = (sent) => { let n = 0; return async (j, c) => { const k = 'K' +
         try {
             const sent = [];
             await md.handle('.metdn', { send: sendMock(sent), jid: JID, msg: {}, rest: [], react: async () => { } });
-            assert.ok(sent.map((x) => x.c.text || '').join('\n').includes('*.metdn <link>*'), 'usage');
+            assert.ok(sent.map((x) => x.c.text || '').join('\n').includes('*.metdn <නම / link>*'), 'usage');
             const s2 = [];
             await md.handle('.metdn', { send: sendMock(s2), jid: JID, msg: {}, rest: ['https://mediafire.com/file/x'], react: async () => { } });
             assert.ok(s2.map((x) => x.c.text || '').join('\n').includes('නෙවෙයි'), 'host gate');
