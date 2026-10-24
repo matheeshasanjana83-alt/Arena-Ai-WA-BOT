@@ -72,7 +72,7 @@ function counting(src, total, onProgress) {
         },
     });
     src.on('error', (e) => t.destroy(e));
-    return src.pipe(t);
+    return stallGuard(src).pipe(t);   // 🛑 v2.89: stall watchdog (stream-to-WhatsApp path)
 }
 
 /** pipe a web/node stream to disk with size cap + progress */
@@ -89,15 +89,15 @@ async function streamToFile(stream, dest, total, onProgress) {
         stream.on('error', rej);
         out.on('error', rej);
         out.on('finish', res);
-        stream.pipe(out);
+        stallGuard(stream).pipe(out);   // 🛑 v2.89: stall watchdog (was: forever-hang on a frozen CDN)
     });
     return loaded;
 }
 
-async function httpGet(url, ua, referer, extra) {
+async function httpGet(url, ua, referer, extra, signal) {   // 🛑 v2.89: signal threading (budget abort)
     const headers = { 'User-Agent': ua, 'Accept': '*/*', ...(extra || {}) };
     if (referer) headers.Referer = referer;
-    return fetchExplained(url, { headers, redirect: 'follow' });
+    return fetchExplained(url, { headers, redirect: 'follow', ...(signal ? { signal } : {}) });
 }
 
 // ── ⚡ v2.64 parallel ranged download — MediaFire/pixeldrain/CDN per-connection speed caps are
@@ -108,6 +108,20 @@ const PAR_MIN = 8 * 1048576;      // < 8 MB → single stream (not worth it)
 const PAR_CHUNK = 8 * 1048576;    // ~8 MB per connection
 const PAR_MAX = 6;                // connection count cap
 const PAR_IDLE = 60e3;            // no data at all for 60s → abort → fallback
+
+// 🛑 v2.89 single-stream stall watchdog — the parallel path has PAR_IDLE, but the SINGLE-stream
+// paths (streamToFile / counting) had NOTHING: a CDN that stops mid-body (freezes or dribbles)
+// made download() hang FOREVER → the global dlQueue lane (bot.js) blocked forever → EVERY download
+// command bot-wide went silently dead ("එක command ගැහුවාට පස්සෙ අනිත් එක ගන්න බැනෙ").
+const STALL_IDLE = Math.max(2, parseInt(process.env.ARENA_DL_STALL_SEC || '90', 10)) * 1000;
+function stallErr() { const e = new Error(`CDN එක ${Math.round(STALL_IDLE / 1000)}s වෙලාකට data යවනේ නෑ (stall) — download එක නවත්තලා. ආයෙත් try කරන්න / වෙන quality එකක්`); e.code = 'KZ_STALL'; return e; }
+function stallGuard(src) {
+    let last = Date.now();
+    const iv = setInterval(() => { if (Date.now() - last > STALL_IDLE) src.destroy(stallErr()); }, Math.min(5000, Math.max(500, STALL_IDLE >> 2)));
+    src.on('data', () => { last = Date.now(); });
+    for (const ev of ['end', 'error', 'close']) src.once(ev, () => clearInterval(iv));
+    return src;
+}
 function planRanges(total, max = PAR_MAX, chunkMin = PAR_CHUNK) {
     const n = Math.max(1, Math.min(max, Math.floor(total / chunkMin) || 1));
     const size = Math.floor(total / n);
@@ -119,7 +133,7 @@ function planRanges(total, max = PAR_MAX, chunkMin = PAR_CHUNK) {
 // 🍪 v2.84 TeraBox dlink → resolve() attaches { cookie: 'ndus=…' } → every request carries it
 const tbx = (r, extra) => ({ ...(r.cookie ? { Cookie: r.cookie } : {}), ...(extra || {}) });
 
-async function downloadParallel(r, ua, dest, total, onProgress) {
+async function downloadParallel(r, ua, dest, total, onProgress, signal) {
     const parts = planRanges(total);
     const fd = fs.openSync(dest, 'w'); fs.closeSync(fd);   // preallocate (sparse)
     fs.truncateSync(dest, total);
@@ -129,7 +143,7 @@ async function downloadParallel(r, ua, dest, total, onProgress) {
     const idle = setInterval(() => { if (Date.now() - lastData > PAR_IDLE) { dead = true; } }, 5000);
     try {
         await Promise.all(parts.map(async ([s, e]) => {
-            const res = await httpGet(r.url, ua, r.referer, tbx(r, { Range: `bytes=${s}-${e}` }));
+            const res = await httpGet(r.url, ua, r.referer, tbx(r, { Range: `bytes=${s}-${e}` }), signal);
             if (res.status !== 206) { try { await res.body?.cancel(); } catch { } throw fail(`HTTP ${res.status} (206 ඕනේ)`); }
             const ws = fs.createWriteStream(dest, { flags: 'r+', start: s });
             const src = Readable.fromWeb(res.body);   // ⚠️ undici fetch body = WEB stream (.on නෑ) — fromWeb ඕනේ
@@ -152,16 +166,16 @@ async function downloadParallel(r, ua, dest, total, onProgress) {
     } finally { clearInterval(idle); }
 }
 
-async function downloadHttp(r, dest, onProgress, allowStream) {
+async function downloadHttp(r, dest, onProgress, allowStream, signal) {
     let res, ct, goodUa = UA_BROWSER;
     // try browser UA, then curl UA (some hosts give a "warning page" to browsers, e.g. filebin)
     for (const ua of [UA_BROWSER, UA_CURL]) {
-        res = await httpGet(r.url, ua, r.referer, tbx(r));
+        res = await httpGet(r.url, ua, r.referer, tbx(r), signal);
         ct = (res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
         if (res.ok && ct !== 'text/html') { goodUa = ua; break; }
         if (res.ok && ct === 'text/html' && r.drive) {
             const next = driveConfirmUrl(await res.text());
-            if (next) { res = await httpGet(next, ua); ct = (res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase(); if (res.ok && ct !== 'text/html') { goodUa = ua; break; } }
+            if (next) { res = await httpGet(next, ua, '', null, signal); ct = (res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase(); if (res.ok && ct !== 'text/html') { goodUa = ua; break; } }
             throw new Error('Google Drive file එක public නෑ (Anyone with the link කරන්න) හෝ download limit එක ඉවරයි');
         }
         if (!res.ok && res.status !== 403) break;
@@ -179,7 +193,7 @@ async function downloadHttp(r, dest, onProgress, allowStream) {
     if (total >= PAR_MIN && !/bytes/i.test(res.headers.get('accept-ranges') || '')) {
         // some real CDNs answer 206 WITHOUT advertising accept-ranges (thinkbroadband, OVH…) → cheap 1-byte probe
         try {
-            const p = await httpGet(r.url, goodUa, r.referer, tbx(r, { Range: 'bytes=0-0' }));
+            const p = await httpGet(r.url, goodUa, r.referer, tbx(r, { Range: 'bytes=0-0' }), signal);
             if (p.status === 206) res.headers.set('accept-ranges', 'bytes');
             try { await p.body?.cancel(); } catch { }
         } catch { }
@@ -189,9 +203,9 @@ async function downloadHttp(r, dest, onProgress, allowStream) {
         try { checkDisk(total, false); diskOk = true; } catch { }
         if (diskOk) {
             try { await res.body?.cancel(); } catch { }
-            try { const size = await downloadParallel(r, goodUa, dest, total, onProgress); return { name, size, mime }; }
+            try { const size = await downloadParallel(r, goodUa, dest, total, onProgress, signal); return { name, size, mime }; }
             catch { /* fall through — fresh single GET below */ }
-            const retry = await httpGet(r.url, goodUa, r.referer, tbx(r));
+            const retry = await httpGet(r.url, goodUa, r.referer, tbx(r), signal);
             if (retry.ok) { res = retry; ct = (res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase(); }
             else { try { await retry.body?.cancel(); } catch { } throw new Error(`server එකෙන් ${retry.status} ආවා (link එක expire වෙලා / private / වැරදියි)`); }   // original body එක cancel කරලා ඉවරයි → retry fail නම් clear error
         }
@@ -225,13 +239,15 @@ async function downloadMega(url, destDir, onProgress, allowStream) {
     return out;
 }
 
-/** Download any supported link → [{path,name,size,mime}] (caller deletes files) */
-async function download(link, onProgress, { stream = false } = {}) {
+/** Download any supported link → [{path,name,size,mime}] (caller deletes files)
+ * 🛑 v2.89: opts.signal — caller's total-budget abort threads into every fetch (and the stall
+ * watchdog bounds silent CDN freezes) → download() can NEVER hang the dlQueue lane forever. */
+async function download(link, onProgress, { stream = false, signal = null } = {}) {
     const r = await resolve(link);
     if (r.kind === 'mega') return downloadMega(r.url, TMP, onProgress, stream);
     const dest = path.join(TMP, `dl-${process.pid}-${Date.now().toString(36)}`);
     try {
-        const info = await downloadHttp(r, dest, onProgress, stream);
+        const info = await downloadHttp(r, dest, onProgress, stream, signal);
         return [info.open ? info : { path: dest, ...info }];
     } catch (e) {
         // 🌐 v2.65: eporner hands out per-request CDN mirrors — some (vid-*-nl-cdn…) refuse datacenter
@@ -246,4 +262,4 @@ async function download(link, onProgress, { stream = false } = {}) {
     }
 }
 
-module.exports = { explainNetErr, download, human, maxBytes, maxMB, freeDisk, WA_MAX_MB, planRanges, downloadParallel, PAR_MIN, PAR_CHUNK, PAR_MAX, _httpGet: httpGet, get MAX_BYTES() { return maxBytes(); } };
+module.exports = { explainNetErr, download, human, maxBytes, maxMB, freeDisk, WA_MAX_MB, planRanges, downloadParallel, PAR_MIN, PAR_CHUNK, PAR_MAX, STALL_IDLE, stallGuard, stallErr, _httpGet: httpGet, get MAX_BYTES() { return maxBytes(); } };

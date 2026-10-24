@@ -365,11 +365,12 @@ async function hvGo(send, jid, msg, n, download) {
             return done(st, send, jid, msg, hvQCard(title, sources), null);
         }
         if (s.stage === 'quality') {
+            const mySess = s;   // 🛑 v2.89 identity guard: download එක අතරේ අලුත් search එකක් ආවොත් session එක overwrite වෙනවා — පරණ download එකේ cleanup එකෙන් අලුත් session එක මැකෙන්න පුළුවන් තිබුණා
             await st.edit(`⏳ ${pick.label} download වෙනවා... file එක ලොකු නම් වෙලා යනවා`);
             const cap = `🔞 *${cut(s.title, 60)}* — ${pick.label}`;
             if (typeof download === 'function') await download(pick.src, '🔞 WatchHentai', cap);
             else await send(jid, { text: `🔞 *${cut(s.title, 60)}* — ${pick.label}\n${pick.src}\n\n${foot('18+ · hstorage CDN — 1DM/browser වලින් download කරන්න')}` }, { quoted: msg });
-            try { sessions.delete(jid); } catch { }
+            if (sessions.get(jid) === mySess) { try { sessions.delete(jid); } catch { } }
             return;
         }
     } catch (e) { return fail(st, send, jid, msg, e); }
@@ -471,11 +472,12 @@ async function epGo(send, jid, msg, n, download) {
             return done(st, send, jid, msg, epQCard(title || pick.title || s.title, sources), null);
         }
         if (s.stage === 'quality') {
+            const mySess = s;   // 🛑 v2.89 identity guard (same race as .hentaiv quality pick)
             await st.edit(`⏳ ${pick.label} download වෙනවා... file එක ලොකු නම් වෙලා යනවා`);
             const cap = `🔞 *${cut(s.title, 60)}* — ${pick.label}`;
             if (typeof download === 'function') await download(pick.src, '🔞 Eporner', cap);
             else await send(jid, { text: `🔞 *${cut(s.title, 60)}* — ${pick.label}\n${pick.src}\n\n${foot('18+ · eporner CDN — browser/1DM වලින් download කරන්න')}` }, { quoted: msg });
-            try { sessions.delete(jid); } catch { }
+            if (sessions.get(jid) === mySess) { try { sessions.delete(jid); } catch { } }
             return;
         }
     } catch (e) { return fail(st, send, jid, msg, e, null, 'Eporner'); }
@@ -712,7 +714,7 @@ async function hmGo(send, jid, msg, n, download) {
                 } catch { /* skip broken page */ }
                 await new Promise((r) => setTimeout(r, HM_DELAY));
             }
-            try { sessions.delete(jid); } catch { }
+            if (sessions.get(jid) === s) { try { sessions.delete(jid); } catch { } }   // 🛑 v2.89 identity guard: pages loop අතරේ අලුත් search එකක් ආවොත් ඒක මැකෙන්නේ නෑ
             await st.del().catch(() => { });
             return send(jid, { text: `✅ *${cut(g.title || g.jp, 50)}* — pages ${sentN}/${total} එවුණා${total > PG_CAP ? `\n_⚠️ gallery එක ${total} pages — පළවෙනි ${PG_CAP} විතරයි. ඉතුරු ටික: ${HM_URL}${g.id}.html_` : ''}\n\n${foot('18+ only · hitomi.la')}` }, { quoted: msg });
         }

@@ -314,7 +314,11 @@ async function onMessages({ messages, type }, send, del = async () => { }) {
                             else { const b = moviedex.bridgeReply(jid0, qid, text); if (b) text = b;
                             else { const h = animehub.bridge(jid0, qid, text); if (h) text = h;
                             else { const t = terabox.bridge(jid0, qid, text); if (t) text = t;
-                            else { const m = metdn.bridge(jid0, qid, text); if (m) text = m; } } } } } }   // moviedex + 🎌 v2.75 aniworld + ☁️ v2.84 terabox + 🔞 v2.88 metdn card quotes
+                            else { const m = metdn.bridge(jid0, qid, text); if (m) text = m;
+                            else if (accessible && sentIds.has(String(qid))) {   // 🔢 v2.89: stale/deleted BOT card quote (sentIds = bot එකෙන් ආපු card විතරයි) — was ABSOLUTE silence (owner chat never AI'd) = "bot එක මැරුණා වගේ"; වෙන message එකකට quote කරොත් v2.58 silence ම තියෙනවා
+                                await send(jid0, { text: '🔢 මේ card එකට දැන් menu එකක් active නෑ (expire වෙලා / flow එක ඉවර).\n\nඅලුත් command එකක් ගහලා අලුත් menu එකක් open කරලා *ඒ card එකට* reply කරන්න.' }, { quoted: msg });
+                                continue;
+                            } } } } } } }   // moviedex + 🎌 v2.75 aniworld + ☁️ v2.84 terabox + 🔞 v2.88 metdn card quotes
                     }
                 }
                 if (!text.startsWith('.')) { maybeAiReply({ msg, jid: replyJid(msg.key), text, owner, send }); continue; }   // 🤖 AI chat (v2.41 — own modes, works even when bot commands are private)
@@ -432,9 +436,9 @@ async function onMessages({ messages, type }, send, del = async () => { }) {
                 if (await runJob(() => tools.handle(c, { send, jid, msg, rest, sock: SOCK, me: ME, react }))) continue;
                 if (await runJob(() => features.handle(c, { send, jid, msg, rest, sock: SOCK, me: ME, download, react }))) continue;
                 if (await runJob(() => moviedex.handle(c, { send, jid, msg, rest, react }))) continue;
-                if (await runJob(() => animehub.handle(c, { send, jid, msg, rest, react, download: (link, tag) => dlQueue(() => handleDownload(send, jid, msg, link, tag)) }))) continue;   // 🎌 .aniworld + 🔞 .hentaiv (quality menu → file) + NSFW (v2.75/76)
-                if (await runJob(() => terabox.handle(c, { send, jid, msg, rest, react, download: (link, tag) => dlQueue(() => handleDownload(send, jid, msg, link, tag)) }))) continue;   // ☁️ .terabox (v2.84 — info card → file)
-                if (await runJob(() => metdn.handle(c, { send, jid, msg, rest, react, download: (link, tag) => dlQueue(() => handleDownload(send, jid, msg, link, tag)) }))) continue;   // 🔞 .metdn (v2.88 — search menu → quality menu → mp4)
+                if (await runJob(() => animehub.handle(c, { send, jid, msg, rest, react, download: (link, tag, cap) => dlQueue(() => handleDownload(send, jid, msg, link, tag, cap), { send, jid, msg, label: tag || 'file' }) }))) continue;   // 🎌 .aniworld + 🔞 .hentaiv (quality menu → file) + NSFW (v2.75/76)
+                if (await runJob(() => terabox.handle(c, { send, jid, msg, rest, react, download: (link, tag) => dlQueue(() => handleDownload(send, jid, msg, link, tag), { send, jid, msg, label: tag || 'TeraBox' }) }))) continue;   // ☁️ .terabox (v2.84 — info card → file)
+                if (await runJob(() => metdn.handle(c, { send, jid, msg, rest, react, download: (link, tag) => dlQueue(() => handleDownload(send, jid, msg, link, tag), { send, jid, msg, label: tag || 'mat6tube' }) }))) continue;   // 🔞 .metdn (v2.88 — search menu → quality menu → mp4)
                 if (c === '.tbcookie') { await terabox.cmdCookie(send, jid, msg, rest.join(' ').trim()); continue; }   // 🔑 owner-only (v2.84)
 
                 // 🆕 v2.59: site-locked downloaders — .mediafire / .mega / .gdrive
@@ -442,14 +446,14 @@ async function onMessages({ messages, type }, send, del = async () => { }) {
                     const link = (text.match(/https?:\/\/\S+/) || [])[0];
                     if (!link) { await send(jid, { text: `${SITE_DL[c].tag} — *${c} <link>*\n\nඋදා: \`${SITE_DL[c].ex}\`\n${foot('Anyone-with-link files විතරයි වැඩ')}` }, { quoted: msg }); continue; }
                     if (!SITE_DL[c].re.test(link)) { await send(jid, { text: `❌ මේක *${SITE_DL[c].label}* link එකක් නෙවෙයි\n\n✦ ${SITE_DL[c].host} link එකක් එවන්න\n✦ ඕනෑම site එකක්: *.download <link>*` }, { quoted: msg }); continue; }
-                    await dlQueue(() => runJob(() => handleDownload(send, jid, msg, link, SITE_DL[c].tag)));   // one download at a time
+                    await dlQueue(() => runJob(() => handleDownload(send, jid, msg, link, SITE_DL[c].tag)), { send, jid, msg, label: SITE_DL[c].tag });   // one download at a time (+ 🕐 queue card)
                     continue;
                 }
                 if (!['.download', '.dl', '.dn'].includes(c)) continue;
 
                 const links = (text.match(/https?:\/\/\S+/g) || []).slice(0, 5);   // 🛡️ max 5 per command
                 if (!links.length) { await send(jid, { text: HELP }, { quoted: msg }); continue; }
-                for (const link of links) await dlQueue(() => runJob(() => handleDownload(send, jid, msg, link)));   // one download at a time
+                for (const link of links) await dlQueue(() => runJob(() => handleDownload(send, jid, msg, link)), { send, jid, msg, label: 'download' });   // one download at a time (+ 🕐 queue card)
             } catch (e) {
                 log('handler error: ' + e.message);
                 try { if (heavy) reactTo(msg.key, '❌'); } catch { }   // v2.45: hang/fail command එකේ ⏳ එක ❌ වෙනවා — silence නෙවෙයි
@@ -468,7 +472,16 @@ function isFromOwner(key) {
 }
 
 let dlChain = Promise.resolve();
-function dlQueue(fn) { const p = dlChain.then(fn, fn); dlChain = p.catch(() => { }); return p; }
+let dlDepth = 0;   // 🕐 v2.89: queued+running download count — queue-position feedback
+function dlQueue(fn, info) {
+    const pos = ++dlDepth;
+    if (pos > 1 && info?.send) {   // 🕐 honest queue card — a busy lane used to look like a dead bot (silence until the front job finished)
+        Promise.resolve(info.send(info.jid, { text: `⏳ Queue #${pos} — ${info.label || 'download'} එක අනිත් download එක ඉවර උනාම පටන් ගන්නවා` }, info.msg ? { quoted: info.msg } : undefined)).catch(() => { });
+    }
+    const p = dlChain.then(fn, fn);
+    dlChain = p.catch(() => { }).then(() => { dlDepth--; });
+    return p;
+}
 
 // ───────── .menu (photo + info box + categories) ─────────
 const menuState = new Map();   // jid → { id, at } of the last menu (for number replies)
@@ -1174,8 +1187,9 @@ async function handleUpdate(send, jid, msg, force) {
     catch { reactTo(msg.key, '❌'); }
 }
 
-async function handleDownload(send, jid, msg, link, siteTag) {
-    const status = await send(jid, { text: `⏳ ${siteTag ? siteTag + ' — ' : ''}Download වෙනවා...\n${link}` }, { quoted: msg });
+const dlBudgetMin = () => Math.max(5, parseInt(process.env.ARENA_DL_BUDGET_MIN || '25', 10));   // 🛑 v2.89: total download budget (min)
+async function handleDownload(send, jid, msg, link, siteTag, cap) {
+    const status = await send(jid, { text: `⏳ ${cap ? cap + '\n' : ''}${siteTag ? siteTag + ' — ' : ''}Download වෙනවා...\n${link}` }, { quoted: msg });
     let last = 0;
     const edit = async (t) => { try { await send(jid, { text: t, edit: status.key }); } catch { } };
     const onProgress = (loaded, total, speed) => {
@@ -1186,16 +1200,24 @@ async function handleDownload(send, jid, msg, link, siteTag) {
         const bar = pct === null ? '' : '▰'.repeat(Math.round(pct / 10)) + '▱'.repeat(10 - Math.round(pct / 10)) + ` ${pct}%\n`;
         edit(`⬇️ Downloading...\n${bar}${human(loaded)} / ${human(total)}  •  ${human(speed)}/s`);
     };
+    // 🛑 v2.89: total budget + AbortSignal → a stalled/slow download can NEVER hold the ONE global
+    // download lane forever again (was: single-stream path had no watchdog → bot-wide silence).
+    const ac = new AbortController();
+    let budgetFired = false;
+    const budgetT = setTimeout(() => { budgetFired = true; ac.abort(new Error('download budget')); }, dlBudgetMin() * 60e3);
     let files = [];
     try {
         const r = await resolve(link);
         if (r.kind === 'video') {
             // video page (eporner etc.) → yt-dlp: formats + free-proxy pool fallback built in (media.ytdl)
             await edit('🎬 Video එක හොයනවා (yt-dlp)... block වෙලා නම් free proxy pool එකෙනුත් try කරනවා');
-            const f = await require('./media').ytdl(r.url, { mode: 'video', maxMB: maxMB() });
+            const f = await Promise.race([
+                require('./media').ytdl(r.url, { mode: 'video', maxMB: maxMB() }),
+                new Promise((_, rej) => ac.signal.addEventListener('abort', () => rej(new Error(`download budget එක (${dlBudgetMin()} min) ඉවර — නවත්තලා`)), { once: true })),
+            ]);
             files = [{ path: f.path, name: `video-${Date.now().toString(36)}.${f.ext || 'mp4'}`, size: f.size, mime: f.ext === 'mp4' ? 'video/mp4' : 'video/' + f.ext }];
         } else {
-            files = await download(link, onProgress, { stream: true });   // 🌊 big files → straight to WhatsApp (1× disk)
+            files = await download(link, onProgress, { stream: true, signal: ac.signal });   // 🌊 big files → straight to WhatsApp (1× disk) · 🛑 signal = budget
         }
         for (const f of files) {
             await edit(`📤 WhatsApp එකට යවනවා... (${f.name}, ${human(f.size)})`);
@@ -1205,17 +1227,20 @@ async function handleDownload(send, jid, msg, link, siteTag) {
         reactTo(msg.key, '✅');
         log(`✅ ${link} → ${files.map(f => f.name + ' ' + human(f.size)).join(', ')}`);
     } catch (e) {
-        await edit(`❌ ${String(e.message).slice(0, 200)}`);
+        if (budgetFired || ac.signal.aborted || /AbortError|ABORT_ERR|budget/.test(String(e?.message || e?.name || ''))) {
+            await edit(`⏱ Download එක ${dlBudgetMin()} min වෙලාවකට වඩා හැදුවා — නවත්තලා (🛑 budget). ටිකකින් ආයෙත් try කරන්න / පොඩි quality එකක් තෝරන්න.`);
+        } else await edit(`❌ ${String(e.message).slice(0, 200)}`);
         reactTo(msg.key, '❌');
         log(`❌ ${link}: ${e.message}`);
     } finally {
+        clearTimeout(budgetT);
         for (const f of files) if (f.path) fs.rm(f.path, { force: true }, () => { });
     }
 }
 
 process.on('unhandledRejection', (e) => log('unhandled: ' + (e?.message || e)));
 process.on('uncaughtException', (e) => log('uncaught: ' + e.message));
-module.exports = { _agentTick: agentTick, AGENT_MSG, handleDownload, getText, onMessages, replyJid, ME, aliveCaption, OWNER_CMDS, modeCaption, handleForward, maybeAiReply, _aiLast: aiLast, SITE_DL, _setMediaDownloader: (f) => { mediaDownloader = f; }, _setSock: (x) => { SOCK = x; } };
+module.exports = { _agentTick: agentTick, AGENT_MSG, handleDownload, getText, onMessages, replyJid, ME, aliveCaption, OWNER_CMDS, modeCaption, handleForward, maybeAiReply, _aiLast: aiLast, SITE_DL, _setMediaDownloader: (f) => { mediaDownloader = f; }, _setSock: (x) => { SOCK = x; }, _dlQueue: dlQueue, _dlDepth: () => dlDepth, _dlBudgetMin: dlBudgetMin };
 if (require.main === module) {
     console.log('🚀 KAVIZ MD V1 starting...');
     require('./media').checkUpdate(true).catch(() => { });   // yt-dlp fresh → FB "Cannot parse data" / YT format errors fix (max 1 check/hour)

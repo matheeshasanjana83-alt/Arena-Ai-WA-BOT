@@ -16,8 +16,8 @@ const manifest = require('./manifest.json');
 (async () => {
     console.log('— v2.80.0 .ep/.eporner: pins + structure —');
     ok('version 2.80 pins', () => {
-        assert.ok(['2.80.0', '2.81.0', '2.82.0', '2.83.0', '2.84.0', '2.85.0', '2.86.0', '2.87.0', '2.88.0'].includes(pkg.version), 'pkg: ' + pkg.version);
-        assert.ok(['2.80.0', '2.81.0', '2.82.0', '2.83.0', '2.84.0', '2.85.0', '2.86.0', '2.87.0', '2.88.0'].includes(manifest.version), 'manifest: ' + manifest.version);
+        assert.ok(['2.80.0', '2.81.0', '2.82.0', '2.83.0', '2.84.0', '2.85.0', '2.86.0', '2.87.0', '2.88.0', '2.89.0'].includes(pkg.version), 'pkg: ' + pkg.version);
+        assert.ok(['2.80.0', '2.81.0', '2.82.0', '2.83.0', '2.84.0', '2.85.0', '2.86.0', '2.87.0', '2.88.0', '2.89.0'].includes(manifest.version), 'manifest: ' + manifest.version);
         assert.ok(manifest.notes.includes('.ep/.eporner') && manifest.notes.includes('eporner/API'), 'notes updated');
         assert.ok(manifest.files.includes('animehub.js') && manifest.files.includes('test_v280.js'), 'files listed');
     });
@@ -262,7 +262,7 @@ const manifest = require('./manifest.json');
         assert.ok(/HEAVY = new Set\(\[[^\]]*'\.eporner'/.test(src), 'HEAVY has .eporner');
         assert.ok(src.includes('*.ep <query>* — 🔞 eporner video + quality menu'), 'menu Tools line');
         assert.ok(src.includes('animehub.bridge'), 'bridge chain intact');
-        assert.ok(src.includes("download: (link, tag) => dlQueue(() => handleDownload(send, jid, msg, link, tag))"), 'download wrapper');
+        assert.ok(src.includes("download: (link, tag, cap) => dlQueue(() => handleDownload(send, jid, msg, link, tag, cap)"), "download wrapper (v2.89 cap+queue info)");
         assert.ok(src.includes("require('./animehub')"), 'animehub required');
     });
     ok('resolvers: eporner referer rule (mp4 → http + referer)', () => {

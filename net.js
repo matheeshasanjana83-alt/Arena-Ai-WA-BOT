@@ -161,10 +161,14 @@ async function smartFetch(url, opts = {}) {
             return res;
         } catch (e) {
             const c = errCode(e);
-            errors.push({ kind, code: c, msg: e?.cause?.message || e.message });
             // 🕐 v2.87: a big-body upload that died on timeout/abort leaves a poisoned route pref —
-            // forget it so the next attempt starts fresh from direct.
+            // forget it so the next attempt starts fresh from direct. (v2.89: MUST run before the
+            // abort early-throw below, or the self-heal never fires on budget aborts)
             if (bigBody && (c === 'ABORT_ERR' || e?.name === 'AbortError' || c === 'ETIMEDOUT')) route.delete(host);
+            // 🛑 v2.89: budget/stall abort — the caller's signal is dead → throw NOW, never burn the
+            // remaining routes (each fetch would reject instantly and the real cause gets masked)
+            if (opts.signal?.aborted || e?.name === 'AbortError' || c === 'ABORT_ERR') throw e;
+            errors.push({ kind, code: c, msg: e?.cause?.message || e.message });
             // 🌐 v2.65: DoH IPs are cached 10 min — a CDN edge IP that dies mid-window would poison every
             // retry (eporner CDN connect timeouts). on a doh-route connect failure → re-resolve next time.
             if (kind === 'doh' && NET_ERR.test(c)) dohCache.delete(host + '/A');
