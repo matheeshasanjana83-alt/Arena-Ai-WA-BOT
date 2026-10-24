@@ -20,7 +20,7 @@ const manifest = require('./manifest.json');
 
     console.log('— v2.78.0 pins —');
     ok('version + manifest', () => {
-        assert.ok(['2.78.0', '2.79.0', '2.80.0', '2.81.0', '2.82.0', '2.83.0', '2.84.0', '2.85.0', '2.86.0', '2.87.0', '2.88.0', '2.89.0'].includes(pkg.version), 'pkg ' + pkg.version);
+        assert.ok(['2.78.0', '2.79.0', '2.80.0', '2.81.0', '2.82.0', '2.83.0', '2.84.0', '2.85.0', '2.86.0', '2.87.0', '2.88.0', '2.89.0', '2.90.0'].includes(pkg.version), 'pkg ' + pkg.version);
         assert.ok(manifest.notes.includes('REPORT VERIFICATION'));
         assert.ok(manifest.files.includes('test_v278.js'));
     });

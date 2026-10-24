@@ -191,7 +191,7 @@ ok('pairsite.js: /diag pot status + pot=1 live mint', () => {
     const pkg = JSON.parse(fs.readFileSync(path.join(R, 'package.json'), 'utf8'));
     const man = JSON.parse(fs.readFileSync(path.join(R, 'manifest.json'), 'utf8'));
     ok('versions: package+manifest 2.69.0; manifest files += pot/pollinations; removed += test_v268', () => {
-        assert.strictEqual(pkg.version, '2.69.0');
+        assert.strictEqual(pkg.version, '2.90.0');
         assert.strictEqual(man.version, '2.69.0');
         for (const f of ['pot.js', 'pot_worker.cjs', 'pollinations.js', 'test_v269.js']) assert.ok(man.files.includes(f), 'manifest files missing ' + f);
         assert.ok((man.removed || []).includes('test_v268.js'), 'removed missing test_v268.js');
