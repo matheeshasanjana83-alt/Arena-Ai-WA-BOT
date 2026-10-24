@@ -59,8 +59,8 @@ const sendMock = (sent) => async (j, c) => { sent.push(c); return { key: { id: '
 (async () => {
     console.log('— v2.83.0 pins —');
     ok('version + manifest', () => {
-        assert.ok(['2.82.0', '2.83.0', '2.84.0', '2.85.0', '2.86.0', '2.87.0', '2.88.0', '2.89.0', '2.90.0'].includes(pkg.version), 'pkg ' + pkg.version);
-        assert.ok(['2.82.0', '2.83.0', '2.84.0', '2.85.0', '2.86.0', '2.87.0', '2.88.0', '2.89.0', '2.90.0'].includes(manifest.version), 'manifest ' + manifest.version);
+        assert.ok(['2.82.0', '2.83.0', '2.84.0', '2.85.0', '2.86.0', '2.87.0', '2.88.0', '2.89.0', '2.90.0', '2.91.0', '2.92.0'].includes(pkg.version), 'pkg ' + pkg.version);
+        assert.ok(['2.82.0', '2.83.0', '2.84.0', '2.85.0', '2.86.0', '2.87.0', '2.88.0', '2.89.0', '2.90.0', '2.91.0', '2.92.0'].includes(manifest.version), 'manifest ' + manifest.version);
         assert.ok(/JAVDN|javbus/i.test(manifest.notes), 'notes');
         assert.ok(manifest.files.includes('test_v283.js'), 'files');
     });

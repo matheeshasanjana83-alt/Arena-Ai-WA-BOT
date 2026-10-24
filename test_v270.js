@@ -237,7 +237,7 @@ const POLLI_OK = (text) => ({ status: 200, body: { choices: [{ message: { conten
     const pkg = JSON.parse(fs.readFileSync(path.join(R, 'package.json'), 'utf8'));
     const man = JSON.parse(fs.readFileSync(path.join(R, 'manifest.json'), 'utf8'));
     ok('versions: package+manifest 2.70.0; manifest files += test_v270', () => {
-        assert.strictEqual(pkg.version, '2.70.0');
+        assert.strictEqual(pkg.version, '2.91.0');
         assert.strictEqual(man.version, '2.70.0');
         for (const f of ['test_v270.js', 'pollinations.js', 'ai.js']) assert.ok(man.files.includes(f), 'manifest files missing ' + f);
         assert.ok((man.removed || []).includes('test_v269.js'), 'removed missing test_v269.js');

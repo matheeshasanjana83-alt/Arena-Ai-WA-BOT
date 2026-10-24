@@ -218,12 +218,12 @@ const gcSessions = () => {
 
 // quality card from a parsed watch page — mp4 sources only (API policy: hls filtered,
 // 3-4 digit labels); session stage 'quality' stores labels for the quote pick
-async function qualityMenu({ send, jid, msg, edit, st }, info, wid) {
+async function qualityMenu({ send, jid, msg, edit, st }, info, wid, prevSess) {
     const srcs = info.sources.filter((s) => s.type !== 'hls' && /^\d{3,4}$/.test(String(s.label)));
     if (!srcs.length) return await edit(infoCard(info));   // honest hls-only / no-mp4 card
     gcSessions();
-    sessions.set(jid, { stage: 'quality', id: wid, labels: srcs.map((s) => s.label), at: Date.now(), cardId: null, cards: (sessions.get(jid) || {}).cards || [] });   // 🕰️ v2.90: prev flow's card ring carried forward
-    const regCard = (id) => {   // 🕰️ v2.90: card ring — search card එකත් ජීවත්වෙනවා (ආපහු quote කරලා වෙන video එකක් තෝරන්න පුළුවන්)
+    sessions.set(jid, { stage: 'quality', id: wid, labels: srcs.map((s) => s.label), at: Date.now(), cardId: null, prev: prevSess || null, cards: (sessions.get(jid) || {}).cards || [] });   // 🆕 v2.90 prev — download ඉවර උනාම search menu එකට ආපසු · 🕰️ v2.92: prev flow's card ring carried forward
+    const regCard = (id) => {   // 🕰️ v2.92: card ring — search card එකත් ජීවත්වෙනවා (ආපහු quote කරලා වෙන video එකක් තෝරන්න පුළුවන්)
         const s = sessions.get(jid); if (!s || !id) return;
         s.cardId = id;
         s.cards = [{ id: String(id), stage: 'quality', wid, labels: srcs.map((x) => x.label), at: Date.now() }, ...(s.cards || []).filter((c) => c.id !== String(id))].slice(0, 12);
@@ -254,7 +254,7 @@ async function goPick(send, jid, msg, n, download) {
         try {
             const info = await parsePage(`${ORIGIN}/watch/${s.items[n - 1].id}`);
             if (info.deleted) return await edit('❌ මේ video එක delete වෙලා (site එකේම "Video deleted" පෙන්නනවා)');
-            await qualityMenu({ send, jid, msg, edit, st }, info, s.items[n - 1].id);
+            await qualityMenu({ send, jid, msg, edit, st }, info, s.items[n - 1].id, s);   // 🆕 v2.90: search session = prev (binge)
             return true;
         } catch (e) {
             return await edit('❌ mat6tube: ' + String((e && e.message) || e).slice(0, 180));
@@ -263,7 +263,8 @@ async function goPick(send, jid, msg, n, download) {
     const label = s.labels[n - 1];
     if (!label) return send(jid, { text: `❌ ${n} — quality එකක් නෑ (1-${s.labels.length})` }, { quoted: msg });
     if (!download) return send(jid, { text: `🔗 ${ORIGIN}/watch/${s.id} · ${label}p` }, { quoted: msg });   // tests / fallback
-    s.at = Date.now();   // 🕰️ v2.90: session එක මැරෙන්නේ නෑ — download ඉවර උනාට පස්සෙත් quality card එකටම ආයෙත් reply කරලා වෙන quality එකක් ගන්න පුළුවන්
+    // 🆕 v2.90: session එක මෙතන delete කරන්නෙ නෑ — fetch fail උනොත් quality re-pick කරන්නත්, ඉවර උනාම search menu එකට ආපසු යන්නත්
+    s.at = Date.now();   // 🕰️ v2.92: gc mid-fetch නෑ
     const st = await send(jid, { text: `🔞 ${label}p — source URL එක අලුත් කරගන්නවා…` }, { quoted: msg });
     const edit = async (t) => { try { await send(jid, { text: t, edit: st.key }); } catch { } };
     try {
@@ -272,6 +273,12 @@ async function goPick(send, jid, msg, n, download) {
         if (!src) return await edit(`❌ ${label}p source එක දැන් නෑ — *.metdn <link>* ආයෙත් ගහලා quality menu එක ගන්න`);
         await edit(`⬇️ ${label}p එවනවා…`);
         await download(src.file, '🔞 mat6tube');
+        // 🆕 v2.90: download ඉවර උනාම search menu එක ආයෙත් active — ඊළඟ video එකට ආයෙ command ඕන නෑ
+        if (sessions.get(jid) === s) {
+            const back = s.prev;
+            if (back && back.items?.length) { back.at = Date.now(); sessions.set(jid, back); await edit('✅ ලෑස්ති — අර menu card එකටම ඊළඟ අංකය reply කරන්න (ආයෙ command එකක් ඕන නෑ)'); }
+            else { try { sessions.delete(jid); } catch { } }
+        }
         return true;
     } catch (e) {
         return await edit('❌ mat6tube: ' + String((e && e.message) || e).slice(0, 180));

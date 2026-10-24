@@ -54,9 +54,9 @@ const slowUrl = () => `http://127.0.0.1:${PORT}/slow/x.bin`;
 
 (async () => {
     console.log('— v2.89.0 pins —');
-    ok('version 2.89 + manifest notes/files + exports', () => {
-        assert.strictEqual(pkg.version, '2.90.0', 'pkg ' + pkg.version);
-        assert.strictEqual(manifest.version, '2.90.0', 'manifest ' + manifest.version);
+    ok('version 2.90 (pins roll forward) + v2.89 notes still present + exports', () => {
+        assert.strictEqual(pkg.version, '2.92.0', 'pkg ' + pkg.version);
+        assert.strictEqual(manifest.version, '2.92.0', 'manifest ' + manifest.version);
         assert.ok(manifest.notes.includes('DOWNLOAD LANE NEVER-SILENT'), 'notes');
         assert.ok(manifest.files.includes('test_v289.js'), 'files');
         assert.strictEqual(typeof bot._dlQueue, 'function', '_dlQueue exported');
@@ -73,7 +73,9 @@ const slowUrl = () => `http://127.0.0.1:${PORT}/slow/x.bin`;
         assert.ok(botSrc.includes('(link, tag, cap) => dlQueue('), 'cap passthrough (was dropped)');
         assert.ok(botSrc.includes('මේ card එකට දැන් menu එකක් active නෑ'), 'stale-card numeric hint');
         assert.ok(botSrc.includes('signal: ac.signal'), 'budget signal into download()');
-        assert.ok((hubSrc.match(/sessions\.get\(jid\) === /g) || []).length >= 3, 'identity guards ×3: ' + (hubSrc.match(/sessions\.get\(jid\) === /g) || []).length);
+        const guards = (hubSrc.match(/sessions\.get\(jid\) === /g) || []).length + (hubSrc.match(/sessions\.get\(jid\) !== mySess/g) || []).length;   // v2.90: hv/ep cleanup guard lives INSIDE restoreBack (!==) + hm (===)
+        assert.ok(guards >= 2, 'identity guards (restoreBack + hm): ' + guards);
+        assert.ok((hubSrc.match(/restoreBack\(jid, mySess\)/g) || []).length >= 2, 'hv+ep download cleanup routed through restoreBack');
         assert.ok(netSrc.includes("opts.signal?.aborted || e?.name === 'AbortError'"), 'net.js abort early-throw');
         assert.ok(dlSrc.includes('stallGuard(stream).pipe(out)') && dlSrc.includes('stallGuard(src).pipe(t)'), 'stallGuard in both single-stream paths');
     });
@@ -166,12 +168,12 @@ const slowUrl = () => `http://127.0.0.1:${PORT}/slow/x.bin`;
         const s = hub._sessions.get(JID);
         assert.ok(s && s.title === 'NEW' && s.stage === 'series', 'NEW session survived (was deleted by old cleanup)');
     });
-    await okA('negative control: no overwrite → session still ALIVE after download (v2.90 keep-alive)', async () => {
+    await okA('negative control: no overwrite + no prev → session cleaned after download (restoreBack else-branch)', async () => {
         const JID = 'hv289b@s.whatsapp.net';
         hub._sessions.set(JID, { cmd: 'hv', stage: 'quality', items: [{ label: '480p', src: 'http://x/v.mp4', bytes: 5 }], title: 'ONE', at: Date.now(), cardId: 'C3' });
         const sendM = async (j, c) => ({ key: { id: 'K' + Math.random() } });
         await hub.handle('.hentaiv', { send: sendM, jid: JID, msg: {}, rest: ['go', '1'], react: async () => { }, download: async () => { } });
-        assert.ok(hub._sessions.get(JID), 'session ALIVE (v2.90 keep-alive — re-pick another quality)');
+        assert.strictEqual(hub._sessions.get(JID), undefined, 'no prev → cleaned (restoreBack else-branch, guard does not leak)');
     });
 
     await srv.close();

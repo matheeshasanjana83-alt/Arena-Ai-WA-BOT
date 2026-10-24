@@ -26,6 +26,14 @@ const EP_CAP = 120;                        // max episode rows per card
 
 const sessions = new Map();                // jid → { stage:'series'|'season'|'ep', items:[{label,url}], title, at, cardId }
 const gcSessions = () => { const now = Date.now(); for (const [k, s] of sessions) if (now - (s.at || 0) > TTL + 30 * 60e3) sessions.delete(k); };
+// 🆕 v2.90: download එක ඉවර උනාම session එක එක පියවරක් ආපසු — පරණ menu card එක ආයෙත් active (binge flow: EP1 → EP2 → EP3 ආයෙ .hentaiv ගහන්නේ නැතුව)
+const restoreBack = (jid, mySess) => {
+    if (sessions.get(jid) !== mySess) return false;   // 🛑 v2.89 identity guard: අතරේ අලුත් search එකක් ආවා නම් කිසිම දෙයක් නෑ
+    const back = mySess.prev;
+    if (back && back.items?.length) { back.at = Date.now(); back.busy = false; sessions.set(jid, back); return true; }   // 🆕 v2.91: busy flag එකත් clear — restored card එක ආයෙත් live
+    try { sessions.delete(jid); } catch { }   // prev නැත්නම් (link-flow / old session) → පරන විදිහම clean
+    return false;
+};
 
 // ───────── http ─────────
 async function get(url, { referer, timeout = 25000, manual = false, method = 'GET', body, ct } = {}) {
@@ -343,7 +351,11 @@ async function hvGo(send, jid, msg, n, download) {
     if (!s || s.cmd !== 'hv' || !s.items?.length) return send(jid, { text: HV_USAGE }, { quoted: msg });
     const pick = s.items[n - 1];
     if (!pick) return send(jid, { text: `❌ ${n} කියන අංකේ නෑ — list එකේ අංකයක් එවන්න (1-${s.items.length})` }, { quoted: msg });
-    const st = await status(send, jid, msg, 'WatchHentai');
+    // 🆕 v2.91: double-pick race — go 1 process වෙන අතරේ (qualitiesWH ~5-20s) go 2 එකක් ආවොත් session එක overwrite වෙලා පලවෙනි quality card එක orphan වෙනවා (2026-10-24 user flow: go 1 + go 2 within 4s → EP1 card ට reply කරාම silence)
+    if ((s.stage === 'series' || s.stage === 'ep') && s.busy && Date.now() - (s.busyAt || 0) < 60000)
+        return send(jid, { text: '⏳ කලින් pick එක තාම process වෙනවා — menu card එක එනකම් පොඩ්ඩක් ඉන්න' }, { quoted: msg });
+    const st = await status(send, jid, msg, 'WatchHentai');   // 🕰️ v2.90: 'AniWorld බලනවා' mislabel fix (user video t04)
+    if (s.stage === 'series' || s.stage === 'ep') { s.busy = true; s.busyAt = Date.now(); }   // 🆕 v2.91 (60s auto-expire = stuck-busy නෑ)
     try {
         if (s.stage === 'series') {
             const eps = epsWHFromHtml(await getText(pick.url, { referer: WH + '/' }));
@@ -355,13 +367,13 @@ async function hvGo(send, jid, msg, n, download) {
             // 1 episode (or none) → pick IS the video → straight to quality menu
             await st.edit(eps.length === 1 ? '🔎 Qualities හොයනවා...' : '🔎 Episode list එකක් නෑ — Qualities හොයනවා...');
             const { title: t, sources } = await qualitiesWH(eps.length === 1 ? eps[0].url : pick.url);
-            sessions.set(jid, { cmd: 'hv', stage: 'quality', items: sources, title: t || title, at: Date.now(), cardId: null });
+            sessions.set(jid, { cmd: 'hv', stage: 'quality', items: sources, title: t || title, at: Date.now(), cardId: null, prev: s });   // 🆕 v2.90 prev — download ඉවර උනාම series card එකට ආපසු
             return done(st, send, jid, msg, hvQCard(t || title, sources), null);
         }
         if (s.stage === 'ep') {
             await st.edit('🔎 Qualities හොයනවා...');
             const { title, sources } = await qualitiesWH(pick.url);
-            sessions.set(jid, { cmd: 'hv', stage: 'quality', items: sources, title, at: Date.now(), cardId: null });
+            sessions.set(jid, { cmd: 'hv', stage: 'quality', items: sources, title, at: Date.now(), cardId: null, prev: s });   // 🆕 v2.90 prev — download ඉවර උනාම EPISODES card එකට ආපසු
             return done(st, send, jid, msg, hvQCard(title, sources), null);
         }
         if (s.stage === 'quality') {
@@ -370,10 +382,11 @@ async function hvGo(send, jid, msg, n, download) {
             const cap = `🔞 *${cut(s.title, 60)}* — ${pick.label}`;
             if (typeof download === 'function') await download(pick.src, '🔞 WatchHentai', cap);
             else await send(jid, { text: `🔞 *${cut(s.title, 60)}* — ${pick.label}\n${pick.src}\n\n${foot('18+ · hstorage CDN — 1DM/browser වලින් download කරන්න')}` }, { quoted: msg });
-            if (sessions.get(jid) === mySess) { mySess.at = Date.now(); }   // 🕰️ v2.90: flow එක මැරෙන්නේ නෑ — ඒ card එකටම ආයෙත් reply කරලා වෙන quality/EP එකක් ගන්න පුළුවන් (user: 'අනිත් ep ගන්න හදනකොට command වැඩ කරන්නේ නැ')
+            // 🆕 v2.90: session delete ❌ → එක පියවරක් ආපසු restore ✅ — EPISODES/series card එක ජීවමානයි (ඊළඟ EP එකට ආයෙ command ඕන නෑ)
+            if (restoreBack(jid, mySess)) await st.edit('✅ ලෑස්ති — අර menu card එකටම ඊළඟ අංකය reply කරන්න (ආයෙ command එකක් ඕන නෑ)');
             return;
         }
-    } catch (e) { return fail(st, send, jid, msg, e); }
+    } catch (e) { s.busy = false; return fail(st, send, jid, msg, e); }   // 🆕 v2.91: fail උනාම busy අයින් — session එක තාම live (retry පුළුවන්)
 }
 
 // ───────── 🔞 .ep — Eporner (official public API v2 · github.com/eporner/API) ─────────
@@ -468,7 +481,7 @@ async function epGo(send, jid, msg, n, download) {
         if (s.stage === 'search') {
             await st.edit('🔎 Qualities හොයනවා...');
             const { title, sources } = await qualitiesEP(pick.url);
-            sessions.set(jid, { cmd: 'ep', stage: 'quality', items: sources, title: title || pick.title || s.title, at: Date.now(), cardId: null });
+            sessions.set(jid, { cmd: 'ep', stage: 'quality', items: sources, title: title || pick.title || s.title, at: Date.now(), cardId: null, prev: s });   // 🆕 v2.90 prev — download ඉවර උනාම search card එකට ආපසු
             return done(st, send, jid, msg, epQCard(title || pick.title || s.title, sources), null);
         }
         if (s.stage === 'quality') {
@@ -477,7 +490,8 @@ async function epGo(send, jid, msg, n, download) {
             const cap = `🔞 *${cut(s.title, 60)}* — ${pick.label}`;
             if (typeof download === 'function') await download(pick.src, '🔞 Eporner', cap);
             else await send(jid, { text: `🔞 *${cut(s.title, 60)}* — ${pick.label}\n${pick.src}\n\n${foot('18+ · eporner CDN — browser/1DM වලින් download කරන්න')}` }, { quoted: msg });
-            if (sessions.get(jid) === mySess) { mySess.at = Date.now(); }   // 🕰️ v2.90: keep-alive (same as hv — re-pick another quality without re-typing)
+            // 🆕 v2.90: search card එක ආයෙත් active — ඊළඟ video එකට ආයෙ command ඕන නෑ
+            if (restoreBack(jid, mySess)) await st.edit('✅ ලෑස්ති — අර search card එකටම ඊළඟ අංකය reply කරන්න (ආයෙ command එකක් ඕන නෑ)');
             return;
         }
     } catch (e) { return fail(st, send, jid, msg, e, null, 'Eporner'); }

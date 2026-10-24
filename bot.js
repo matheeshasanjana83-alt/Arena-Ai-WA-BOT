@@ -304,6 +304,7 @@ async function onMessages({ messages, type }, send, del = async () => { }) {
                 if (type !== 'notify' && ts && ts < STARTED - 60) continue;   // old history — don't re-run old commands
                 seen.add(msg.key.id); if (seen.size > 1000) seen.delete(seen.values().next().value);
                 let text = getText(msg.message);
+                if (text && type === 'notify') console.log(`💬 ${fromMe ? '🤖' : '👤'} ${bareJid(msg.key.remoteJid)}${msg.key.participant ? '/' + bareJid(msg.key.participant) : ''}: ${cut(String(text).replace(/\n+/g, ' '), 60)}${msg.message?.extendedTextMessage?.contextInfo?.stanzaId ? ' ⤶' : ''}`);   // 🔎 v2.91: every-message console trace — second linked-device bot (same number, fromMe cards) made the chat look broken while this bot answered fine
                 if (accessible && /^\d{1,3}$/.test(text)) {                      // number reply → .mode / .setting / .menu panel · .moviedex card · 📋 yt quality menu (v2.64)
                     const jid0 = replyJid(msg.key), qid = msg.message?.extendedTextMessage?.contextInfo?.stanzaId;
                     if (qid) {                                                   // 🔒 v2.58 REPLY-ONLY: number එක card එකට QUOTE කරලා ම එන්න ඕන — bare number (no quote) → කිසිම දෙයක් නෑ (user bug 05:15: menu එකට reply නොකර '1' ගැහුවාම DOWNLOAD open වුණා)
@@ -318,6 +319,13 @@ async function onMessages({ messages, type }, send, del = async () => { }) {
                             else if (accessible && sentIds.has(String(qid))) {   // 🔢 v2.89: stale/deleted BOT card quote (sentIds = bot එකෙන් ආපු card විතරයි) — was ABSOLUTE silence (owner chat never AI'd) = "bot එක මැරුණා වගේ"; වෙන message එකකට quote කරොත් v2.58 silence ම තියෙනවා
                                 await send(jid0, { text: '🔢 මේ card එකට දැන් menu එකක් active නෑ (expire වෙලා / flow එක ඉවර).\n\nඅලුත් command එකක් ගහලා අලුත් menu එකක් open කරලා *ඒ card එකට* reply කරන්න.' }, { quoted: msg });
                                 continue;
+                            } else {   // 🔢 v2.91: number on a BOT card that is NOT ours — second linked-device bot (same number, fromMe=true cards) or pre-restart own card → guide instead of silence (2026-10-24 .hentaiv report: user quoted the OTHER bot's quality card → both bots looked broken)
+                                const qpart = bareJid(String(msg.message?.extendedTextMessage?.contextInfo?.participant || ''));
+                                const botCard = qpart && (qpart === ME.pn || (ME.lid && qpart === ME.lid));
+                                if (botCard && !sentIds.has(String(qid))) {
+                                    await send(jid0, { text: '🔢 මේ card එක මේ bot එකෙන් ආව එකක් නෙමෙයි (restart / වෙන linked device එකක්).\n\nමගෙ menu card එකට reply කරන්න — නැත්නම් අලුත් command එකක් ගහලා *අලුත් card එකට* reply කරන්න.' }, { quoted: msg });
+                                    continue;
+                                }
                             } } } } } } }   // moviedex + 🎌 v2.75 aniworld + ☁️ v2.84 terabox + 🔞 v2.88 metdn card quotes
                     }
                 }
