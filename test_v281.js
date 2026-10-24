@@ -91,8 +91,8 @@ function hitomiMock({ galleries = {}, extraIndex = null, tagSets = {}, latest = 
 (async () => {
     console.log('— v2.81.0 .hentaimng/.hmanga: pins + structure —');
     ok('version 2.81 pins', () => {
-        assert.ok(['2.81.0','2.82.0', '2.83.0', '2.84.0', '2.85.0', '2.86.0', '2.87.0', '2.88.0', '2.89.0'].includes(pkg.version), 'pkg: ' + pkg.version);
-        assert.ok(['2.81.0','2.82.0', '2.83.0', '2.84.0', '2.85.0', '2.86.0', '2.87.0', '2.88.0', '2.89.0'].includes(manifest.version), 'manifest: ' + manifest.version);
+        assert.ok(['2.81.0','2.82.0', '2.83.0', '2.84.0', '2.85.0', '2.86.0', '2.87.0', '2.88.0', '2.89.0', '2.90.0'].includes(pkg.version), 'pkg: ' + pkg.version);
+        assert.ok(['2.81.0','2.82.0', '2.83.0', '2.84.0', '2.85.0', '2.86.0', '2.87.0', '2.88.0', '2.89.0', '2.90.0'].includes(manifest.version), 'manifest: ' + manifest.version);
         assert.ok(manifest.notes.includes('.hentaimng') && manifest.notes.includes('node-hitomi'), 'notes updated');
         assert.ok(manifest.files.includes('animehub.js') && manifest.files.includes('test_v281.js'), 'files listed');
     });
@@ -297,7 +297,7 @@ function hitomiMock({ galleries = {}, extraIndex = null, tagSets = {}, latest = 
             assert.ok(!imgs[1].caption, 'second page uncaptioned (<10)');
             const summary = sent.find((c) => c.text && c.text.includes('pages 2/2'));
             assert.ok(summary, 'summary sent');
-            assert.ok(!hub._sessions.has('h3@s'), 'session cleared');
+            assert.ok(hub._sessions.has('h3@s'), 'session ALIVE (v2.90 keep-alive)');
         } finally { global.fetch = orig; hub._reset(); }
     });
     await okA('hmGo gallery 2 → link text + session cleared', async () => {
@@ -309,7 +309,7 @@ function hitomiMock({ galleries = {}, extraIndex = null, tagSets = {}, latest = 
             hub._sessions.set('h4@s', { cmd: 'hm', stage: 'gallery', items: [{ label: 'pages' }, { label: 'link' }], title: 'T', gallery: normG(111001, [HASH1]), at: Date.now(), cardId: 'K1' });
             await hub.handle('.hmanga', { send, jid: 'h4@s', msg: {}, rest: ['go', '2'] });
             assert.ok(sent.some((c) => c.text && c.text.includes('hitomi.la/galleries/111001.html')), 'gallery link');
-            assert.ok(!hub._sessions.has('h4@s'), 'cleared');
+            assert.ok(hub._sessions.has('h4@s'), 'alive (v2.90 keep-alive)');
         } finally { hub._reset(); }
     });
     await okA('.hmanga no results → honest miss card', async () => {

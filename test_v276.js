@@ -29,8 +29,8 @@ const manifest = require('./manifest.json');
 
     console.log('— v2.76.0 .hentaiv: pins + structure —');
     ok('version 2.76/77 pins', () => {
-        assert.ok(['2.76.0', '2.77.0', '2.78.0', '2.79.0', '2.80.0', '2.81.0', '2.82.0', '2.83.0', '2.84.0', '2.85.0', '2.86.0', '2.87.0', '2.88.0', '2.89.0'].includes(pkg.version), 'pkg: ' + pkg.version);
-        assert.ok(['2.76.0', '2.77.0', '2.78.0', '2.79.0', '2.80.0', '2.81.0', '2.82.0', '2.83.0', '2.84.0', '2.85.0', '2.86.0', '2.87.0', '2.88.0', '2.89.0'].includes(manifest.version), 'manifest: ' + manifest.version);
+        assert.ok(['2.76.0', '2.77.0', '2.78.0', '2.79.0', '2.80.0', '2.81.0', '2.82.0', '2.83.0', '2.84.0', '2.85.0', '2.86.0', '2.87.0', '2.88.0', '2.89.0', '2.90.0'].includes(pkg.version), 'pkg: ' + pkg.version);
+        assert.ok(['2.76.0', '2.77.0', '2.78.0', '2.79.0', '2.80.0', '2.81.0', '2.82.0', '2.83.0', '2.84.0', '2.85.0', '2.86.0', '2.87.0', '2.88.0', '2.89.0', '2.90.0'].includes(manifest.version), 'manifest: ' + manifest.version);
         assert.ok(manifest.notes.includes('.hentaiv'));
         assert.ok(manifest.files.includes('animehub.js'));
     });
@@ -105,7 +105,7 @@ const manifest = require('./manifest.json');
             assert.strictEqual(dlArgs.length, 1);
             assert.ok(dlArgs[0].link.includes('_1080p.mp4'));
             assert.strictEqual(dlArgs[0].tag, '🔞 WatchHentai');
-            assert.ok(!hub._sessions.has('hv1@s'), 'session cleared after send');
+            assert.ok(hub._sessions.has('hv1@s'), 'session ALIVE after send (v2.90 keep-alive)');
         } finally { global.fetch = orig; hub._reset(); }
     });
     await okA('hvGo without download fn → sends link text (graceful)', async () => {

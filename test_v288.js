@@ -58,8 +58,8 @@ const DL = (arr) => async (l, tag) => arr.push({ l, tag });
 (async () => {
     console.log('— v2.88.0 pins —');
     ok('version + manifest files + wiring greps', () => {
-        assert.ok(['2.87.0', '2.88.0', '2.89.0'].includes(pkg.version), 'pkg ' + pkg.version);
-        assert.ok(['2.87.0', '2.88.0', '2.89.0'].includes(manifest.version), 'manifest ' + manifest.version);
+        assert.ok(['2.87.0', '2.88.0', '2.89.0', '2.90.0'].includes(pkg.version), 'pkg ' + pkg.version);
+        assert.ok(['2.87.0', '2.88.0', '2.89.0', '2.90.0'].includes(manifest.version), 'manifest ' + manifest.version);
         assert.ok(manifest.files.includes('metdn.js') && manifest.files.includes('test_v288.js'), 'files');
         assert.ok(botSrc.includes("require('./metdn')") && botSrc.includes('metdn.handle'), 'router');
         assert.ok(botSrc.includes('metdn.bridge'), 'bridge chain (7th)');
@@ -200,7 +200,7 @@ const DL = (arr) => async (l, tag) => arr.push({ l, tag });
             assert.strictEqual(dled2.length, 1, 'download');
             assert.strictEqual(dled2[0].l, 'https://cdn.pvvstream.pro/videos/-2_3/vid_480p.mp4?secure=S480&x=1', 'label-matched 480 url (\\u0026 decoded)');
             assert.strictEqual(dled2[0].tag, '🔞 mat6tube');
-            assert.ok(!md._sessions.has(JID), 'session cleared');
+            assert.ok(md._sessions.has(JID), 'session ALIVE (v2.90 keep-alive — re-quote quality card works)');
         } finally { md.setFetcher(prev); }
     });
     await okA('range + edge: 11 out of menu · expired session · no-download fallback · source gone', async () => {

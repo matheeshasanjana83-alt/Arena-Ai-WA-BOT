@@ -44,8 +44,8 @@ const sendMock = (sent) => { let n = 0; return async (j, c) => { const k = 'K' +
 (async () => {
     console.log('— v2.86.0 pins —');
     ok('version + manifest + notes + wiring greps', () => {
-        assert.ok(['2.85.0', '2.86.0', '2.87.0', '2.88.0', '2.89.0'].includes(pkg.version), 'pkg ' + pkg.version);
-        assert.ok(['2.85.0', '2.86.0', '2.87.0', '2.88.0', '2.89.0'].includes(manifest.version), 'manifest ' + manifest.version);
+        assert.ok(['2.85.0', '2.86.0', '2.87.0', '2.88.0', '2.89.0', '2.90.0'].includes(pkg.version), 'pkg ' + pkg.version);
+        assert.ok(['2.85.0', '2.86.0', '2.87.0', '2.88.0', '2.89.0', '2.90.0'].includes(manifest.version), 'manifest ' + manifest.version);
         assert.ok(/METDN/i.test(manifest.notes), 'notes');
         assert.ok(manifest.files.includes('metdn.js') && manifest.files.includes('test_v286.js'), 'files');
         assert.ok(botSrc.includes("require('./metdn')") && botSrc.includes('metdn.handle'), 'router');
@@ -129,7 +129,7 @@ const sendMock = (sent) => { let n = 0; return async (j, c) => { const k = 'K' +
             assert.strictEqual(d2.length, 1, 'picked download');
             assert.strictEqual(d2[0].l, 'https://cdn77-pr.pvvstream.pro/videos/480/-1_2.mp4?url=dmt2&sig=B', 'BEST signed url (fresh fetch)');
             assert.strictEqual(d2[0].tag, '🔞 mat6tube');
-            assert.ok(!md._sessions.has(JID), 'session cleared after pick');
+            assert.ok(md._sessions.has(JID), 'session ALIVE after pick (v2.90 keep-alive)');
         } finally { md.setFetcher(prev); }
     });
     await okA('.metdn no-image page → edited text quality card, NO download', async () => {

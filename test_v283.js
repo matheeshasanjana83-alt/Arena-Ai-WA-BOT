@@ -59,8 +59,8 @@ const sendMock = (sent) => async (j, c) => { sent.push(c); return { key: { id: '
 (async () => {
     console.log('— v2.83.0 pins —');
     ok('version + manifest', () => {
-        assert.ok(['2.82.0', '2.83.0', '2.84.0', '2.85.0', '2.86.0', '2.87.0', '2.88.0', '2.89.0'].includes(pkg.version), 'pkg ' + pkg.version);
-        assert.ok(['2.82.0', '2.83.0', '2.84.0', '2.85.0', '2.86.0', '2.87.0', '2.88.0', '2.89.0'].includes(manifest.version), 'manifest ' + manifest.version);
+        assert.ok(['2.82.0', '2.83.0', '2.84.0', '2.85.0', '2.86.0', '2.87.0', '2.88.0', '2.89.0', '2.90.0'].includes(pkg.version), 'pkg ' + pkg.version);
+        assert.ok(['2.82.0', '2.83.0', '2.84.0', '2.85.0', '2.86.0', '2.87.0', '2.88.0', '2.89.0', '2.90.0'].includes(manifest.version), 'manifest ' + manifest.version);
         assert.ok(/JAVDN|javbus/i.test(manifest.notes), 'notes');
         assert.ok(manifest.files.includes('test_v283.js'), 'files');
     });
@@ -162,7 +162,7 @@ const sendMock = (sent) => async (j, c) => { sent.push(c); return { key: { id: '
             assert.strictEqual(s.magnets.length, 2, 'magnets cached in session');
         } finally { global.fetch = orig; hub._reset(); }
     });
-    await okA('jvGo gallery 1 → magnet card + session cleared', async () => {
+    await okA('jvGo gallery 1 → magnet card + session alive (v2.90 keep-alive)', async () => {
         const orig = global.fetch; hub._reset();
         try {
             global.fetch = jvMock();
@@ -173,10 +173,10 @@ const sendMock = (sent) => async (j, c) => { sent.push(c); return { key: { id: '
             assert.ok(card.includes('🧲 *TEST-001* — magnets'), card.slice(0, 80));
             assert.ok(card.includes('magnet:?xt=urn:btih:AAAA111&dn=TEST-001') && card.includes('magnet:?xt=urn:btih:BBBB222&dn=TEST-001'), 'both links');
             assert.ok(card.includes('2.02GB · HD · 字幕') || (card.includes('2.02GB') && card.includes('HD') && card.includes('字幕')), 'tags');
-            assert.ok(!hub._sessions.get(JID), 'session cleared');
+            assert.ok(hub._sessions.get(JID), 'session ALIVE (v2.90 keep-alive)');
         } finally { global.fetch = orig; hub._reset(); }
     });
-    await okA('jvGo gallery 2 → javbus link card + cleared', async () => {
+    await okA('jvGo gallery 2 → javbus link card + alive', async () => {
         const orig = global.fetch; hub._reset();
         try {
             global.fetch = jvMock();
@@ -185,7 +185,7 @@ const sendMock = (sent) => async (j, c) => { sent.push(c); return { key: { id: '
             await hub.handle('.javdn', { send: sendMock(sent), jid: JID, msg: {}, rest: ['go', '2'], react: async () => { } });
             const card = sent.map((c) => c.text || '').join('\n');
             assert.ok(card.includes('https://www.javbus.com/TEST-001'), card);
-            assert.ok(!hub._sessions.get(JID), 'cleared');
+            assert.ok(hub._sessions.get(JID), 'alive (v2.90 keep-alive)');
         } finally { global.fetch = orig; hub._reset(); }
     });
     await okA('.javdn no results → honest miss card (no session)', async () => {

@@ -55,8 +55,8 @@ const slowUrl = () => `http://127.0.0.1:${PORT}/slow/x.bin`;
 (async () => {
     console.log('— v2.89.0 pins —');
     ok('version 2.89 + manifest notes/files + exports', () => {
-        assert.strictEqual(pkg.version, '2.89.0', 'pkg ' + pkg.version);
-        assert.strictEqual(manifest.version, '2.89.0', 'manifest ' + manifest.version);
+        assert.strictEqual(pkg.version, '2.90.0', 'pkg ' + pkg.version);
+        assert.strictEqual(manifest.version, '2.90.0', 'manifest ' + manifest.version);
         assert.ok(manifest.notes.includes('DOWNLOAD LANE NEVER-SILENT'), 'notes');
         assert.ok(manifest.files.includes('test_v289.js'), 'files');
         assert.strictEqual(typeof bot._dlQueue, 'function', '_dlQueue exported');
@@ -166,12 +166,12 @@ const slowUrl = () => `http://127.0.0.1:${PORT}/slow/x.bin`;
         const s = hub._sessions.get(JID);
         assert.ok(s && s.title === 'NEW' && s.stage === 'series', 'NEW session survived (was deleted by old cleanup)');
     });
-    await okA('negative control: no overwrite → session still cleaned up after download', async () => {
+    await okA('negative control: no overwrite → session still ALIVE after download (v2.90 keep-alive)', async () => {
         const JID = 'hv289b@s.whatsapp.net';
         hub._sessions.set(JID, { cmd: 'hv', stage: 'quality', items: [{ label: '480p', src: 'http://x/v.mp4', bytes: 5 }], title: 'ONE', at: Date.now(), cardId: 'C3' });
         const sendM = async (j, c) => ({ key: { id: 'K' + Math.random() } });
         await hub.handle('.hentaiv', { send: sendM, jid: JID, msg: {}, rest: ['go', '1'], react: async () => { }, download: async () => { } });
-        assert.strictEqual(hub._sessions.get(JID), undefined, 'session cleaned (guard does not leak sessions)');
+        assert.ok(hub._sessions.get(JID), 'session ALIVE (v2.90 keep-alive — re-pick another quality)');
     });
 
     await srv.close();

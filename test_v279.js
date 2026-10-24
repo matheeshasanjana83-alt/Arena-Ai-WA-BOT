@@ -40,8 +40,8 @@ if (!process.env.ARENA_OFFLINE) {
 
 console.log('— v2.79.0 pins —');
 ok('version + manifest', () => {
-    assert.ok(['2.79.0', '2.80.0', '2.81.0', '2.82.0', '2.83.0', '2.84.0', '2.85.0', '2.86.0', '2.87.0', '2.88.0', '2.89.0'].includes(pkg.version), 'pkg ' + pkg.version);
-    assert.ok(['2.79.0', '2.80.0', '2.81.0', '2.82.0', '2.83.0', '2.84.0', '2.85.0', '2.86.0', '2.87.0', '2.88.0', '2.89.0'].includes(manifest.version), 'manifest ' + manifest.version);
+    assert.ok(['2.79.0', '2.80.0', '2.81.0', '2.82.0', '2.83.0', '2.84.0', '2.85.0', '2.86.0', '2.87.0', '2.88.0', '2.89.0', '2.90.0'].includes(pkg.version), 'pkg ' + pkg.version);
+    assert.ok(['2.79.0', '2.80.0', '2.81.0', '2.82.0', '2.83.0', '2.84.0', '2.85.0', '2.86.0', '2.87.0', '2.88.0', '2.89.0', '2.90.0'].includes(manifest.version), 'manifest ' + manifest.version);
     assert.ok(manifest.notes.includes('EPISODE MENU FIX'), 'notes');
     assert.ok(manifest.files.includes('animehub.js') && manifest.files.includes('test_v279.js'), 'files');
     assert.ok(typeof hub.epsWHFromHtml === 'function' && hub._cards.hvEpsCard, 'exports');
@@ -155,7 +155,7 @@ await okA('episode pick → quality card → quality pick → download (full cha
         assert.strictEqual(dl.length, 1, 'download called');
         assert.ok(dl[0].link === p1080, 'picked _1080p');
         assert.strictEqual(dl[0].tag, '🔞 WatchHentai');
-        assert.ok(!hub._sessions.has('f2@s'), 'session cleared after send');
+        assert.ok(hub._sessions.has('f2@s'), 'session ALIVE after send (v2.90 keep-alive)');
     } finally { global.fetch = orig; hub._reset(); }
 });
 await okA('single-episode series → auto-jump straight to quality (kept)', async () => {

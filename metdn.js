@@ -222,18 +222,23 @@ async function qualityMenu({ send, jid, msg, edit, st }, info, wid) {
     const srcs = info.sources.filter((s) => s.type !== 'hls' && /^\d{3,4}$/.test(String(s.label)));
     if (!srcs.length) return await edit(infoCard(info));   // honest hls-only / no-mp4 card
     gcSessions();
-    sessions.set(jid, { stage: 'quality', id: wid, labels: srcs.map((s) => s.label), at: Date.now(), cardId: null });
+    sessions.set(jid, { stage: 'quality', id: wid, labels: srcs.map((s) => s.label), at: Date.now(), cardId: null, cards: (sessions.get(jid) || {}).cards || [] });   // 🕰️ v2.90: prev flow's card ring carried forward
+    const regCard = (id) => {   // 🕰️ v2.90: card ring — search card එකත් ජීවත්වෙනවා (ආපහු quote කරලා වෙන video එකක් තෝරන්න පුළුවන්)
+        const s = sessions.get(jid); if (!s || !id) return;
+        s.cardId = id;
+        s.cards = [{ id: String(id), stage: 'quality', wid, labels: srcs.map((x) => x.label), at: Date.now() }, ...(s.cards || []).filter((c) => c.id !== String(id))].slice(0, 12);
+    };
     const cap = qualityCap(info, srcs.map((s) => s.label));
     if (info.image) {
         try {
             const im = await send(jid, { image: { url: info.image }, caption: cap }, { quoted: msg });
-            sessions.get(jid).cardId = im?.key?.id || null;
+            regCard(im?.key?.id);
             try { await send(jid, { delete: st.key }); } catch { }   // progress bubble අයින් — image card එකම ඇති
             return true;
         } catch { }   // thumb send fail → edited text card එකට
     }
     await edit(cap);
-    sessions.get(jid).cardId = st?.key?.id || null;   // text card = edited progress bubble
+    regCard(st?.key?.id);   // text card = edited progress bubble
     return true;
 }
 
@@ -258,7 +263,7 @@ async function goPick(send, jid, msg, n, download) {
     const label = s.labels[n - 1];
     if (!label) return send(jid, { text: `❌ ${n} — quality එකක් නෑ (1-${s.labels.length})` }, { quoted: msg });
     if (!download) return send(jid, { text: `🔗 ${ORIGIN}/watch/${s.id} · ${label}p` }, { quoted: msg });   // tests / fallback
-    sessions.delete(jid);
+    s.at = Date.now();   // 🕰️ v2.90: session එක මැරෙන්නේ නෑ — download ඉවර උනාට පස්සෙත් quality card එකටම ආයෙත් reply කරලා වෙන quality එකක් ගන්න පුළුවන්
     const st = await send(jid, { text: `🔞 ${label}p — source URL එක අලුත් කරගන්නවා…` }, { quoted: msg });
     const edit = async (t) => { try { await send(jid, { text: t, edit: st.key }); } catch { } };
     try {
@@ -287,7 +292,8 @@ async function goMore(send, jid, msg) {
         if (!items.length) return await edit(`❌ page ${page} එකේ මුකුත් නෑ — මේක අන්තිම page එක වෙන්න ඇති`);
         Object.assign(s, { page, items, hasNext, at: Date.now(), cardId: null });
         await edit(searchCard(s));
-        s.cardId = st.key?.id || null;
+        s.cardId = st.key?.id || null;   // text card = edited progress bubble (terabox pattern)
+        if (s.cardId) s.cards = [{ id: String(s.cardId), stage: 'search', q: s.q, page, items, hasNext, at: Date.now() }, ...(s.cards || []).filter((c) => c.id !== String(s.cardId))].slice(0, 12);   // 🕰️ v2.90: ring
         return true;
     } catch (e) {
         return await edit('❌ mat6tube: ' + String((e && e.message) || e).slice(0, 180));
@@ -331,10 +337,11 @@ async function handle(c, ctx) {
         const { items, hasNext } = await searchVideos(q, 1);
         if (!items.length) return await edit(`🔞 *mat6tube search* — "${q}"\n\n❌ මුකුතු හම්බුණේ නෑ — වෙන නමක් / කෙටි නමක් try කරන්න\n` + foot('mat6tube.com · 18+'));
         gcSessions();
-        const s = { stage: 'search', q, page: 1, items, hasNext, at: Date.now(), cardId: null };
+        const s = { stage: 'search', q, page: 1, items, hasNext, at: Date.now(), cardId: null, cards: [] };
         sessions.set(jid, s);
         await edit(searchCard(s));
         s.cardId = st.key?.id || null;   // text card = edited progress bubble (terabox pattern)
+        if (s.cardId) s.cards = [{ id: String(s.cardId), stage: 'search', q, page: 1, items, hasNext, at: Date.now() }];   // 🕰️ v2.90: card ring seed
         return true;
     } catch (e) {
         return await edit('❌ mat6tube: ' + String((e && e.message) || e).slice(0, 180));
@@ -348,7 +355,12 @@ function bridge(jid, qid, digits) {
     if (Date.now() - (s.at || 0) > TTL + 30 * 60e3) return null;
     const d = parseInt(digits, 10);
     if (!Number.isFinite(d) || d < 1) return null;
-    if (qid && s.cardId && String(qid) !== String(s.cardId)) return null;   // 🔒 reply-only
+    if (qid && String(qid) !== String(s.cardId)) {   // 🔒 reply-only — 🕰️ v2.90: old flow card (search menu / old quality card) → rewind to that stage (user video bug = animehub එකේම class එක)
+        const hit = (s.cards || []).find((c) => c.id === String(qid) && Date.now() - c.at < TTL + 30 * 60e3);
+        if (!hit) return null;
+        if (hit.stage === 'search') Object.assign(s, { stage: 'search', q: hit.q, page: hit.page, items: hit.items, hasNext: hit.hasNext, at: Date.now(), cardId: hit.id });
+        else Object.assign(s, { stage: 'quality', id: hit.wid, labels: hit.labels, at: Date.now(), cardId: hit.id });
+    }
     return '.metdn go ' + d;
 }
 

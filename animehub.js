@@ -324,7 +324,7 @@ async function handleHV(send, jid, msg, arg, react, download) {
     if (!arg0) return send(jid, { text: HV_USAGE }, { quoted: msg });
 
     gcSessions();
-    const st = await status(send, jid, msg);
+    const st = await status(send, jid, msg, 'WatchHentai');
     try {
         const list = searchWHFromHtml(await getText(WH + '/?s=' + encodeURIComponent(arg0), { referer: WH + '/' }));
         if (!list.length) return done(st, send, jid, msg, `❌ *"${cut(arg0, 40)}"* හොයාගන්න බැරි වුණා (watchhentai.net)\n\n${foot('අඩු වචන වලින් try කරන්න — උදා: .hentaiv tsuki')}`, react);
@@ -343,7 +343,7 @@ async function hvGo(send, jid, msg, n, download) {
     if (!s || s.cmd !== 'hv' || !s.items?.length) return send(jid, { text: HV_USAGE }, { quoted: msg });
     const pick = s.items[n - 1];
     if (!pick) return send(jid, { text: `❌ ${n} කියන අංකේ නෑ — list එකේ අංකයක් එවන්න (1-${s.items.length})` }, { quoted: msg });
-    const st = await status(send, jid, msg);
+    const st = await status(send, jid, msg, 'WatchHentai');
     try {
         if (s.stage === 'series') {
             const eps = epsWHFromHtml(await getText(pick.url, { referer: WH + '/' }));
@@ -370,7 +370,7 @@ async function hvGo(send, jid, msg, n, download) {
             const cap = `🔞 *${cut(s.title, 60)}* — ${pick.label}`;
             if (typeof download === 'function') await download(pick.src, '🔞 WatchHentai', cap);
             else await send(jid, { text: `🔞 *${cut(s.title, 60)}* — ${pick.label}\n${pick.src}\n\n${foot('18+ · hstorage CDN — 1DM/browser වලින් download කරන්න')}` }, { quoted: msg });
-            if (sessions.get(jid) === mySess) { try { sessions.delete(jid); } catch { } }
+            if (sessions.get(jid) === mySess) { mySess.at = Date.now(); }   // 🕰️ v2.90: flow එක මැරෙන්නේ නෑ — ඒ card එකටම ආයෙත් reply කරලා වෙන quality/EP එකක් ගන්න පුළුවන් (user: 'අනිත් ep ගන්න හදනකොට command වැඩ කරන්නේ නැ')
             return;
         }
     } catch (e) { return fail(st, send, jid, msg, e); }
@@ -472,12 +472,12 @@ async function epGo(send, jid, msg, n, download) {
             return done(st, send, jid, msg, epQCard(title || pick.title || s.title, sources), null);
         }
         if (s.stage === 'quality') {
-            const mySess = s;   // 🛑 v2.89 identity guard (same race as .hentaiv quality pick)
+            const mySess = s;   // 🛑 v2.89 identity guard (same race as .hentaiv quality pick) — 🕰️ v2.90: delete නෑ, keep-alive
             await st.edit(`⏳ ${pick.label} download වෙනවා... file එක ලොකු නම් වෙලා යනවා`);
             const cap = `🔞 *${cut(s.title, 60)}* — ${pick.label}`;
             if (typeof download === 'function') await download(pick.src, '🔞 Eporner', cap);
             else await send(jid, { text: `🔞 *${cut(s.title, 60)}* — ${pick.label}\n${pick.src}\n\n${foot('18+ · eporner CDN — browser/1DM වලින් download කරන්න')}` }, { quoted: msg });
-            if (sessions.get(jid) === mySess) { try { sessions.delete(jid); } catch { } }
+            if (sessions.get(jid) === mySess) { mySess.at = Date.now(); }   // 🕰️ v2.90: keep-alive (same as hv — re-pick another quality without re-typing)
             return;
         }
     } catch (e) { return fail(st, send, jid, msg, e, null, 'Eporner'); }
@@ -697,8 +697,7 @@ async function hmGo(send, jid, msg, n, download) {
         if (s.stage === 'gallery') {
             const g = s.gallery;
             if (n === 2) {
-                try { sessions.delete(jid); } catch { }
-                await st.del().catch(() => { });
+                await st.del().catch(() => { });   // 🕰️ v2.90: session එක මැරෙන්නේ නෑ — gallery card එකට ආයෙත් reply කරන්න පුළුවන්
                 return send(jid, { text: `🔞 *${cut(g.title || g.jp, 60)}*\n🌐 ${HM_URL}${g.id}.html\n\n${foot('browser එකෙන් open කරන්න · 18+ only')}` }, { quoted: msg });
             }
             const total = g.pages.length;
@@ -714,7 +713,7 @@ async function hmGo(send, jid, msg, n, download) {
                 } catch { /* skip broken page */ }
                 await new Promise((r) => setTimeout(r, HM_DELAY));
             }
-            if (sessions.get(jid) === s) { try { sessions.delete(jid); } catch { } }   // 🛑 v2.89 identity guard: pages loop අතරේ අලුත් search එකක් ආවොත් ඒක මැකෙන්නේ නෑ
+            if (sessions.get(jid) === s) { s.at = Date.now(); }   // 🛑 v2.89 identity guard: pages loop අතරේ අලුත් search එකක් ආවොත් ඒක මැකෙන්නේ නෑ · 🕰️ v2.90: delete නෑ keep-alive
             await st.del().catch(() => { });
             return send(jid, { text: `✅ *${cut(g.title || g.jp, 50)}* — pages ${sentN}/${total} එවුණා${total > PG_CAP ? `\n_⚠️ gallery එක ${total} pages — පළවෙනි ${PG_CAP} විතරයි. ඉතුරු ටික: ${HM_URL}${g.id}.html_` : ''}\n\n${foot('18+ only · hitomi.la')}` }, { quoted: msg });
         }
@@ -845,13 +844,11 @@ async function jvGo(send, jid, msg, n, download) {
         if (s.stage === 'gallery') {
             const d = s.detail;
             if (n === 2) {
-                try { sessions.delete(jid); } catch { }
-                await st.del().catch(() => { });
+                await st.del().catch(() => { });   // 🕰️ v2.90: session එක මැරෙන්නේ නෑ — gallery card එකට ආයෙත් reply කරන්න පුළුවන්
                 return send(jid, { text: `🔞 *${d.id}*\n🌐 ${JV_URL}/${encodeURIComponent(d.id)}\n\n${foot('browser එකෙන් open කරන්න · 18+ only')}` }, { quoted: msg });
             }
             const mags = s.magnets || [];
-            try { sessions.delete(jid); } catch { }
-            await st.del().catch(() => { });
+            await st.del().catch(() => { });   // 🕰️ v2.90: magnets card එකෙන් පස්සෙත් flow එක ජීවත් — ආයෙත් reply කරන්න පුළුවන්
             if (!mags.length) return send(jid, { text: `❌ magnets හම්බුණේ නෑ (${d.id})\n\n${foot('මේ එකට තාම magnets share වෙලා නෑ වෙන්න ඇති')}` }, { quoted: msg });
             return send(jid, { text: jvMagnetCard(d, mags) }, { quoted: msg });
         }
@@ -1009,7 +1006,13 @@ async function status(send, jid, msg, label = 'AniWorld') {
 async function done(st, send, jid, msg, text, react) {
     const m = await send(jid, { text }, { quoted: msg });
     const s = sessions.get(jid);
-    if (s && m?.key) { s.cardId = m.key.id; }   // quote-match target for the NEXT number reply
+    if (s && m?.key) {
+        s.cardId = m.key.id;   // quote-match target for the NEXT number reply
+        // 🕰️ v2.90 flow card ring (moviedex v2.28 pattern): EVERY card of THIS flow is remembered with its stage —
+        // quoting an OLD card (search list / episode menu) rewinds the session to that stage instead of “menu active නෑ”.
+        s.cards = [{ id: String(m.key.id), stage: s.stage, items: s.items, title: s.title, gallery: s.gallery, detail: s.detail, magnets: s.magnets, at: Date.now() },
+            ...(s.cards || []).filter((c) => c.id !== String(m.key.id))].slice(0, 12);
+    }
     await st.del().catch(() => { });
     try { if (react) react('✅'); } catch { }
     return m;
@@ -1026,14 +1029,18 @@ function bridge(jid, qid, digits) {
     if (Date.now() - (s.at || 0) > TTL + 30 * 60e3) return null;
     const d = parseInt(digits, 10);
     if (!Number.isFinite(d) || d < 1) return null;
-    if (qid && s.cardId && String(qid) !== String(s.cardId)) return null;   // 🔒 reply-only: card එකට ම quote කරලා එන්න ඕන
+    if (qid && String(qid) !== String(s.cardId)) {   // 🔒 reply-only — 🕰️ v2.90: quote an OLDER card of THIS flow → rewind to that card's stage (user video: EP menu එකට ආයෙත් reply කරලා වෙනම EP එකක් / search card එකට ආපහු reply කරලා වෙන series එකක්)
+        const hit = (s.cards || []).find((c) => c.id === String(qid) && Date.now() - c.at < TTL + 30 * 60e3);
+        if (!hit) return null;   // අපේ flow එකේ card එකක් නෙවෙයි → අනිත් bridge / stale hint
+        sessions.set(jid, { cmd: s.cmd, stage: hit.stage, items: hit.items, title: hit.title, gallery: hit.gallery, detail: hit.detail, magnets: hit.magnets, at: Date.now(), cardId: hit.id, cards: s.cards });
+    }
     return (s.cmd === 'hv' ? '.hentaiv go ' : s.cmd === 'ep' ? '.ep go ' : s.cmd === 'hm' ? '.hentaimng go ' : s.cmd === 'jv' ? '.javdn go ' : '.aniworld go ') + d;
 }
 
 module.exports = {
     handle, bridge,
     // test hooks
-    _sessions: sessions, searchAW, seasonsOf, episodesOf, providersOf, providersFromHtml, resolveEpisode,
+    _sessions: sessions, _done: done, searchAW, seasonsOf, episodesOf, providersOf, providersFromHtml, resolveEpisode,
     resolveRedirect, vidmolyHls, doodMp4, nekobot, LANGS, TTL,
     searchWH, searchWHFromHtml, epsWH, epsWHFromHtml, qualitiesWH, whDecodeMediaUrl,
     searchEP, qualitiesEP, epCalcHash, epVideoId,
