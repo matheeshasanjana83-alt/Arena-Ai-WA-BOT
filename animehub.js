@@ -30,7 +30,7 @@ const gcSessions = () => { const now = Date.now(); for (const [k, s] of sessions
 const restoreBack = (jid, mySess) => {
     if (sessions.get(jid) !== mySess) return false;   // 🛑 v2.89 identity guard: අතරේ අලුත් search එකක් ආවා නම් කිසිම දෙයක් නෑ
     const back = mySess.prev;
-    if (back && back.items?.length) { back.at = Date.now(); sessions.set(jid, back); return true; }
+    if (back && back.items?.length) { back.at = Date.now(); back.busy = false; sessions.set(jid, back); return true; }   // 🆕 v2.91: busy flag එකත් clear — restored card එක ආයෙත් live
     try { sessions.delete(jid); } catch { }   // prev නැත්නම් (link-flow / old session) → පරන විදිහම clean
     return false;
 };
@@ -351,7 +351,11 @@ async function hvGo(send, jid, msg, n, download) {
     if (!s || s.cmd !== 'hv' || !s.items?.length) return send(jid, { text: HV_USAGE }, { quoted: msg });
     const pick = s.items[n - 1];
     if (!pick) return send(jid, { text: `❌ ${n} කියන අංකේ නෑ — list එකේ අංකයක් එවන්න (1-${s.items.length})` }, { quoted: msg });
+    // 🆕 v2.91: double-pick race — go 1 process වෙන අතරේ (qualitiesWH ~5-20s) go 2 එකක් ආවොත් session එක overwrite වෙලා පලවෙනි quality card එක orphan වෙනවා (2026-10-24 user flow: go 1 + go 2 within 4s → EP1 card ට reply කරාම silence)
+    if ((s.stage === 'series' || s.stage === 'ep') && s.busy && Date.now() - (s.busyAt || 0) < 60000)
+        return send(jid, { text: '⏳ කලින් pick එක තාම process වෙනවා — menu card එක එනකම් පොඩ්ඩක් ඉන්න' }, { quoted: msg });
     const st = await status(send, jid, msg);
+    if (s.stage === 'series' || s.stage === 'ep') { s.busy = true; s.busyAt = Date.now(); }   // 🆕 v2.91 (60s auto-expire = stuck-busy නෑ)
     try {
         if (s.stage === 'series') {
             const eps = epsWHFromHtml(await getText(pick.url, { referer: WH + '/' }));
@@ -382,7 +386,7 @@ async function hvGo(send, jid, msg, n, download) {
             if (restoreBack(jid, mySess)) await st.edit('✅ ලෑස්ති — අර menu card එකටම ඊළඟ අංකය reply කරන්න (ආයෙ command එකක් ඕන නෑ)');
             return;
         }
-    } catch (e) { return fail(st, send, jid, msg, e); }
+    } catch (e) { s.busy = false; return fail(st, send, jid, msg, e); }   // 🆕 v2.91: fail උනාම busy අයින් — session එක තාම live (retry පුළුවන්)
 }
 
 // ───────── 🔞 .ep — Eporner (official public API v2 · github.com/eporner/API) ─────────

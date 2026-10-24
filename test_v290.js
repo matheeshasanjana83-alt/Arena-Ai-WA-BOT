@@ -37,10 +37,10 @@ const routerMock = (pages, seen) => async (url, h = {}) => {
 };
 
 (async () => {
-    console.log('— v2.90.0 pins —');
+    console.log('— v2.91.0 pins —');
     ok('version 2.90 pkg+manifest + notes + prev/restore markers', () => {
-        assert.strictEqual(pkg.version, '2.90.0', 'pkg ' + pkg.version);
-        assert.strictEqual(manifest.version, '2.90.0', 'manifest ' + manifest.version);
+        assert.strictEqual(pkg.version, '2.91.0', 'pkg ' + pkg.version);
+        assert.strictEqual(manifest.version, '2.91.0', 'manifest ' + manifest.version);
         assert.ok(manifest.notes.includes('BINGE FLOW'), 'notes headline');
         assert.ok(hubSrc.includes('const restoreBack'), 'restoreBack helper');
         assert.ok((hubSrc.match(/prev: s /g) || []).length === 3, 'hv/ep quality sessions carry prev ×3: ' + (hubSrc.match(/prev: s /g) || []).length);

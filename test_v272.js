@@ -143,7 +143,7 @@ const POLLI_OK = (text) => ({ status: 200, body: { choices: [{ message: { conten
         assert.strictEqual(man.version, '2.74.0');   // v2.74 pin modernized
         assert.ok(man.files.includes('anime_kb.js'), 'anime_kb.js not in manifest.files');
         const pkg = JSON.parse(src('package.json'));
-        assert.strictEqual(pkg.version, '2.90.0');   // v2.74 pin modernized
+        assert.strictEqual(pkg.version, '2.91.0');   // v2.74 pin modernized
     });
 
     console.log(`\n${'═'.repeat(46)}\n  ${pass} passed, ${fail} failed\n`);
