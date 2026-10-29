@@ -832,10 +832,47 @@ async function geminiTranscribe(buf, mime = 'audio/ogg') {
 // auto-detect fail උනාම whisper හදන්නේ generic short English ('Oh, yeah.' / 'Bonne nuit.') — ඒ හැඩේ ටික shaky විදිහට treat කරනවා
 const asciiShortSig = (t) => !!t && !/[^\x00-\x7F]/.test(t) && t.trim().split(/\s+/).length < 6;
 
-/** 🎙️ v2.98 AUDIO STT CHAIN — Sinhala-real transcription, one entry point for bot.js audio branch + tools.js .stt.
- *  1️⃣ Gemini audio (Sinhala-capable) → 2️⃣ Groq whisper (fast, production key) → 3️⃣ Pollinations whisper auto
- *  → 4️⃣ Pollinations whisper language=si (English-hallucination ආපුවම Sinhala forced-decode) → shaky auto → null.
- *  Return: { text, via, shaky, errs } · null = කවුරුත් ඇහුණේ නෑ (caller → honest 🤷 card). */
+// 🎙️ v2.99 Sinhala-shape helpers — whisper Sinhala-misdecode හැම හැඩෙක් අල්ලනවා (live probes 2026-10-30):
+// ',,,,,,,,,,…' comma-spam (sentence clip) · 'හැතින්න්න්න්…' char-loop (kohomada lang=si) · 'හිතින්තින් හිතින් හිතින්…'
+// word-loop (gahanna) · 'こうまで' CJK misfire (kohomada auto) · '<!DOCTYPE html…' error-page blob (gpt-audio wav).
+// මේ හැඩේ transcript එකක් AI එකට ගියොත් AI බොරු කතාකරනවා = user බලන්නේ bot එක 'හිසා බොරු දානවා' — ඒ නිසා GARBAGE = never-a-transcript.
+const SINHALA_RE = /[\u0D80-\u0DFF]/;
+const hasSinhala = (t) => SINHALA_RE.test(String(t || ''));
+function garbageText(t) {
+    const s = String(t || '').trim();
+    if (!s) return true;
+    if (!s.replace(/[\s,.。、]/g, '')) return true;                                   // punctuation/whitespace only
+    if (/<[a-z!][^>]*>/i.test(s)) return true;                                        // HTML/markup blob
+    const dense = s.replace(/\s+/g, '');
+    if (dense.length > 12 && new Set(dense).size / dense.length < 0.25) return true;  // char-loop degeneracy ('න්න්න්න්…')
+    const words = s.split(/\s+/).filter(Boolean);
+    if (words.length > 3) {
+        const u = new Set(words.map((w) => w.replace(/[^\p{L}\p{N}]/gu, '').toLowerCase()).filter(Boolean));
+        if (u.size === 1) return true;                                                // same word ×4+ ('හිතින් හිතින් …')
+    }
+    if (/[\u3040-\u30FF\u3400-\u4DBF\u4E00-\u9FFF\uAC00-\uD7AF]/.test(s) && !hasSinhala(s)) return true;   // CJK misfire — bot ජපන්/කොරියානු නෙවෙයි
+    return false;
+}
+// ⚡ v2.99 gpt-4o-transcribe via Pollinations transcriptions endpoint — Sinhala-CAPABLE stage (whisper-large-v3
+// සිංහල ඇහෙන්නේ නෑ: kohomada→'こうまで' / ponnaya→' Be me.' / sentence→',,,,,,,…'; gpt-4o+si-prompt→'කොහොමද.' ×3
+// stable, sentence එක word-for-word, English clips unaffected). module.exports seam — tests monkey-patch ai.gpt4oTranscribe.
+const GPT4O_SI_PROMPTS = [
+    'Transcribe the Sinhala speech in Sinhala script exactly as spoken. Do not translate.',
+    'Sinhala (සිංහල) voice note from Sri Lanka. Transcribe exactly what is spoken in Sinhala script. Unclear = [?].',
+];
+async function gpt4oTranscribe(buf, mime = 'audio/ogg', { prompt = GPT4O_SI_PROMPTS[0], timeout = 120e3 } = {}) {
+    return require('./pollinations').sttText(buf, mime, { model: 'gpt-4o-transcribe', prompt, timeout });
+}
+
+/** 🎙️ v2.99 AUDIO STT CHAIN — Sinhala-real transcription, one entry point for bot.js audio branch + tools.js .stt.
+ *  v2.99 REWORK (live probes 2026-10-30, real Sinhala edge-tts clips): whisper-large-v3 CANNOT hear Sinhala
+ *  (Groq key 403 / Gemini key 429-quota dead in production too) — gpt-4o-transcribe + Sinhala-script prompt is
+ *  the only live stage that truly decodes it. Chain: 1️⃣ Gemini audio (Sinhala-excellent; dead key = fast-fail)
+ *  → 2️⃣ gpt-4o-transcribe si-prompt shot → Sinhala ආවොත් done; Latin-short ('Ping me.') ආවොත් stronger-prompt
+ *  shot එකක් තව ('පින්නි.' recovery); Latin ≥4-word = real English clip → done; garbage (',,,,,','こうまで')
+ *  නම් shot skip → 3️⃣ Groq whisper → 4️⃣ Pollinations whisper auto → 5️⃣ Pollinations language=si (v2.99: garbage-check
+ *  MANDATORY — whisper si output was 'හැතින්න්න්…' loops) → shaky carry → null.
+ *  Return { text, via, shaky, errs } · null = කවුරුත් ඇහුණේ නෑ (caller → honest 🤷 card; errs ALWAYS logged). */
 async function transcribeAudio(buf, mime = 'audio/ogg') {
     const P = require('./pollinations');
     const k = getKeys();
@@ -845,6 +882,16 @@ async function transcribeAudio(buf, mime = 'audio/ogg') {
     if (k.gemini) {
         try { const t = await module.exports.geminiTranscribe(buf, m); if (t) return { text: t, via: 'Gemini', shaky: false, errs }; } catch (e) { errs.push('gemini: ' + String(e.message || e).slice(0, 70)); }   // module.exports seam — tests monkey-patch ai.geminiTranscribe
     }
+    let shakyCand = '';   // gpt-4o romanized/short shape ('Ping me.') — real English වෙන්න පුළුවන්, misdecode වෙන්නත් → shaky
+    for (let i = 0; i < GPT4O_SI_PROMPTS.length; i++) {   // ⚡ v2.99 stage 2 — gpt-4o-transcribe (Sinhala-capable workhorse)
+        try {
+            const t = await module.exports.gpt4oTranscribe(buf, m, { prompt: GPT4O_SI_PROMPTS[i] });
+            if (!t || garbageText(t)) continue;
+            if (hasSinhala(t)) return { text: t, via: i ? 'gpt-4o (si×2)' : 'gpt-4o (si)', shaky: false, errs };
+            if (t.trim().split(/\s+/).length >= 4) return { text: t, via: 'gpt-4o', shaky: false, errs };   // English voice note — si-prompt English කැඩෙන්නේ නෑ (probe: en clip → full English sentence)
+            if (!shakyCand) shakyCand = t;
+        } catch (e) { errs.push('gpt4o: ' + String(e.message || e).slice(0, 70)); break; }   // network/HTTP fail → ඉතුරු shots වලින් තේරුමක් නෑ → whisper stages වලට
+    }
     let asciiShort = '';
     if (k.groq) {
         try {
@@ -852,20 +899,22 @@ async function transcribeAudio(buf, mime = 'audio/ogg') {
             fd.append('file', new Blob([buf], { type: m }), fname);
             fd.append('model', 'whisper-large-v3');
             const r = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', { method: 'POST', headers: { Authorization: `Bearer ${k.groq}` }, body: fd, signal: AbortSignal.timeout(T_VGROQ()) });
-            if (r.ok) { const j = await r.json(); const t = String(j?.text || '').trim(); if (t && !asciiShortSig(t)) return { text: t, via: 'Groq whisper', shaky: false, errs }; if (t) asciiShort = t; }
+            if (r.ok) { const j = await r.json(); const t = String(j?.text || '').trim(); if (t && !asciiShortSig(t) && !garbageText(t)) return { text: t, via: 'Groq whisper', shaky: false, errs }; if (t && !garbageText(t)) asciiShort = t; }
             else errs.push('groq: HTTP ' + r.status);
         } catch (e) { errs.push('groq: ' + String(e.message || e).slice(0, 70)); }
     }
     try {
         const t = await P.sttText(buf, m);
-        if (t && !asciiShortSig(t)) return { text: t, via: 'whisper', shaky: false, errs };
-        if (t) asciiShort = t;
+        if (t && !asciiShortSig(t) && !garbageText(t)) return { text: t, via: 'whisper', shaky: false, errs };
+        if (t && !garbageText(t) && !asciiShort) asciiShort = t;
     } catch (e) { errs.push('polli: ' + String(e.message || e).slice(0, 70)); }
     try {
-        const t = await P.sttText(buf, m, { language: 'si' });   // ⚡ v2.98 — forced Sinhala decode: English hallucination failure mode OFF
-        if (t) return { text: t, via: 'whisper(si)', shaky: false, errs };
+        const t = await P.sttText(buf, m, { language: 'si' });   // v2.98 forced-decode — v2.99: whisper si output 'හැතින්න්න්…' loop-shapes නිසා hasSinhala+garbage check MANDATORY
+        if (t && hasSinhala(t) && !garbageText(t)) return { text: t, via: 'whisper(si)', shaky: false, errs };
     } catch (e) { errs.push('polli-si: ' + String(e.message || e).slice(0, 70)); }
-    if (asciiShort) return { text: asciiShort, via: 'whisper(auto)', shaky: true, errs };   // English clip එකක් වෙන්න පුළුවන් — ඒත් Sinhala hallucination වෙන්නත් පුළුවන් → shaky flag → AI ට honesty instruction
+    if (shakyCand) return { text: shakyCand, via: 'gpt-4o(auto)', shaky: true, errs };   // AI ට honesty instruction එක යනවා — හොරට අනුමාන කරන්න බෑ
+    if (asciiShort) return { text: asciiShort, via: 'whisper(auto)', shaky: true, errs };
+    console.log('🎙️❌ STT chain fail —', errs.join(' | ').slice(0, 300));   // v2.89 never-blind: honest-null වෙද්දිත් හේතු ටික log වෙනවා
     return null;
 }
 
@@ -886,4 +935,4 @@ function stats(chatId) { // 🧠 .ai memory card data
     };
 }
 
-module.exports = { ask, askVision, geminiTranscribe, transcribeAudio, asciiShortSig, reset, stats, looksLikeImageAsk, looksLikeInsult, imgPromptEn, setKey, getKeys, getProvider, setProvider, getTools, setTools, getRoast, setRoast, splitLong, toWhatsApp, roastGood, mostlyEnglish, cannedRoast, needsWeb, buildWebCtx, webQueries, REFUSE_RE, ROAST_BANK, VISION_SYSTEM, GROUP_VISION_SYS, EXPLICIT_SEARCH_RE, _flags, _history: history, _memoryFile: MEM_FILE, _memKey: memKeyOf, _flush: saveMemoryNow, _lastRoast: lastRoast, _webCache: webCache };
+module.exports = { ask, askVision, geminiTranscribe, gpt4oTranscribe, transcribeAudio, asciiShortSig, hasSinhala, garbageText, reset, stats, looksLikeImageAsk, looksLikeInsult, imgPromptEn, setKey, getKeys, getProvider, setProvider, getTools, setTools, getRoast, setRoast, splitLong, toWhatsApp, roastGood, mostlyEnglish, cannedRoast, needsWeb, buildWebCtx, webQueries, REFUSE_RE, ROAST_BANK, VISION_SYSTEM, GROUP_VISION_SYS, EXPLICIT_SEARCH_RE, _flags, _history: history, _memoryFile: MEM_FILE, _memKey: memKeyOf, _flush: saveMemoryNow, _lastRoast: lastRoast, _webCache: webCache };

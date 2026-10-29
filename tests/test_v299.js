@@ -5,12 +5,14 @@
  * · whisper lang=si → NO fabricated English (empty on robotic audio, param accepted).
  * FIX: ai.transcribeAudio CHAIN — 1️⃣ Gemini audio (Sinhala-capable, askVision plumbing + viaPool geo fallback)
  * → 2️⃣ Groq whisper → 3️⃣ Pollinations auto → 4️⃣ Pollinations language=si (forced Sinhala decode) → shaky auto → null.
+ * ⚡ v2.99 REWORK (whisper CANNOT hear Sinhala — probes: 'こうまで'/' Be me.'/',,,,,,'): gpt-4o-transcribe si-prompt
+ * stage inserted between Gemini and Groq (dual-shot) + garbageText/hasSinhala guards chain-wide (see test_v300).
  * Tested here (ALL OFFLINE — fetch mocked + ai.geminiTranscribe seam patched):
  *  (1) asciiShortSig: 'Oh, yeah.'→true · Sinhala→false · ≥6-word English→false (hallucination signature only)
  *  (2) chain: Gemini stage first (seam) · Groq stage · Pollinations auto → lang=si recovery ('පොන්නයා' e2e) · all-fail → null · shaky carry
  *  (3) sttText language param → FormData 'language' field (absent without opt) + sttExtName allowlist
  *  (4) bot.js audio branch + tools.js cmdStt → ai.transcribeAudio wired + honesty instructions in prompts
- *  (5) pins 2.98.0 pkg+manifest + notes headline + manifest lists tests/test_v299.js
+ *  (5) pins 2.99.0 pkg+manifest + notes headline + manifest lists tests/test_v299.js
  */
 process.env.ARENA_AI_MEMORY_FILE = __dirname + '/../.test_v299_mem.json';
 try { fs.unlinkSync(__dirname + '/../.test_v299_mem.json'); } catch { }
@@ -29,10 +31,10 @@ const botSrc = fs.readFileSync(__dirname + '/../bot.js', 'utf8');
 const toolsSrc = fs.readFileSync(__dirname + '/../tools.js', 'utf8');
 
 (async () => {
-    console.log('— v2.98.0 pins + markers —');
-    ok('version 2.98.0 pkg+manifest + notes headline + manifest lists test_v299.js', () => {
-        assert.strictEqual(pkg.version, '2.98.0', 'pkg ' + pkg.version);
-        assert.strictEqual(manifest.version, '2.98.0', 'manifest ' + manifest.version);
+    console.log('— v2.99.0 pins + markers —');
+    ok('version 2.99.0 pkg+manifest + notes headline + manifest lists test_v299.js', () => {
+        assert.strictEqual(pkg.version, '2.99.0', 'pkg ' + pkg.version);
+        assert.strictEqual(manifest.version, '2.99.0', 'manifest ' + manifest.version);
         assert.ok(manifest.notes.includes('SINHALA STT'), 'notes headline');
         assert.ok(manifest.files.includes('tests/test_v299.js'), 'manifest lists test_v299.js');
     });
@@ -77,7 +79,9 @@ const toolsSrc = fs.readFileSync(__dirname + '/../tools.js', 'utf8');
         process.env.GROQ_API_KEY = 'gsk_TEST_v299_groq_key_000000';
         delete process.env.GEMINI_API_KEY;
         const origStt = P.sttText;
+        const origG4 = ai.gpt4oTranscribe;
         P.sttText = async () => 'should not be used';
+        ai.gpt4oTranscribe = async () => { throw new Error('gpt4o off (v299 mock)'); };   // ⚡ v2.99 chain: gpt-4o stage before Groq — force fall-through
         const realFetch = globalThis.fetch;
         globalThis.fetch = async (url) => {
             assert.ok(String(url).includes('api.groq.com/openai/v1/audio/transcriptions'), 'groq endpoint');
@@ -87,9 +91,9 @@ const toolsSrc = fs.readFileSync(__dirname + '/../tools.js', 'utf8');
             const tr = await ai.transcribeAudio(Buffer.alloc(500, 2), 'audio/ogg');
             assert.strictEqual(tr.via, 'Groq whisper', 'via');
             assert.strictEqual(tr.text, 'machan mata passe call karanna tonight', 'groq transcript');
-        } finally { globalThis.fetch = realFetch; P.sttText = origStt; delete process.env.GROQ_API_KEY; }
+        } finally { globalThis.fetch = realFetch; P.sttText = origStt; ai.gpt4oTranscribe = origG4; delete process.env.GROQ_API_KEY; }
     });
-    await okA("USER SCENARIO: whisper auto 'Oh, yeah.' hallucination → lang=si recovers 'පොන්නයා'", async () => {
+    await okA("USER SCENARIO: gpt-4o romanized 'Oh, yeah.' shots → pollinations lang=si recovers 'පොන්නයා'", async () => {
         delete process.env.GEMINI_API_KEY;
         delete process.env.GROQ_API_KEY;
         const realFetch = globalThis.fetch;
@@ -115,7 +119,7 @@ const toolsSrc = fs.readFileSync(__dirname + '/../tools.js', 'utf8');
         try {
             const tr = await ai.transcribeAudio(Buffer.alloc(500, 4), 'audio/ogg');
             assert.strictEqual(tr.shaky, true, 'shaky flag');
-            assert.strictEqual(tr.via, 'whisper(auto)', 'via');
+            assert.strictEqual(tr.via, 'gpt-4o(auto)', 'via — v2.99: gpt-4o romanized candidate wins the shaky carry');
             assert.strictEqual(tr.text, 'Oh, yeah.', 'text kept for AI honesty instruction');
         } finally { globalThis.fetch = realFetch; }
     });

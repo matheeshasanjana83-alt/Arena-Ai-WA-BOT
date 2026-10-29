@@ -73,7 +73,11 @@ async function ttsBuf(text, { voice = 'nova', timeout = 90e3 } = {}) {
  *  supported' — WhatsApp voice notes හැම එකක්ම fail (user screenshot 2026-10-30). Ext එක දැන් mime
  *  එකෙන් derive වෙනවා (whisper allowlist: ogg/oga/opus→ogg, mp3, mp4, m4a, wav, webm, flac…).
  *  ⚡ v2.98: language opt (OpenAI-compatible form field — 'si' forced-decode = Sinhala audio වලට
- *  English-hallucination failure mode එක නැති කරනවා; probe: auto='Oh, yeah.' → lang=si='(empty)'). */
+ *  English-hallucination failure mode එක නැති කරනවා; probe: auto='Oh, yeah.' → lang=si='(empty)').
+ *  ⚡ v2.99: prompt opt — whisper-large-v3 සිංහලට පාරම්පරිකව බෑ (probe 2026-10-30: kohomada→'こうまで',
+ *  ponnaya→' Be me.', sentence→',,,,,,,…'); ඒත් gpt-4o-transcribe + Sinhala-script prompt = සිංහල
+ *  ඇත්තටම ඇහෙනවා (kohomada→'කොහොමද.' ×3 stable, sentence එක word-for-word). prompt field එක whisper
+ *  endpoint එකම pass-through — model option එකෙන් gpt-4o-transcribe select වෙනවා. */
 function sttExtName(mime = 'audio/ogg') {   // v2.98: exported — Groq STT stage (ai.js transcribeAudio) එකත් ඒකම allowlist එක use කරනවා
     const m = String(mime || 'audio/ogg').split(';')[0].trim().toLowerCase() || 'audio/ogg';
     const sub = m.split('/')[1] || '';
@@ -87,12 +91,13 @@ const STT_EXT = {
     'audio/flac': 'flac', 'audio/x-flac': 'flac',
     'audio/webm': 'webm', 'video/webm': 'webm', 'video/mp4': 'mp4', 'video/mpeg': 'mpeg',
 };
-async function sttText(buf, mime = 'audio/ogg', { model = 'whisper-large-v3', timeout = 120e3, language = '' } = {}) {
+async function sttText(buf, mime = 'audio/ogg', { model = 'whisper-large-v3', timeout = 120e3, language = '', prompt = '' } = {}) {
     const m = String(mime || 'audio/ogg').split(';')[0].trim().toLowerCase() || 'audio/ogg';
     const fd = new FormData();
     fd.append('file', new Blob([buf], { type: m }), 'audio.' + sttExtName(m));
     fd.append('model', model);
     if (language) fd.append('language', String(language));
+    if (prompt) fd.append('prompt', String(prompt));   // v2.99 — gpt-4o-transcribe Sinhala-script steering
     const r = await fetch(`${BASE}/v1/audio/transcriptions`, { method: 'POST', headers: auth(), body: fd, signal: AbortSignal.timeout(timeout) });
     if (!r.ok) throw new Error('Pollinations stt ' + r.status + ' ' + (await r.text().catch(() => '')).slice(0, 120));
     const j = await r.json();
