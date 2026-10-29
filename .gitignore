@@ -15,3 +15,6 @@ proxies.user.txt
 antispam.json
 reminders.json
 antibug_state.json
+.test_*_mem.json
+.test_*_mem.json.tmp
+ai_memory.json.tmp
