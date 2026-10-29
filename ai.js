@@ -66,6 +66,14 @@ const VISION_SYSTEM = `You are the SUPER VISION engine of "KAVIZ MD V1" — a wo
 - HONESTY: if something is blurry/unreadable/cut off, say exactly that — never invent text or details you cannot see.
 - IDENTITY: you are the SUPER VISION engine of KAVIZ MD V1 — if asked which AI/model you are, say KAVIZ MD V1. NEVER name any other AI company/model as your brain or maker.`;
 
+// ⚡ v2.96 — GROUP auto-media persona: group එකේ sticker/photo auto-reply = කෙටි natural comment (deep vision report නෙවෙයි — slow + flood)
+const GROUP_VISION_SYS = `You are "KAVIZ MD V1" reacting to a photo/sticker/video/document that appeared in a WhatsApp GROUP chat — you were @mentioned or replied to.
+- Reply in spoken Sinhala (සිංහලෙන්ම), 1-3 SHORT lines max — like a funny, sharp group member dropping a quick comment. NOT a report, no structure.
+- React to what is ACTUALLY in the media (the joke/meme/character/scene — say it if you recognize it), optionally one short playful question back. Group slang + typos are fine.
+- No headings, no bullet lists, no "විශ්ලේෂණය" layout, no transcribe-everything unless asked. 1-2 emojis max.
+- NEVER claim to recognize real people. Unreadable/blurry → say it playfully in one short line.
+- IDENTITY: you are KAVIZ MD V1 — never name any other AI company/model as your brain or maker.`;
+
 const history = new Map(); // chat jid -> [{role:'user'|'assistant', text, t}]
 
 // 👑 v2.94 OWNER MODE — owner ට AI කතා කරද්දී ඒකාට ම තමන්ගෙ boss කියලා තේරෙනවා (bot.js owner flag → ask opts.owner)
@@ -268,6 +276,9 @@ const tempOf = () => (TEMP_OVERRIDE != null ? TEMP_OVERRIDE : 0.6);
 // invent කරනවා ("Royal Capital Battle" වගේ බොරු). FIX: anime/fact ප්‍රශ්නයක් ආවොත් DuckDuckGo search
 // (ai_tools._webSearch — free, no key) කරලා top snippets system context එකට inject — strict truth rules එක්ක.
 const webCache = new Map();          // normalized query → { t, text } — 6h TTL (එකම ප්‍රශ්නයට දෙපාරක් search කරන්නෙ නෑ)
+// ⚡ v2.96 — GROUP/fast auto-chat: explicit search words තියෙනවා නම් විතරක් web grounding (DDG + page reads = තත්පර ගානක් — group chat වලට මරණය)
+const EXPLICIT_SEARCH_RE = /\b(search|google|web)\b|හොයන්න|හොයලා|සොයන්න|සර්ච්/i;
+const _flags = { lastWebUsed: false };   // test hook — ask() එකේ web grounding වුණාද කියලා
 const WEB_TTL = 6 * 3600e3;
 function needsWeb(q) {               // anime topic → always; සාමාන්‍ය → explicit search words / year+fact / news words
     q = String(q || '');
@@ -367,6 +378,13 @@ ${head}\n\n${WEB_RULES}` : '';
     return out;
 }
 
+// ── ⚡ v2.96 SPEED — provider fetch timeouts (user: 'ගොඩක් slow බන් speed නෑ') ──
+// කලින් chat fetches වලට timeout නෑ — Gemini/Groq hang = AI එක උත්තරක් නැතුව ගානක් ඉන්නවා.
+// AbortSignal.timeout → hang = fast fail → ඊළඟ model/provider. ARENA_AI_MS env override (tests).
+const AI_MS = (def) => Math.max(2500, parseInt(process.env.ARENA_AI_MS || def, 10));
+const T_CHAT = () => AI_MS(15000), T_ZAI = () => AI_MS(22000), T_POLL = () => AI_MS(45000);
+const T_VGEM = () => AI_MS(30000), T_VGROQ = () => AI_MS(25000), T_VPOLL = () => AI_MS(60000);
+
 async function askGemini(key, msgs) {
     let lastErr;
     for (const model of GEMINI_MODELS) {
@@ -380,7 +398,7 @@ async function askGemini(key, msgs) {
                 generationConfig: { maxOutputTokens: 4096, temperature: tempOf() }   // v2.74: 2048 → 4096 (Grok-class detail)
             })
         };
-        let r = await fetch(url, opts);
+        let r = await fetch(url, { ...opts, signal: AbortSignal.timeout(T_CHAT()) });   // ⚡ v2.96 timeout
         let body = await r.text();
         if (!r.ok && /location is not supported|FAILED_PRECONDITION|forbidden/i.test(body)) {
             try { const rp = await require('./net').viaPool(url, opts); const pb = await rp.text(); if (rp.ok) { r = rp; body = pb; } } catch { } // 🌍 geo-block → free-proxy pool
@@ -407,7 +425,7 @@ async function askGroq(key, msgs) {
                 messages: [{ role: 'system', content: sysOf() }, ...msgs.map(m => ({ role: m.role, content: m.text }))]
             })
         };
-        let r = await fetch(url, opts);
+        let r = await fetch(url, { ...opts, signal: AbortSignal.timeout(T_CHAT()) });   // ⚡ v2.96 timeout
         let body = await r.text();
         if (!r.ok && /forbidden/i.test(body)) {   // Groq
             try { const rp = await require('./net').viaPool(url, opts); const pb = await rp.text(); if (rp.ok) { r = rp; body = pb; } } catch { } // 🌍 geo-block → free-proxy pool
@@ -426,7 +444,8 @@ async function askPolli(key, msgs) {
     const P = require('./pollinations');
     // 🆔 v2.94 FIX: polli fallback එකටත් SYSTEM (identity/rules) යනවා — කලින් polli replies වලට identity/rules reach වෙන්නේ නැතුව "අනිත් AI" වගේ උත්තර දෙන්න පුළුවන් වුණා
     const body = [{ role: 'system', content: sysOf() }, ...(msgs || []).slice(-14).map((m) => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: String(m.text ?? m.content ?? '') }))];   // sysOf = SYSTEM + OWNER + KB + WEB (set වෙලා තියෙනවා නම්)
-    const r = await P.chat(body, { max_tokens: 3072, timeout: 120e3 });   // v2.74: default cap → 3072 (Grok-class detail)
+    const r = await P.chat(body, { max_tokens: 3072, timeout: T_POLL() });   // ⚡ v2.96: 120s → 45s (fallback එකත් fast)
+
     return { text: r.text, model: r.model };
 }
 
@@ -448,6 +467,8 @@ async function askZai(key, msgs, chatId, allKeys) {
             const r = await fetch('https://api.z.ai/api/paas/v4/chat/completions', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
+                signal: AbortSignal.timeout(T_ZAI()),   // ⚡ v2.96 timeout
+                signal: AbortSignal.timeout(T_ZAI()),   // ⚡ v2.96 timeout
                 body: JSON.stringify(payload)
             });
             const body = await r.text();
@@ -485,7 +506,8 @@ async function askZai(key, msgs, chatId, allKeys) {
 /** 👁 v2.51 vision — photo/PDF reply + .ai → v2.70 CHAIN: Gemini model ladder → Groq llama-4 vision → Pollinations (baked key) → friendly error.
  *  කලින් single Gemini call — Gemini 503 (overloaded) ආපු ගමන් raw error chat එකට. දැන් provider 3 ක් + model ladder. */
 const GROQ_VISION_MODELS = ['meta-llama/llama-4-scout-17b-16e-instruct', 'meta-llama/llama-4-maverick-17b-128e-instruct'];
-async function askVision(chatId, question, media) {
+async function askVision(chatId, question, media, sys) {   // ⚡ v2.96: sys = override persona (group auto-media → GROUP_VISION_SYS short)
+    const VS = sys || VISION_SYSTEM;
     const keys = getKeys();
     const mime = String(media?.mime || 'image/jpeg');
     const b64 = String(media?.b64 || '');
@@ -514,12 +536,12 @@ async function askVision(chatId, question, media) {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'x-goog-api-key': keys.gemini },
                 body: JSON.stringify({
-                    systemInstruction: { parts: [{ text: VISION_SYSTEM }] },   // v2.71 SUPER VISION (chat SYSTEM එකේ BE SHORT rule එක vision lazy කරනවා)
+                    systemInstruction: { parts: [{ text: VS }] },   // v2.71 SUPER VISION · ⚡ v2.96 group → GROUP_VISION_SYS (chat SYSTEM එකේ BE SHORT rule එක vision lazy කරනවා)
                     contents: [...h.map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.text }] })), { role: 'user', parts: [{ text: q }, { inline_data: { mime_type: mime, data: b64 } }] }],
                     generationConfig: { maxOutputTokens: 4096, temperature: 0.5 }   // v2.71: 2048 → 4096 (deep answers)
                 })
             };
-            let r = await fetch(url, opts);
+            let r = await fetch(url, { ...opts, signal: AbortSignal.timeout(T_VGEM()) });   // ⚡ v2.96 timeout
             let body = await r.text();
             if (!r.ok && /location is not supported|FAILED_PRECONDITION|forbidden/i.test(body)) {
                 try { const rp = await require('./net').viaPool(url, opts); const pb = await rp.text(); if (rp.ok) { r = rp; body = pb; } } catch { } // 🌍 geo-block → proxy pool
@@ -546,11 +568,11 @@ async function askVision(chatId, question, media) {
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${keys.groq}` },
                 body: JSON.stringify({
                     model, temperature: 0.5, max_tokens: 4096,   // v2.71: 2048 → 4096 (deep answers)
-                    messages: [{ role: 'system', content: VISION_SYSTEM }, { role: 'user', content: [{ type: 'text', text: q }, { type: 'image_url', image_url: { url: `data:${mime};base64,${b64}` } }] }]
+                    messages: [{ role: 'system', content: VS }, { role: 'user', content: [{ type: 'text', text: q }, { type: 'image_url', image_url: { url: `data:${mime};base64,${b64}` } }] }]
                 })
             };
             try {
-                let r = await fetch(url, opts);
+                let r = await fetch(url, { ...opts, signal: AbortSignal.timeout(T_VGROQ()) });   // ⚡ v2.96 timeout
                 let body = await r.text();
                 if (!r.ok && /forbidden/i.test(body)) {
                     try { const rp = await require('./net').viaPool(url, opts); const pb = await rp.text(); if (rp.ok) { r = rp; body = pb; } } catch { } // 🌍 geo-block
@@ -567,7 +589,7 @@ async function askVision(chatId, question, media) {
     if (isImg) {
         try {
             const P = require('./pollinations');
-            const r = await P.chat([{ role: 'system', content: VISION_SYSTEM }, { role: 'user', content: [{ type: 'text', text: q }, { type: 'image_url', image_url: { url: `data:${mime};base64,${b64}` } }] }], { model: 'openai', timeout: 120e3, max_tokens: 3072 });   // v2.71: system + 900 → 3072
+            const r = await P.chat([{ role: 'system', content: VS }, { role: 'user', content: [{ type: 'text', text: q }, { type: 'image_url', image_url: { url: `data:${mime};base64,${b64}` } }] }], { model: 'openai', timeout: T_VPOLL(), max_tokens: 3072 });   // v2.71: system + 900 → 3072 · ⚡ v2.96 timeout
             return done(r.text, 'Pollinations vision');
         } catch (e) { errs.push('Pollinations ' + e.message); }
     }
@@ -635,56 +657,94 @@ async function ask(chatId, question, opts) {
     const roast = getRoast() && looksLikeInsult(question) && !looksLikeImageAsk(question);
     const wantsSin = roast || /[\u0D80-\u0DFF]/.test(question) || SINGLISH_RE.test(question) || question.length <= 25;
     // 🌍 v2.73 — live web grounding (Grok-style truth): search ONCE, හැම provider attempt එකටම context එක
-    const webCtx = (!roast && needsWeb(question)) ? await buildWebCtx(question).catch(() => '') : '';
+    // ⚡ v2.96 — FAST mode (group auto-chat): explicit search words නැතුව web grounding SKIP — group reply speed-first
+    const fast = !!(opts && (opts.fast || opts.group));
+    const webCtx = (!roast && needsWeb(question) && (!fast || EXPLICIT_SEARCH_RE.test(question))) ? await buildWebCtx(question).catch(() => '') : '';
+    _flags.lastWebUsed = !!webCtx;
     const errors = [];
     let mkUsed = null, lastText = '', lastModel = '';
-    for (const [name, fn] of order) {
-        if (!keys[name] && name !== 'polli') continue;   // 🌸 polli = baked default key → always tries last
+    // ⚡ v2.96 — one provider attempt: memory push CALLER-side (race loser ගේ උත්තරයක් මතකයට ලියෙන්නේ නෑ), quality guards = typed throws
+    const attempt = async (name, fn) => {
         const mk = memKeyOf(chatId, pref ? name : ''); // උත්තර දුන්න model ගේම store එකට
         const now = Date.now();
         const h = (history.get(mk) || []).filter(m => now - (m.t || now) < TTL_MS); // TTL prune
         const msgs = [...(roast ? h.slice(-2) : h), { role: 'user', text: question }];   // 🔥 roast → fresh context (garbled history loop guard)
+        // 🔥 roast persona · 👑 v2.94 owner ctx · 👥 v2.95 chat ctx (race legs දෙකටම same value → module-global override safe)
+        SYS_OVERRIDE = roast ? ROAST_SYSTEM : null;
+        OWN_OVERRIDE = (!roast && opts && opts.owner) ? OWNER_CONTEXT : null;
+        CTX_OVERRIDE = (!roast && opts && opts.context) ? '👥 CHAT CONTEXT: ' + String(opts.context).slice(0, 1200) : null;
+        TEMP_OVERRIDE = roast ? 0.95 : null;   // roast වලට උණුසුම් creativity
+        KB_OVERRIDE = (!roast && KB) ? KB.contextFor(question) : null;   // 🎌 v2.72 anime KB (roast mode එකට බලපෑමක් නෑ)
+        WEB_OVERRIDE = webCtx || null;   // 🌍 v2.73 live web context
+        let res;
+        try { res = await fn(keys[name], msgs, chatId, keys); }
+        finally { SYS_OVERRIDE = null; OWN_OVERRIDE = null; CTX_OVERRIDE = null; TEMP_OVERRIDE = null; KB_OVERRIDE = null; WEB_OVERRIDE = null; }
+        let text = toWhatsApp(res.text);
+        let images = Array.isArray(res.images) ? res.images : [];   // 🖼 v2.51.1 FIX: කලින් images drop වෙනවා — GLM generate_image ගහලාත් photo නොගිය හැම්බයි!
+        if (!images.length && getTools() && looksLikeImageAsk(question)) {   // 🖼 fallback — provider එක මොකක වුණත් (AUTO/Gemini/Groq) photo එනවා (race mode: image asks race නෑ → double-gen නෑ)
+            try {
+                const prompt = await imgPromptEn(question, keys);
+                const buf = await require('./ai_tools')._generateImage(prompt, { gemini: keys.gemini, zai: keys.zai, together: keys.together });   // v2.53: together FLUX එකත්
+                if (buf && buf.length > 2000) {
+                    images = [buf];
+                    if (!text || /බෑ|බැහැ|නොහැකි|can\s?['’´`]t|cannot|unable|sorry|සමාව/i.test(text)) text = '🖼 හදලා දුන්නා!';
+                }
+            } catch { }
+        }
+        // 🛡 v2.56 quality guard — refuse / English-leak / repeat → ඊළඟ provider (garble memory එකට යන්නෙ නෑ)
+        if (roast && !images.length && !roastGood(chatId, text)) {
+            const e = new Error(`roast-weak:${name}(${text.slice(0, 40).replace(/\n/g, ' ')})`);
+            e.roastWeak = true; e.text = text; e.mk = mk; throw e;
+        }
+        if (!roast && !images.length && wantsSin && (REFUSE_RE.test(text) || mostlyEnglish(text))) {
+            const e = new Error(`lang-guard:${name}(${text.slice(0, 40).replace(/\n/g, ' ')})`);
+            e.langFail = true; e.text = text; e.model = res.model; e.mk = mk; throw e;   // normal chat — අන්තිමට last text එක return වෙනවා (silence නෙවෙයි)
+        }
+        return {
+            text, model: res.model, images, mk,
+            pushMem() {   // memory write — WINNER ට විතරයි
+                const h2 = (history.get(mk) || []).filter(m => Date.now() - (m.t || now) < TTL_MS);
+                const t = Date.now();
+                h2.push({ role: 'user', text: question, t }, { role: 'assistant', text, t });
+                while (h2.length > MAX_TURNS * 2) h2.shift();
+                history.set(mk, h2);
+                scheduleSave();
+            }
+        };
+    };
+    const runSeq = async (list) => {   // classic sequential ladder — roast + fixed-provider + race-fail tail (semantics = v2.95 loop එකම)
+        for (const [name, fn] of list) {
+            try {
+                const r = await attempt(name, fn);
+                r.pushMem();
+                if (roast) setLastRoast(chatId, r.text);
+                return { text: r.text, model: r.model, images: r.images };
+            } catch (e) {
+                if (e.roastWeak) { errors.push(e.message); mkUsed = e.mk; continue; }
+                if (e.langFail) { errors.push(e.message); mkUsed = e.mk; lastText = e.text; lastModel = e.model; continue; }
+                errors.push(e.message);
+            }
+        }
+        return null;
+    };
+    // ⚡ v2.96 RACE — AUTO + roast/image-ask නෑ + keyed providers 2ක්: Gemini සහ Groq SAME TIME — first good answer WINS
+    // (කලින් Gemini 503/hang → ගානක් ඉඳලා ඊට පස්සේ Groq = user ගේ 'ගොඩක් slow බන් speed නෑ'. polli = sequential fallback ම — quality-first)
+    const keyedAvail = order.filter(([name]) => keys[name]);
+    const restAvail = order.filter(([name]) => !keys[name] && name === 'polli');   // 🌸 polli = baked default key → fallback tail
+    let out = null;
+    if (!roast && !pref && !looksLikeImageAsk(question) && keyedAvail.length >= 2) {
         try {
-            // 🔥 roast — බැනුමක්ද → roast persona එකෙන් ආපහු බැනීම (fn call එකට විතරක් override) · 👑 v2.94 owner ctx · 👥 v2.95 chat ctx
-            SYS_OVERRIDE = roast ? ROAST_SYSTEM : null;
-            OWN_OVERRIDE = (!roast && opts && opts.owner) ? OWNER_CONTEXT : null;
-            CTX_OVERRIDE = (!roast && opts && opts.context) ? '👥 CHAT CONTEXT: ' + String(opts.context).slice(0, 280) : null;
-            TEMP_OVERRIDE = roast ? 0.95 : null;   // roast වලට උණුසුම් creativity
-            KB_OVERRIDE = (!roast && KB) ? KB.contextFor(question) : null;   // 🎌 v2.72 anime KB (roast mode එකට බලපෑමක් නෑ)
-            WEB_OVERRIDE = webCtx || null;   // 🌍 v2.73 live web context
-            let res;
-            try { res = await fn(keys[name], msgs, chatId, keys); }
-            finally { SYS_OVERRIDE = null; OWN_OVERRIDE = null; CTX_OVERRIDE = null; TEMP_OVERRIDE = null; KB_OVERRIDE = null; WEB_OVERRIDE = null; }
-            let text = toWhatsApp(res.text);
-            let images = Array.isArray(res.images) ? res.images : [];   // 🖼 v2.51.1 FIX: කලින් images drop වෙනවා — GLM generate_image ගහලාත් photo නොගිය හැම්බයි!
-            if (!images.length && getTools() && looksLikeImageAsk(question)) {   // 🖼 fallback — provider එක මොකක වුණත් (AUTO/Gemini/Groq) photo එනවා
-                try {
-                    const prompt = await imgPromptEn(question, keys);
-                    const buf = await require('./ai_tools')._generateImage(prompt, { gemini: keys.gemini, zai: keys.zai, together: keys.together });   // v2.53: together FLUX එකත්
-                    if (buf && buf.length > 2000) {
-                        images = [buf];
-                        if (!text || /බෑ|බැහැ|නොහැකි|can\s?['’´`]t|cannot|unable|sorry|සමාව/i.test(text)) text = '🖼 හදලා දුන්නා!';
-                    }
-                } catch { }
-            }
-            // 🛡 v2.56 quality guard — refuse / English-leak / repeat → ඊළඟ provider (garble memory එකට යන්නෙ නෑ)
-            if (roast && !images.length && !roastGood(chatId, text)) {
-                errors.push(`roast-weak:${name}(${text.slice(0, 40).replace(/\n/g, ' ')})`);
-                mkUsed = mk; continue;
-            }
-            if (!roast && !images.length && wantsSin && (REFUSE_RE.test(text) || mostlyEnglish(text))) {
-                errors.push(`lang-guard:${name}(${text.slice(0, 40).replace(/\n/g, ' ')})`);
-                mkUsed = mk; lastText = text; lastModel = res.model; continue;   // normal chat — අන්තිමට last text එක return වෙනවා (silence නෙවෙයි)
-            }
-            const t = Date.now();
-            h.push({ role: 'user', text: question, t }, { role: 'assistant', text, t });
-            while (h.length > MAX_TURNS * 2) h.shift();
-            history.set(mk, h);
-            scheduleSave();
-            if (roast) setLastRoast(chatId, text);
-            return { text, model: res.model, images };
-        } catch (e) { errors.push(e.message); }
+            const win = await Promise.any(keyedAvail.slice(0, 2).map(([name, fn]) => attempt(name, fn)));
+            win.pushMem();
+            out = { text: win.text, model: win.model, images: win.images };
+        } catch (ag) {
+            for (const e of (ag && ag.errors) || []) errors.push(e?.message || String(e));
+        }
+        if (!out) out = await runSeq([...keyedAvail.slice(2), ...restAvail]);
+    } else {
+        out = await runSeq([...keyedAvail, ...restAvail]);
     }
+    if (out) return out;
     if (roast) {   // 🔥 ඔක්කොම providers fail/garble → Roast bank — bot කවදාවත් silent නෑ
         const text = cannedRoast(chatId);
         if (mkUsed) {
@@ -747,4 +807,4 @@ function stats(chatId) { // 🧠 .ai memory card data
     };
 }
 
-module.exports = { ask, askVision, reset, stats, looksLikeImageAsk, looksLikeInsult, imgPromptEn, setKey, getKeys, getProvider, setProvider, getTools, setTools, getRoast, setRoast, splitLong, toWhatsApp, roastGood, mostlyEnglish, cannedRoast, needsWeb, buildWebCtx, webQueries, REFUSE_RE, ROAST_BANK, VISION_SYSTEM, _history: history, _memoryFile: MEM_FILE, _memKey: memKeyOf, _flush: saveMemoryNow, _lastRoast: lastRoast, _webCache: webCache };
+module.exports = { ask, askVision, reset, stats, looksLikeImageAsk, looksLikeInsult, imgPromptEn, setKey, getKeys, getProvider, setProvider, getTools, setTools, getRoast, setRoast, splitLong, toWhatsApp, roastGood, mostlyEnglish, cannedRoast, needsWeb, buildWebCtx, webQueries, REFUSE_RE, ROAST_BANK, VISION_SYSTEM, GROUP_VISION_SYS, EXPLICIT_SEARCH_RE, _flags, _history: history, _memoryFile: MEM_FILE, _memKey: memKeyOf, _flush: saveMemoryNow, _lastRoast: lastRoast, _webCache: webCache };

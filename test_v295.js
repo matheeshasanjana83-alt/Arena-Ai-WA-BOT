@@ -51,10 +51,10 @@ const docMsg = (over = {}) => ({ key: { remoteJid: 'dm295c@s.whatsapp.net', id: 
 const videoMsg = (over = {}) => ({ key: { remoteJid: 'dm295d@s.whatsapp.net', id: 'V1' }, pushName: 'Suziy', message: { videoMessage: { mimetype: 'video/mp4', fileLength: 30 * 1048576, ...over } } });
 
 (async () => {
-    console.log('— v2.95.0 pins + markers —');
+    console.log('— v2.96.0 pins + markers —');
     ok('version 2.95 pkg+manifest + notes + source markers', () => {
-        assert.strictEqual(pkg.version, '2.95.0', 'pkg ' + pkg.version);
-        assert.strictEqual(manifest.version, '2.95.0', 'manifest ' + manifest.version);
+        assert.strictEqual(pkg.version, '2.96.0', 'pkg ' + pkg.version);
+        assert.strictEqual(manifest.version, '2.96.0', 'manifest ' + manifest.version);
         assert.ok(manifest.notes.includes('MEDIA AI'), 'notes headline');
         assert.ok(manifest.files.includes('test_v295.js'), 'manifest lists test_v295.js');
         assert.ok(aiSrc.includes('CTX_OVERRIDE'), 'ai.js chat-context slot');

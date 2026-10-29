@@ -304,6 +304,7 @@ async function onMessages({ messages, type }, send, del = async () => { }) {
                 if (type !== 'notify' && ts && ts < STARTED - 60) continue;   // old history — don't re-run old commands
                 seen.add(msg.key.id); if (seen.size > 1000) seen.delete(seen.values().next().value);
                 let text = getText(msg.message);
+                if (msg.key.remoteJid?.endsWith('@g.us')) glogPush(msg.key.remoteJid, String(msg.pushName || '').slice(0, 24), text || (msg.message?.stickerMessage ? '[sticker]' : msg.message?.audioMessage ? '[voice]' : msg.message?.imageMessage ? '[photo]' : msg.message?.videoMessage ? '[video]' : msg.message?.documentMessage ? `[doc ${msg.message?.documentMessage?.fileName || ''}]` : ''));   // 👥 v2.96 group chat memory for AI context
                 if (text && type === 'notify') console.log(`💬 ${fromMe ? '🤖' : '👤'} ${bareJid(msg.key.remoteJid)}${msg.key.participant ? '/' + bareJid(msg.key.participant) : ''}: ${cut(String(text).replace(/\n+/g, ' '), 60)}${msg.message?.extendedTextMessage?.contextInfo?.stanzaId ? ' ⤶' : ''}`);   // 🔎 v2.91: every-message console trace — second linked-device bot (same number, fromMe cards) made the chat look broken while this bot answered fine
                 if (accessible && /^\d{1,3}$/.test(text)) {                      // number reply → .mode / .setting / .menu panel · .moviedex card · 📋 yt quality menu (v2.64)
                     const jid0 = replyJid(msg.key), qid = msg.message?.extendedTextMessage?.contextInfo?.stanzaId;
@@ -847,6 +848,20 @@ async function handleForward(send, jid, msg, arg) {
 const aiLast = new Map();   // chat jid → last AI auto-reply ts (per-chat 4s gap)
 // ───────── 👥 v2.95 GROUP CHAT + 🎨 MEDIA AI (sticker/photo/video/voice/document) ─────────
 const unwrap = (m) => m?.viewOnceMessage?.message || m?.viewOnceMessageV2?.message || m?.ephemeralMessage?.message || m;   // module-level (local ones shadow — v2.95 media AI needs it)
+// 👥 v2.96 — GROUP CHAT MEMORY: group එකේ අනිත් members ගෙ අන්තිම messages (AI එකට කතාවේ context එක තේරෙන්න — 'තොරන්නෙ නෑ' fix)
+const groupLog = new Map();   // group jid → ['Name: text', ...] cap 12 (memory only — restart = clear, privacy)
+function glogPush(jid, who, text) {
+    try {
+        if (!jid || !jid.endsWith('@g.us') || !who) return;
+        const t = String(text || '').replace(/\s+/g, ' ').trim().slice(0, 140);
+        if (!t || t.startsWith('.')) return;   // bot commands ලොග් නෑ
+        const arr = groupLog.get(jid) || [];
+        arr.push(`${who}: ${t}`);
+        while (arr.length > 12) arr.shift();
+        groupLog.set(jid, arr);
+        if (groupLog.size > 80) groupLog.delete(groupLog.keys().next().value);
+    } catch { }
+}
 const gmetaCache = new Map();   // group jid → { name, t } — 10 min cache (groupMetadata per message නෑ)
 async function groupName(jid) {
     const hit = gmetaCache.get(jid);
@@ -878,7 +893,7 @@ async function aiSendParts(send, jid, text, status) {   // status bubble → edi
     else await send(jid, { text: ps[0] });
     for (let i = 1; i < ps.length; i++) await send(jid, { text: ps[i] });
 }
-async function aiMediaReply({ md, msg, jid, q, owner, chatCtx, send, edit }) {   // 🎨 one media = one deep AI reply
+async function aiMediaReply({ md, msg, jid, q, owner, chatCtx, group, send, edit }) {   // 🎨 one media = one AI reply · ⚡ v2.96: group → short persona
     const own = unwrap(md.src.message);
     const mm = own?.stickerMessage || own?.imageMessage || own?.videoMessage || own?.audioMessage || own?.documentMessage;
     const mime = String(mm?.mimetype || (md.kind === 'sticker' ? 'image/webp' : md.kind === 'image' ? 'image/jpeg' : md.kind === 'video' ? 'video/mp4' : 'audio/ogg'));
@@ -890,7 +905,7 @@ async function aiMediaReply({ md, msg, jid, q, owner, chatCtx, send, edit }) {  
         if (!buf || buf.length < 100) throw new Error('media download fail — ආයෙත් එවන්න');
         const r = await ai.askVision(jid, q || (md.kind === 'sticker'
             ? 'මේ sticker එක ගැන කියන්න — මොකක්ද, character/anime/brand එක දැනනම් කියන්න, joke/meme එකක් නම් ඒක සිංහලෙන් explain කරන්න.'
-            : 'මේක මොකක්ද? සම්පූර්ණ විස්තරාත්මක විශ්ලේෂණයක් දෙන්න — මොනවද පේන්නේ, ලියවිලි තියෙනවා නම් ඒවා, ඇත්තටම මොනවද වෙන්නේ.'), { mime: mime || 'image/webp', b64: Buffer.from(buf).toString('base64') });
+            : 'මේක මොකක්ද? සම්පූර්ණ විස්තරාත්මක විශ්ලේෂණයක් දෙන්න — මොනවද පේන්නේ, ලියවිලි තියෙනවා නම් ඒවා, ඇත්තටම මොනවද වෙන්නේ.'), { mime: mime || 'image/webp', b64: Buffer.from(buf).toString('base64') }, group ? ai.GROUP_VISION_SYS : undefined);   // ⚡ v2.96: group → short natural comment (deep vision report නෙවෙයි)
         return aiSendParts(send, jid, r.text);
     }
     if (md.kind === 'video') {   // 🎬 Gemini inline video (≤20MB) — scene + audio දෙකම තේරුම් ගන්නවා
@@ -908,7 +923,7 @@ async function aiMediaReply({ md, msg, jid, q, owner, chatCtx, send, edit }) {  
         if (!buf || buf.length < 100) throw new Error('audio download fail — ආයෙත් එවන්න');
         const st = await require('./pollinations').sttText(buf, mime || 'audio/ogg');
         if (!st) return edit('🤷 හඬ හම්බුණේ නෑ — audio එක හිස්ද බලන්න.');
-        const r = await ai.ask(jid, `🎙️ voice/audio transcript: """${st.slice(0, 3000)}"""\n\n${q || 'මේ voice/audio එකේ content එකට සිංහලෙන් උත්තර දෙන්න. Song/song clip එකක් නම් මොන song එකද, කවුරුද ගායනා කරන්නේ කියලා හඳුනාගෙන ඒ ගැන කියන්න. Voice note එකක් නම් කියපු දේට උත්තර දෙන්න.'}`, { owner, context: chatCtx });
+        const r = await ai.ask(jid, `🎙️ voice/audio transcript: """${st.slice(0, 3000)}"""\n\n${q || 'මේ voice/audio එකේ content එකට සිංහලෙන් උත්තර දෙන්න. Song/song clip එකක් නම් මොන song එකද, කවුරුද ගායනා කරන්නේ කියලා හඳුනාගෙන ඒ ගැන කියන්න. Voice note එකක් නම් කියපු දේට උත්තර දෙන්න.'}`, { owner, context: chatCtx, group: !!group });
         return aiSendParts(send, jid, r.text);
     }
     if (md.kind === 'document') {   // 📄 PDF → vision · text-like → read · binary → honest card
@@ -924,7 +939,7 @@ async function aiMediaReply({ md, msg, jid, q, owner, chatCtx, send, edit }) {  
             const buf = await mediaDownloader(md.src);
             if (!buf || !buf.length) throw new Error('document download fail — ආයෙත් එවන්න');
             const body = buf.toString('utf8').slice(0, 4000);
-            const r = await ai.ask(jid, `📄 file: ${fname || 'document.' + (mime.split('/')[1] || 'txt')}\n"""${body}"""\n\n${q || 'මේ file එකේ content එක ගැන සිංහලෙන් කියන්න — මොකක්ද, මොනවද තියෙන්නේ, වැදගත් දේවල්.'}`, { owner, context: chatCtx });
+            const r = await ai.ask(jid, `📄 file: ${fname || 'document.' + (mime.split('/')[1] || 'txt')}\n"""${body}"""\n\n${q || 'මේ file එකේ content එක ගැන සිංහලෙන් කියන්න — මොකක්ද, මොනවද තියෙන්නේ, වැදගත් දේවල්.'}`, { owner, context: chatCtx, group: !!group });
             return aiSendParts(send, jid, r.text);
         }
         return edit(`📄 ${fname || 'file'} — binary file එකක්. මට කියවන්න පුළුවන් PDF · photo/sticker · text files · audio · video විතරයි. zip/apk වගේ ඒවට dedicated commands තියෙනවා (*.\u0061\u0070k* බලන්න).`);
@@ -940,7 +955,10 @@ function maybeAiReply({ msg, jid, text, owner, send }) {
         else if (!text || text.length > 2000) return;
         if (!md && /^\d{1,3}$/.test(text)) return;            // 🔢 v2.58: bare number = stray menu pick (numbers are QUOTE-ONLY now) — AI silent, quota නාස්තියක් නෑ
         if (isGroup) {   // groups: @mention the bot or reply to a bot message only — any-text flood නෑ
-            const ci = unwrap(msg.message)?.extendedTextMessage?.contextInfo || unwrap(msg.message)?.imageMessage?.contextInfo || unwrap(msg.message)?.videoMessage?.contextInfo || unwrap(msg.message)?.documentMessage?.contextInfo;
+            // 🐛 v2.96 FIX: contextInfo කියවන්නෙ extendedTextMessage එකෙන් විතරයි කලින් — sticker/audio/image/video/doc message වල
+            // contextInfo ඒවාගෙම block එකේ. Voice note එකක්/sticker එකක් bot ගෙ message එකට reply කරාම group එකේ SILENT වුණා (user: 'voice අහලා reply, sticker group එකෙත්').
+            const ow = unwrap(msg.message);
+            const ci = ow?.extendedTextMessage?.contextInfo || ow?.imageMessage?.contextInfo || ow?.videoMessage?.contextInfo || ow?.documentMessage?.contextInfo || ow?.audioMessage?.contextInfo || ow?.stickerMessage?.contextInfo;
             const mentioned = (ci?.mentionedJid || []).some((j) => bareJid(j) === ME.pn || bareJid(j) === ME.lid);
             const repliedToMe = ci?.participant && (bareJid(ci.participant) === ME.pn || bareJid(ci.participant) === ME.lid);
             if (!mentioned && !repliedToMe) return;
@@ -959,17 +977,22 @@ function maybeAiReply({ msg, jid, text, owner, send }) {
                 if (isGroup) { const gn = await groupName(jid); if (gn) ctxBits.push(`group "${gn}"`); }
                 const pn = String(msg.pushName || '').slice(0, 40);
                 if (pn) ctxBits.push(`replying to ${pn}`);
+                // 👥 v2.96 — recent group chat log: AI එකට group එකේ කතාව තේරෙනවා (user: 'තොරන්නෙ නෑ')
+                const gtail = (groupLog.get(jid) || []).slice(-8);
+                if (gtail.length) ctxBits.push(`recent group chat (oldest→newest, names are other members, [brackets] = media):
+${gtail.join('\n')}`);
                 const chatCtx = ctxBits.join(' · ');
+                try { SOCK?.sendPresenceUpdate?.('composing', jid)?.catch?.(() => { }); } catch { }   // ⚡ typing — reply එක එනකම් 'typing…' (natural + latency mask)
                 if (md) {
                     const status = await send(jid, { text: md.kind === 'audio' ? '🎙️ ඇහනවා... 🧠' : md.kind === 'document' ? '📄 කියවනවා... 🧠' : md.kind === 'video' ? '🎬 බලනවා... 🧠' : '👀 බලනවා... 🧠' }, { quoted: msg });
                     const edit = async (t) => { try { await send(jid, { text: t, edit: status.key }); } catch { await send(jid, { text: t }, { quoted: msg }); } };
-                    try { await aiMediaReply({ md, msg, jid, q: text, owner, chatCtx, send, edit }); } catch (e) {
+                    try { await aiMediaReply({ md, msg, jid, q: text, owner, chatCtx, group: isGroup, send, edit }); } catch (e) {
                         await edit(`❌ ${String(e.message || e).slice(0, 200)}`);
                     }
                     log(`🤖 AI media(${md.kind}) → ${jid.slice(0, 24)}`);
                     return;
                 }
-                const r = await ai.ask(jid, text, { owner, context: chatCtx });   // 👑 v2.94 owner + 👥 v2.95 chat context
+                const r = await ai.ask(jid, text, { owner, context: chatCtx, group: !!group });   // 👑 v2.94 owner + 👥 v2.95 chat context
                 const out = (typeof r === 'string' ? r : r?.text || '').trim();
                 const imgs = r && Array.isArray(r.images) ? r.images : [];   // 🖼 v2.53 FIX: auto-chat replies වලටත් photo යනවා (කලින් images drop — අනිත් අයගෙ chat වල photo නොවැඩ කරන හේතුව)
                 if (imgs.length) {
@@ -1176,6 +1199,17 @@ async function quotedMediaOf(msg) {
 
 async function handleAI(send, jid, msg, question) {
     question = question.trim();
+    // 👥 v2.96 — .ai command එකටත් group context (group එකේ .ai = AI එකට කවුද/කොහෙද තේරෙනවා)
+    let gctx = '';
+    if (jid.endsWith('@g.us')) {
+        const bits = [];
+        try { const gn = await groupName(jid); if (gn) bits.push(`group "${gn}"`); } catch { }
+        const pn = String(msg.pushName || '').slice(0, 40);
+        if (pn) bits.push(`replying to ${pn}`);
+        const gtail = (groupLog.get(jid) || []).slice(-6);
+        if (gtail.length) bits.push(`recent group chat:\n${gtail.join('\n')}`);
+        gctx = bits.join(' · ');
+    }
     if (/^(memory|mem)$/i.test(question)) {
         const st = ai.stats(jid);
         return send(jid, { text: `🧠 *AI MEMORY*
@@ -1251,7 +1285,7 @@ on/off: *.ai roast on* / *.ai roast off*` }, { quoted: msg });
     if (!question) return send(jid, { text: '🤖 *.ai <ප්‍රශ්නය>*\nඋදා: .ai GTA SA වල cheats මොනවද?' }, { quoted: msg });
     const status = await send(jid, { text: (ai.needsWeb && ai.needsWeb(question)) ? '🔎 අන්තර්ජාලයෙන් ඇත්ත හොයලා බලනවා... 🧠 (live web)' : '🤖 හිතනවා...' }, { quoted: msg });
     try {
-        const { text, model, images } = await ai.ask(jid, question, { owner: isFromOwner(msg.key) });   // 👑 v2.94 — .ai owner mode
+        const { text, model, images } = await ai.ask(jid, question, { owner: isFromOwner(msg.key), context: gctx || undefined, fast: false });   // 👑 v2.94 owner · 👥 v2.96 group ctx (.ai = full quality — fast නෑ)
         if (images?.length) {   // 🖼 AI tool image (generate_image) — photo + reply text එකම caption
             try { await send(jid, { delete: status.key }); } catch { }
             await send(jid, { image: images[0], caption: text + `\n\n${foot('ᴀɪ')}` }, { quoted: msg });
@@ -1356,7 +1390,7 @@ async function handleDownload(send, jid, msg, link, siteTag, cap) {
 
 process.on('unhandledRejection', (e) => log('unhandled: ' + (e?.message || e)));
 process.on('uncaughtException', (e) => log('uncaught: ' + e.message));
-module.exports = { _agentTick: agentTick, AGENT_MSG, handleDownload, getText, onMessages, replyJid, ME, aliveCaption, OWNER_CMDS, modeCaption, handleForward, maybeAiReply, _aiLast: aiLast, SITE_DL, _setMediaDownloader: (f) => { mediaDownloader = f; }, _setSock: (x) => { SOCK = x; }, _dlQueue: dlQueue, _dlDepth: () => dlDepth, _dlBudgetMin: dlBudgetMin };
+module.exports = { _agentTick: agentTick, AGENT_MSG, handleDownload, getText, onMessages, replyJid, ME, aliveCaption, OWNER_CMDS, modeCaption, handleForward, maybeAiReply, handleAI, _aiLast: aiLast, _groupLog: groupLog, _glogPush: glogPush, SITE_DL, _setMediaDownloader: (f) => { mediaDownloader = f; }, _setSock: (x) => { SOCK = x; }, _dlQueue: dlQueue, _dlDepth: () => dlDepth, _dlBudgetMin: dlBudgetMin };
 if (require.main === module) {
     console.log('🚀 KAVIZ MD V1 starting...');
     require('./media').checkUpdate(true).catch(() => { });   // yt-dlp fresh → FB "Cannot parse data" / YT format errors fix (max 1 check/hour)
