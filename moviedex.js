@@ -72,6 +72,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const ZETA = require('./zetasub');   // v3.00: CineSubz/Cineru mirror — MovieBox VIP-only fallback
 const { smartFetch } = require('./net');
 const { human, maxMB } = require('./downloader');
 const { foot, cut, bar } = require('./style');
@@ -612,6 +613,7 @@ async function transcode360(inp, outPath, { durSec = 0, onProgress, edit } = {})
  *  DASH download (cached manifest) [+ 360p re-encode when row.transcode]. Files live in a
  *  per-run tmpDir so the WhatsApp filename stays CLEAN (the old flow appended -<timestamp>). */
 async function downloadDash(row, { tmpDir, finalName, onProgress, edit }) {
+    if (row.zeta) return zetaDownload(row.zeta, { tmpDir, finalName, onProgress });   // v3.00: CineSubz/Cineru mirror MP4
     if (row.direct) return directDownload(row, { tmpDir, finalName, onProgress });   // v2.46: resource-position MP4 (no DASH, no mux)
     fs.mkdirSync(tmpDir, { recursive: true });
     const rawPath = row.transcode ? path.join(tmpDir, 'src-' + Date.now() + '.mkv') : path.join(tmpDir, finalName);
@@ -629,6 +631,109 @@ async function downloadDash(row, { tmpDir, finalName, onProgress, edit }) {
     console.log(`[moviedex] 🎞️ 360p re-encode (${human(bytes)}) in ${Math.round((Date.now() - tEnc0) / 1000)}s`);   // v2.44 phase log
     try { fs.rmSync(res.path, { force: true }); } catch { }
     return { path: finalPath, bytes, hevc: false };
+}
+
+/* ───────────────── 2c. ZETA MIRROR download (v3.00) ─────────────────
+ * CineSubz/Cineru CDN MP4s (drive.csplayer2.space time-signed links, zetasub.js resolves).
+ * Ranged-parallel like directDownload but browser UA; the CDN CF-challenges some datacenter IPs —
+ * on a 403 challenge the engine gives the free-proxy pool ONE window (small episodes may pass),
+ * then fails HONESTLY (never fakes a download). */
+async function zetaDownload(zeta, { tmpDir, finalName, onProgress }) {
+    fs.mkdirSync(tmpDir, { recursive: true });
+    const outPath = path.join(tmpDir, finalName);
+    const url = zeta.url;
+    const hdrs = () => ({ 'User-Agent': ZETA.UA, Accept: '*/*', 'Accept-Language': 'en-US,en;q=0.9', Referer: 'https://cinesubz.net/' });
+    const openRes = async (u, range) => {
+        const r = await fetch(u, { headers: { ...hdrs(), ...(range ? { Range: range } : {}) }, redirect: 'follow', signal: AbortSignal.timeout(60000) });
+        return r;
+    };
+    const cfHit = (r) => r.status === 403 && /cf-mitigated|challenge/i.test([...r.headers.keys()].map((k) => k + ':' + r.headers.get(k)).join(' '));
+    const head = await openRes(url, 'bytes=0-1');
+    const headCf = cfHit(head);
+    if (!head.ok && head.status !== 206 && !headCf) { try { await head.body?.cancel(); } catch { } throw new Error('mirror CDN HTTP ' + head.status); }
+    const cr = head.headers.get('content-range') || '';
+    let total = Number((cr.split('/')[1] || head.headers.get('content-length') || 0)) || 0;
+    try { await head.body?.cancel(); } catch { }
+    if (!total && !headCf) throw new Error('mirror file size එක unknown');
+    // ⚡ CF-challenge fallback — one proxy-pool window (residential exits often pass Cloudflare)
+    let dispatcher = null;
+    if (headCf) {
+        console.log('oviedex] 🪞 mirror CDN challenged → proxy pool window…');
+        const pool = require('./proxypool');
+        try { await pool.ensureReady(20000); } catch { }
+        const cands = pool.candidates(2);
+        let poolOk = false;
+        for (const p of cands) {
+            try {
+                const undici = require('undici');
+                const r2 = await undici.fetch(url + (url.includes('?') ? '&' : '?') + 'zc=' + Date.now(), {
+                    dispatcher: new undici.ProxyAgent({ uri: p, connect: { timeout: 8000 } }),
+                    headers: { ...hdrs(), Range: 'bytes=0-1023' }, signal: AbortSignal.timeout(25000),
+                });
+                const b = await r2.arrayBuffer();
+                if (r2.status === 206 && b.byteLength > 100) {
+                    poolOk = true;
+                    dispatcher = new undici.ProxyAgent({ uri: p, connect: { timeout: 15000 }, bodyTimeout: 120e3, headersTimeout: 60e3 });
+                    total = Number((r2.headers.get('content-range') || '').split('/')[1]) || total;
+                    console.log('oviedex] 🪞 pool proxy හරහා වැඩ ✅ (' + new URL(p).host + ')');
+                    break;
+                }
+            } catch { }
+        }
+        if (!poolOk) throw new Error('mirror CDN මේ server IP එකට CF-block — proxy pool එකෙනුත් බැරි උනා');
+    }
+    const CHUNK = 4 * 1048576;
+    const chunks = Math.ceil(total / CHUNK);
+    let got = 0, cursor = 0, stop = false, lastByteAt = Date.now();
+    const wd = setInterval(() => { if (Date.now() - lastByteAt > 150e3) stop = true; }, 15000);
+    const fd = fs.openSync(outPath, 'w');
+    try {
+        try { fs.ftruncateSync(fd, total); } catch { }
+        const results = new Map();
+        let nextWrite = 0;
+        const nW = parseInt(process.env.ARENA_DL_WORKERS || '10', 10) || 10;
+        const doFetch = dispatcher
+            ? (u, range) => require('undici').fetch(u + (u.includes('?') ? '&' : '?') + 'zc=' + Math.random().toString(36).slice(2, 7), { dispatcher, headers: { ...hdrs(), ...(range ? { Range: range } : {}) }, signal: AbortSignal.timeout(90000) })
+            : openRes;
+        await Promise.all(Array.from({ length: Math.min(nW, chunks) }, async () => {
+            while (!stop) {
+                const idx = cursor < chunks ? cursor++ : null;
+                if (idx == null) return;
+                let ok = false;
+                for (let t = 0; t < 3 && !stop && !ok; t++) {
+                    try {
+                        const r = await doFetch(url, `bytes=${idx * CHUNK}-${Math.min(total, (idx + 1) * CHUNK) - 1}`);
+                        if (r.status === 206 || r.ok) {
+                            const buf = Buffer.from(await r.arrayBuffer());
+                            try { await r.body?.cancel(); } catch { }
+                            if (buf.length > 0) {
+                                results.set(idx, buf);
+                                lastByteAt = Date.now();
+                                while (results.has(nextWrite)) {
+                                    const b = results.get(nextWrite); results.delete(nextWrite);
+                                    fs.writeSync(fd, b, 0, b.length, nextWrite * CHUNK);
+                                    got += b.length; nextWrite++;
+                                }
+                                if (onProgress && nextWrite % 2 === 0) onProgress(Math.min(99, Math.floor(nextWrite * 100 / chunks)), got);
+                                ok = true;
+                            }
+                        } else { try { await r.body?.cancel(); } catch { } }
+                    } catch { }
+                    if (!ok && t < 2) await sleepMs(400 * (t + 1));
+                }
+                if (!ok) { stop = true; throw new Error('mirror CDN chunk fail — ආයෙත් try'); }
+            }
+        }));
+        if (got < total) throw new Error('mirror download අසම්පූර්ණ (' + Math.round(got * 100 / total) + '%)');
+        clearInterval(wd);
+        fs.closeSync(fd);
+        return { path: outPath, bytes: got, hevc: false };
+    } catch (e) {
+        clearInterval(wd);
+        try { fs.closeSync(fd); } catch { }
+        try { fs.rmSync(outPath, { force: true }); } catch { }
+        throw e;
+    }
 }
 
 /* ───────────────── 2b. DIRECT-MP4 mode (v2.46) ─────────────────
@@ -1338,6 +1443,20 @@ async function deliverStream(send, jid, msg, { st, qrow, fname, capTitle, capMet
         try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { }
         if (!linkMode) { try { await send(jid, { delete: status.key }); } catch { } react?.('✅'); }
     } catch (e) {
+        // 🔄 v3.00 — MovieBox VIP-only → CineSubz/Cineru mirror fallback (the Asitha-MD MoviePro source class)
+        const em = String(e.message || '');
+        if (/VIP-only/.test(em) && row.direct && !qrow._zetaTried && (show || capTitle)) {
+            try {
+                await edit('🔄 MovieBox මේක VIP කරලා — CineSubz/Cineru mirror එකෙන් හොයනවා…');
+                const zr = await ZETA.zetaRow(show || String(capTitle || '').replace(/[*🎬]/g, ''), season || 0, ep || 0, row.h || 0);
+                if (zr?.url) {
+                    const q2 = { label: zr.label + ' · mirror', h: zr.h, sizeMB: zr.sizeMB, zeta: { url: zr.url, fname: zr.fname }, _zetaTried: true };
+                    console.log('[moviedex] 🪞 zeta mirror hit: ' + cut(zr.label + ' ' + (zr.fname || ''), 90));
+                    react?.('🪞');
+                    return await deliverStream(send, jid, msg, { st, qrow: q2, fname, capTitle, capMeta, linkMode, react, status, edit, show, season, ep });
+                }
+            } catch (ze) { console.log('[moviedex] 🪞 zeta fallback fail: ' + cut(String(ze.message || ze), 110)); }
+        }
         react?.('❌');
         console.log('[moviedex] ❌ send fail: ' + cut(String(e.message || ''), 120));
         await edit(`❌ ${cut(String(e.message || ''), 150)}\n> ආයෙත් try · වෙන quality එකක් · නැත්නම් *.moviedex <n> <q#> link*`);
@@ -1421,7 +1540,9 @@ async function seasonFilesCmd(send, jid, msg, m, season, maxEp, qNo, height, fro
     const edit = async (t) => { try { await send(jid, { text: t, edit: status.key }); } catch { } };
     const end = Math.min(total, from + SEASON_FILE_CAP);
     let ok = 0, fail = 0, lastEdit = 0;
-    for (let ep = from + 1; ep <= end; ep++) {
+    
+    const zetaCache = {};   // v3.00 — one title lookup per season run
+for (let ep = from + 1; ep <= end; ep++) {
         const tag = `S${season}E${ep}`;
         const tmpDir = path.join(process.env.DL_TMP || os.tmpdir(), 'mdx-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6));
         try {
@@ -1454,9 +1575,30 @@ async function seasonFilesCmd(send, jid, msg, m, season, maxEp, qNo, height, fro
             ok++;
             console.log(`[moviedex] ✅ sent ${finalName} in ${Math.round((Date.now() - u0) / 1000)}s`);
         } catch (err) {
+            // 🔄 v3.00 — VIP-only → CineSubz/Cineru mirror attempt for this episode
+            let zres = null;
+            if (/VIP-only/.test(String(err.message || ''))) {
+                try {
+                    await edit(`🔄 ${tag} — CineSubz/Cineru mirror එකෙන් හොයනවා…`);
+                    const zr = await ZETA.zetaRow(m.name, season, ep, height || 0, zetaCache);
+                    if (zr?.url) {
+                        const fn2 = epFileName(m.name, season, ep, zr.h || 0, true);
+                        zres = await zetaDownload({ url: zr.url }, { tmpDir, finalName: fn2, onProgress: per });
+                        await send(jid, {
+                            document: { url: zres.path }, fileName: fn2,
+                            mimetype: fn2.endsWith('.mp4') ? 'video/mp4' : 'video/x-matroska',
+                            caption: epCaption(m.name, season, ep, zr.h || 0, ok + 1, total, fail) + '\n' + foot('🪞 CineSubz/Cineru mirror'),
+                        }, { quoted: msg });
+                        ok++;
+                        console.log('[moviedex] 🪞 ' + tag + ' mirror sent (' + human(zres.bytes) + ')');
+                    }
+                } catch (ze) { console.log('[moviedex] 🪞 ' + tag + ' mirror fail: ' + cut(String(ze.message || ze), 100)); }
+            }
+            if (!zres) {
             fail++;
             console.log('[moviedex] ' + tag + ' fail: ' + cut(String(err.message || ''), 160));
             await send(jid, { text: `⚠️ ${tag} — ${cut(String(err.message || ''), 90)}\n> මේ එක skip කළා` }, { quoted: msg });
+            }
         }
         try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { }
         await edit(packStat(show, season, ok, fail, ep, total));

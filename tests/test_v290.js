@@ -48,8 +48,8 @@ const whPlayerPage = (src) => `<html><script type="application/ld+json">{"conten
 (async () => {
     console.log('— v2.96.0 pins (binge + time-machine merged) —');
     ok('version 2.92 pkg+manifest + notes + prev/restore/ring markers', () => {
-        assert.strictEqual(pkg.version, '2.99.0', 'pkg ' + pkg.version);
-        assert.strictEqual(manifest.version, '2.99.0', 'manifest ' + manifest.version);
+        assert.strictEqual(pkg.version, '3.00.0', 'pkg ' + pkg.version);
+        assert.strictEqual(manifest.version, '3.00.0', 'manifest ' + manifest.version);
         assert.ok(manifest.notes.includes('BINGE FLOW'), 'v2.90 note in chain');
         assert.ok(manifest.notes.includes('TIME-MACHINE'), 'v2.92 note in chain');
         assert.ok(hubSrc.includes('const restoreBack'), 'restoreBack helper');
