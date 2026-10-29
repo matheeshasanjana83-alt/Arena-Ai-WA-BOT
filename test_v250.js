@@ -77,7 +77,7 @@ const T = require('./ai_tools');
     ok('26 bot: caption AI TOOLS line', botSrc.includes('*AI TOOLS:*'));
     ok('27 bot: memory card model stores', botSrc.includes('myPerProv.gemini') && botSrc.includes('Model stores'));
     ok('28 bot: reset hint says models 3', botSrc.includes('models 3 ගේම මතක clear'));
-    ok('29 bot: AI menu tools line', botSrc.includes('*.ai tools* — GLM connector'));
+    ok('29 bot: AI menu tools line', botSrc.includes('*.ai tools* — smart connector'));
 
     // 8. ai.js wiring
     const aiSrc = fs.readFileSync(path.join(__dirname, 'ai.js'), 'utf8');

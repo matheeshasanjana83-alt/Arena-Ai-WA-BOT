@@ -435,7 +435,7 @@ async function onMessages({ messages, type }, send, del = async () => { }) {
                         return send(jid, { text: `🤖 *AI PROVIDER*\n\n✦ දැන්: *${cur ? cur.toUpperCase() : 'AUTO'}*\n✦ AUTO order: Gemini → Groq → Z.ai\n\nවෙනස් කරන්න: *.aiprovider gemini* / *.aiprovider groq* / *.aiprovider zai* / *.aiprovider auto*\n✦ *.setting* → 10 එකෙනුත් පුළුවන්` }, { quoted: msg });
                     }
                     const set2 = ai.setProvider(arg2);
-                    const label2 = { '': 'AUTO (Gemini → Groq → Z.ai)', gemini: 'GEMINI', groq: 'GROQ', zai: 'Z.AI' }[set2];
+                    const label2 = { '': 'AUTO (KAVIZ multi-engine)', gemini: 'GEMINI', groq: 'GROQ', zai: 'Z.AI' }[set2];
                     const hint2 = set2 && !ai.getKeys()[set2] ? `\n⚠️ ඒ provider එකේ key එක නෑ — .setkey ${set2} <KEY>` : '';
                     return send(jid, { text: `✅ AI provider: *${label2}*${hint2}` }, { quoted: msg });
                 }
@@ -550,10 +550,10 @@ const CATS = [
 ✦ *.ai memory* — මතකය status · save state
 ✦ photo/PDF එකකට reply + *.ai* — 👁 බලලා කියනවා
 ✦ *.remind 10m <note>* — ⏰ මතක් කරන්න
-✦ *.ai tools* — GLM connector (search/weather/YT)
+✦ *.ai tools* — smart connector (search/weather/YT)
 ✦ *.ai roast* — 🔥 බැනුමට ආපහු බැනීම (on/off)
 ✦ AI provider තෝරන්න — *.aiprovider gemini/groq/zai/auto* · *.setting* → 10\n✦ AI chat auto-reply — *.mode* → 5/6 on·off · 11-16 modes
-✦ 🌸 Pollinations fallback auto (Gemini/Groq down වුණත් .ai වැඩ)
+✦ Smart multi-engine fallback auto (engine එකක් down වුණත් .ai වැඩ)
 ✦ *.setkey gemini/groq/zai/together/polli <KEY>* · *.keys* · *.stt* — voice→text`],
     ['🔧', 'Network', `*🔧 NETWORK*\n\n✦ *.net <link>* — fail වුණොත් හේතුව\n✦ *.setproxy <url|off>* — block sites වලට\n✦ *.proxies* — free pool status · *.proxies check*\n✦ *.setcookies* — YouTube bot-check fix\n✦ *.tbcookie <ndus>* — ☁️ TeraBox cookie (LIVE verify)`],
     ['⚙️', 'Settings', `*⚙️ SETTINGS*\n\n✦ *.setlogo* / *.dellogo* — menu logo\n✦ *.react on|off* — auto react\n✦ *.maxmb <MB>* — download limit\n✦ *.setting* — ⚙️ settings panel (අංක reply → toggle)
@@ -609,8 +609,8 @@ function settingCaption() {
         `🍀 | *WORK TYPE:* ${guard.chatMode()}`,
         `🍀 | *AI KEYS:* Gemini ${k.gemini ? '✅' : '❌'} · Groq ${k.groq ? '✅' : '❌'} · Z.ai ${k.zai ? '✅' : '❌'}`,
         `🧠 | *AI MEMORY:* ${m.msgs} msgs · ${m.chats} chats · TTL ${m.ttlDays}d`,
-        `🤖 | *AI PROVIDER:* ${ai.getProvider() ? ai.getProvider().toUpperCase() : 'AUTO (Gemini → Groq → Z.ai)'}`,
-        `🧰 | *AI TOOLS:* ${ai.getTools() ? '✅ ON' : '⛔ OFF'} (GLM)`,
+        `🤖 | *AI PROVIDER:* ${ai.getProvider() ? ai.getProvider().toUpperCase() : 'AUTO (KAVIZ multi-engine)'}`,
+        `🧰 | *AI TOOLS:* ${ai.getTools() ? '✅ ON' : '⛔ OFF'} (smart connector)`,
         `🍀 | *ANTI-BUG:* ${oo(a.on)}`,
         `🍀 | *AUTO REPORT:* ${a.report ? 'on ×' + a.reportCount : 'off'}`,
         `🍀 | *AUTO BLOCK:* ${oo(a.block)}`,
@@ -657,7 +657,7 @@ function applySetting(n) {
         case 10: { // 🤖 AI provider cycle: AUTO → GEMINI → GROQ → Z.AI
             const nxt = cyc(ai.getProvider() || '', ['', 'gemini', 'groq', 'zai']);
             ai.setProvider(nxt);
-            const label = { '': 'AUTO (Gemini → Groq → Z.ai)', gemini: 'GEMINI', groq: 'GROQ', zai: 'Z.AI' }[nxt];
+            const label = { '': 'AUTO (KAVIZ multi-engine)', gemini: 'GEMINI', groq: 'GROQ', zai: 'Z.AI' }[nxt];
             const hint = nxt && !ai.getKeys()[nxt] ? ' ⚠️ ඒ provider එකේ key නෑ — .setkey ' + nxt + ' <KEY>' : '';
             return `🤖 AI provider: ${label}${hint}`;
         }
@@ -866,7 +866,7 @@ function maybeAiReply({ msg, jid, text, owner, send }) {
         if (now - last < 4000) return;
         aiLast.set(jid, now); if (aiLast.size > 200) aiLast.delete(aiLast.keys().next().value);
         runJob(async () => {
-            const r = await ai.ask(jid, text);
+            const r = await ai.ask(jid, text, { owner });   // 👑 v2.94 — owner chat = boss context
             const out = (typeof r === 'string' ? r : r?.text || '').trim();
             const imgs = r && Array.isArray(r.images) ? r.images : [];   // 🖼 v2.53 FIX: auto-chat replies වලටත් photo යනවා (කලින් images drop — අනිත් අයගෙ chat වල photo නොවැඩ කරන හේතුව)
             if (imgs.length) {
@@ -1075,7 +1075,7 @@ async function handleAI(send, jid, msg, question) {
         return send(jid, { text: `🧠 *AI MEMORY*
 
 ✦ AUTO (shared): *${st.myMsgs}* messages${st.myMsgs ? ` — ${st.myOldestH}h ඉඳන් මතකයේ` : ''}
-✦ Model stores — Gemini: ${st.myPerProv.gemini} · Groq: ${st.myPerProv.groq} · Z.ai: ${st.myPerProv.zai}
+✦ Model stores — M1: ${st.myPerProv.gemini} · M2: ${st.myPerProv.groq} · M3: ${st.myPerProv.zai} (AUTO order)
 ✦ Total: ${st.msgs} msgs · chats ${st.chats}ක් · file ${st.fileKB} KB
 ✦ Auto-clear: දවස් *${st.ttlDays}*ට පරණ messages මැකෙනවා
 ✦ Limit: chat එකක turns *${st.turns}*
@@ -1083,13 +1083,13 @@ async function handleAI(send, jid, msg, question) {
 💾 Bot restart වුණත් මතකය save වෙලා තියෙනවා · 🎛 .aiprovider එකෙන් select කරන model එකට වෙනම memory
 🆕 *.ai reset* — models 3 ගේම මතක clear කරන්න` }, { quoted: msg });
     }
-    const tm = question.match(/^tools?(?:\s+(on|off))?$/i); // 🧰 GLM connector tools (v2.50)
+    const tm = question.match(/^tools?(?:\s+(on|off))?$/i); // 🧰 smart connector tools (v2.50, rebrand v2.94)
     if (tm) {
         if (!tm[1]) {
             const on = ai.getTools();
             return send(jid, { text: `🧰 *AI TOOLS* ${on ? '✅ ON' : '⛔ OFF'}
 
-GLM (Z.ai) එකට connect වෙලා තියෙන abilities:
+KAVIZ AI එකේ built-in abilities:
 ✦ *web search* — අලුත් facts / news
 ✦ *date/time + calculator*
 ✦ *image gen* — 🎨 photo / art / anime හදනවා
@@ -1102,7 +1102,7 @@ AI එකට ඕන වෙලාවට ම මේවා පාවිච්චි
 on/off: *.ai tools on* / *.ai tools off*` }, { quoted: msg });
         }
         const on = ai.setTools(tm[1].toLowerCase() === 'on');
-        return send(jid, { text: `🧰 AI tools ${on ? '✅ ON' : '⛔ OFF'} — \n✦ search/weather/YT/reminders — GLM (Z.ai) එකටම\n✦ 🎨 image gen — Together FLUX → Gemini → Pollinations (auto fallback)` }, { quoted: msg });
+        return send(jid, { text: `🧰 AI tools ${on ? '✅ ON' : '⛔ OFF'} — \n✦ search/weather/YT/reminders — AI එකේම smart tools\n✦ 🎨 image gen — smart image engine (auto fallback)` }, { quoted: msg });
     }
     const rm = question.match(/^roast(?:\s+(on|off))?$/i); // 🔥 roast mode (v2.54)
     if (rm) {
@@ -1145,7 +1145,7 @@ on/off: *.ai roast on* / *.ai roast off*` }, { quoted: msg });
     if (!question) return send(jid, { text: '🤖 *.ai <ප්‍රශ්නය>*\nඋදා: .ai GTA SA වල cheats මොනවද?' }, { quoted: msg });
     const status = await send(jid, { text: (ai.needsWeb && ai.needsWeb(question)) ? '🔎 අන්තර්ජාලයෙන් ඇත්ත හොයලා බලනවා... 🧠 (live web)' : '🤖 හිතනවා...' }, { quoted: msg });
     try {
-        const { text, model, images } = await ai.ask(jid, question);
+        const { text, model, images } = await ai.ask(jid, question, { owner: isFromOwner(msg.key) });   // 👑 v2.94 — .ai owner mode
         if (images?.length) {   // 🖼 AI tool image (generate_image) — photo + reply text එකම caption
             try { await send(jid, { delete: status.key }); } catch { }
             await send(jid, { image: images[0], caption: text + `\n\n${foot('ᴀɪ')}` }, { quoted: msg });

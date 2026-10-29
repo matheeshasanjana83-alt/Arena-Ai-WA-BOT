@@ -58,8 +58,8 @@ const DL = (arr) => async (l, tag) => arr.push({ l, tag });
 (async () => {
     console.log('— v2.88.0 pins —');
     ok('version + manifest files + wiring greps', () => {
-        assert.ok(['2.87.0', '2.88.0', '2.89.0', '2.93.0', '2.93.0', '2.93.0'].includes(pkg.version), 'pkg ' + pkg.version);
-        assert.ok(['2.87.0', '2.88.0', '2.89.0', '2.93.0', '2.93.0', '2.93.0'].includes(manifest.version), 'manifest ' + manifest.version);
+        assert.ok(['2.87.0', '2.88.0', '2.89.0', '2.94.0', '2.94.0', '2.94.0'].includes(pkg.version), 'pkg ' + pkg.version);
+        assert.ok(['2.87.0', '2.88.0', '2.89.0', '2.94.0', '2.94.0', '2.94.0'].includes(manifest.version), 'manifest ' + manifest.version);
         assert.ok(manifest.files.includes('metdn.js') && manifest.files.includes('test_v288.js'), 'files');
         assert.ok(botSrc.includes("require('./metdn')") && botSrc.includes('metdn.handle'), 'router');
         assert.ok(botSrc.includes('metdn.bridge'), 'bridge chain (7th)');

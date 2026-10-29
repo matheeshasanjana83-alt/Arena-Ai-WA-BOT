@@ -133,7 +133,7 @@ ok('bot.js: HEAVY += .stt/.totext · .keys polli line · KEY_HELP polli · allow
     assert.ok(s.includes('.setkey gemini/groq/zai/together/polli <KEY>'), 'KEY_HELP missing');
     assert.ok(s.includes("'gemini', 'groq', 'zai', 'together', 'polli'"), 'setkey allowlist missing');
     assert.ok(s.includes('*.stt* — 🎙️ voice note → text'), 'TOOLS card missing .stt');
-    assert.ok(s.includes('🌸 Pollinations fallback auto'), 'AI card missing fallback note');
+    assert.ok(s.includes('Smart multi-engine fallback auto'), 'AI card missing fallback note');
 });
 
 // ── ⑩ pairsite.js — diag pot probe ──

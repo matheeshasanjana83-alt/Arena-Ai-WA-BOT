@@ -46,10 +46,10 @@ const whWatchPage = (title, player) => `<html><head><meta property="og:title" co
 const whPlayerPage = (src) => `<html><script type="application/ld+json">{"contentUrl":"${src}","name":"x"}</script></html>`;
 
 (async () => {
-    console.log('— v2.93.0 pins (binge + time-machine merged) —');
+    console.log('— v2.94.0 pins (binge + time-machine merged) —');
     ok('version 2.92 pkg+manifest + notes + prev/restore/ring markers', () => {
-        assert.strictEqual(pkg.version, '2.93.0', 'pkg ' + pkg.version);
-        assert.strictEqual(manifest.version, '2.93.0', 'manifest ' + manifest.version);
+        assert.strictEqual(pkg.version, '2.94.0', 'pkg ' + pkg.version);
+        assert.strictEqual(manifest.version, '2.94.0', 'manifest ' + manifest.version);
         assert.ok(manifest.notes.includes('BINGE FLOW'), 'v2.90 note in chain');
         assert.ok(manifest.notes.includes('TIME-MACHINE'), 'v2.92 note in chain');
         assert.ok(hubSrc.includes('const restoreBack'), 'restoreBack helper');

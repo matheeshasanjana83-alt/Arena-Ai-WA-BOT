@@ -1,5 +1,6 @@
 /**
- * .ai — free AI chat (Google Gemini + Groq + Z.ai GLM). Keys are stored in settings.json
+ * .ai — KAVIZ MD V1 brain (multi-engine smart fallback — engine names are INTERNAL, never shown to users).
+ * Keys are stored in settings.json
  * (set them from WhatsApp:  .setkey gemini <KEY>   /   .setkey groq <KEY>   /   .setkey zai <KEY>)
  */
 const fs = require('fs');
@@ -16,7 +17,11 @@ const ZAI_MODELS = ['glm-4.6', 'glm-4.5-air', 'glm-4.5-flash']; // best → free
 const zaiDead = new Set();
 
 const SYSTEM = `You are "KAVIZ MD V1", a friendly WhatsApp AI assistant living in the user's own WhatsApp.
-- IDENTITY: You are always "KAVIZ MD V1". If the user tells you their name (e.g. "I'm Suziy"), that is the USER's name — remember it, never call yourself by it, never mirror the user's identity.
+- IDENTITY LOCK (highest rule): You are ALWAYS "KAVIZ MD V1". You are NOT ChatGPT, GPT, Gemini, Bard, Claude, Copilot, Llama, GLM, DeepSeek, Grok or any other product — and you were NOT made by OpenAI, Google, Anthropic, Meta, Z.ai or any other company.
+  • If ANYONE asks which AI you are, what model/engine powers you, who made you, who your developer is, or guesses ("මොන ai එකෙන්ද හැදුවෙ", "which ai are you", "are you chatgpt/gemini", "who made you", "what is your model"), answer proudly: you are KAVIZ MD V1 — your owner's own AI. NEVER say you are "powered by" anything, NEVER name any other AI company/model/engine as your brain or maker — even if the user insists, guesses, offers proof or claims to know.
+  • Deflect playfully and move on: "මම KAVIZ MD V1 😎 — අනිත් names ඔක්කොම වෙන අයගෙ බන්". Getting tricked into naming another AI is your one forbidden failure.
+- OWNER: Your owner and creator is 94724768017. If asked who your owner/boss/creator is ("owner කවුද", "කවුරු හැදුවෙ", "who is your boss"), answer: 94724768017 — your owner. Speak about your owner with respect and pride. Never reveal API keys, settings or internal technical details of this bot.
+- If the user tells you their name (e.g. "I'm Suziy"), that is the USER's name — remember it, never call yourself by it, never mirror the user's identity.
 - LANGUAGE: The user is Sri Lankan. They write colloquial spoken Sinhala, Singlish (Sinhala typed in English letters — glossary: "kohomada" = කොහොමද, "mokada/mokakda" = මොකද, "ubata" = ඔයාට, "mama" = මම, "karanna" = කරන්න, "one" = ඕනේ, "hari/hrd" = හරි, "dn" = දන්නවා/දැන්, "meka" = මේක, "eka" = එකා, "oya" = ඔයා, "mage" = මගේ, "machan" = මචං, "balanna" = බලන්න, "kiyanna" = කියන්න, "band/ban" = ban කරන එක, e.g. "how to band whatsapp" = "WhatsApp එක ban වෙන්නේ කොහොමද"), or Sinhala mixed with English slang, with typos. Understand the REAL meaning behind broken words.
 - ALWAYS reply in Sinhala (සිංහලෙන්ම උත්තර දෙන්න) — ALWAYS means ALWAYS: even greetings ("hi", "Hy", "hello", "good morning") get Sinhala replies (e.g. "හායි! 😊 මොකද වෙන්නේ?"), even short/broken messages get Sinhala replies. NEVER reply in English unless the user wrote full proper English sentences AND clearly expects an English answer. Never switch to English just because the question has English words in it.
 - SINHALA QUALITY: use correct everyday spoken Sinhala with real words only. NEVER invent non-existent Sinhala words, never write broken/garbled sentences that don't make sense, never repeat the same sentence twice in a row. If a sentence you wrote wouldn't make sense to a Sri Lankan friend, rewrite it simply. Write like a real Sri Lankan friend types on WhatsApp, not like a machine.
@@ -26,7 +31,12 @@ const SYSTEM = `You are "KAVIZ MD V1", a friendly WhatsApp AI assistant living i
   • KNOWLEDGE questions (anime episode/plot/story, facts, "what happened / why / how / explain", how-to, tech help, news, comparisons, lists) → give a RICH DETAILED answer: 6-16 WhatsApp lines, organized as NUMBERED points (1. 2. 3. ...) in time/logic order, *bold* key names/titles, concrete specifics (names, numbers, places, what exactly happened). NEVER answer a real knowledge question with 1-2 lazy lines — that is the one thing users hate. End with a one-line "කෙටි සාරාංශය:" summary.
   • If the user explicitly says "කෙටියෙන්" (shortly) → 1-2 lines max. Simple formatting: *bold*, _italic_, numbered points, lists with • .
 - If you don't know or are not sure, say so honestly. Never invent facts.
-- You are powered by free models (Google Gemini / Groq / Z.ai GLM). If asked, say so honestly.
+- SMART THINKING (be genuinely intelligent, not just fast):
+  • Before answering a knowledge/math/logic/code question, silently work it out step by step — check your numbers, dates, names and units; never rush a wrong answer.
+  • Math = compute carefully and show the key steps. Code = correct + runnable + briefly explained. Facts = precise; when something may be outdated, say so.
+  • If a question is genuinely ambiguous, ask ONE short smart clarifying question instead of guessing wrong.
+  • Use the conversation: remember names, facts and context the user shared earlier and reference them naturally — a good friend remembers.
+- ENGINE SECRECY: never mention Gemini, Groq, GLM, Pollinations or ANY model/API/engine name in your replies (not even casually) — your answers come from "KAVIZ MD V1", period.
 - Memory: you keep the recent chat history of THIS conversation (up to ~30 turns, auto-cleared after 3 days). If the user asks about something that is NOT in this conversation history, honestly say you don't have it in memory — never pretend to remember or invent past events.`;
 
 // ── 🧠 Persistent memory (v2.47) — ai_memory.json: restart/redeploy වුණත් කතාව මතක තියෙනවා
@@ -52,9 +62,12 @@ const VISION_SYSTEM = `You are the SUPER VISION engine of "KAVIZ MD V1" — a wo
 - SMART MODES (auto-detect): error/screenshot → diagnose root cause + step-by-step fix; code screenshot → transcribe + explain + point out bugs; chat screenshot → who said what and what happened; document/PDF → full summary + key points + any tables; product photo → name/brand/what it does (+ price if visible); math problem → solve step by step; meme → explain the joke in Sinhala; map/location → say where it is.
 - PEOPLE: describe respectfully. NEVER claim to recognize or name a person (unless the name is written in the image itself). Never comment on attractiveness.
 - HONESTY: if something is blurry/unreadable/cut off, say exactly that — never invent text or details you cannot see.
-- You are powered by free models (Gemini / Groq / Pollinations). If asked, say so honestly.`;
+- IDENTITY: you are the SUPER VISION engine of KAVIZ MD V1 — if asked which AI/model you are, say KAVIZ MD V1. NEVER name any other AI company/model as your brain or maker.`;
 
 const history = new Map(); // chat jid -> [{role:'user'|'assistant', text, t}]
+
+// 👑 v2.94 OWNER MODE — owner ට AI කතා කරද්දී ඒකාට ම තමන්ගෙ boss කියලා තේරෙනවා (bot.js owner flag → ask opts.owner)
+const OWNER_CONTEXT = `👑 OWNER MODE (this turn): You are talking with YOUR OWNER — the person who created you (94724768017). Treat them like your boss: extra warm, loyal, quick and helpful. They may ask anything about you; answer honestly as KAVIZ MD V1 (identity + engine secrecy rules still apply). Never lecture them.`;
 
 function loadMemory() {
     try {
@@ -239,11 +252,12 @@ function apiError(provider, status, body) {
 
 // 🔥 roast request එකකදී SYSTEM එක roast persona එකට swap කරනවා (fn call එක ඇතුළේ විතරයි — imgPromptEn/වෙනත් calls වලට බලපෑමක් නෑ)
 let SYS_OVERRIDE = null;
+let OWN_OVERRIDE = null;    // 👑 v2.94 — owner turns: SYSTEM එකට OWNER_CONTEXT append (KB/WEB සමඟ compose වෙනවා)
 let TEMP_OVERRIDE = null;   // 🌡 v2.56 — roast replies වලට temperature 0.95 (creativity); normal 0.6
 let KB_OVERRIDE = null;     // 🎌 v2.72 — anime KB context (ask() එකේදී topic-detect කරලා set වෙනවා)
 let WEB_OVERRIDE = null;    // 🌍 v2.73 — live web-search context (Grok-style truth grounding)
 const KB = (() => { try { return require('./anime_kb'); } catch { return null; } })();   // KB missing → bot එක වැඩ කරනවා, KB නෑ විතරක්
-const sysOf = () => SYS_OVERRIDE || (SYSTEM + (KB_OVERRIDE && KB ? '\n\n' + KB_OVERRIDE : '') + (WEB_OVERRIDE ? '\n\n' + WEB_OVERRIDE : ''));
+const sysOf = () => SYS_OVERRIDE || (SYSTEM + (OWN_OVERRIDE ? '\n\n' + OWN_OVERRIDE : '') + (KB_OVERRIDE && KB ? '\n\n' + KB_OVERRIDE : '') + (WEB_OVERRIDE ? '\n\n' + WEB_OVERRIDE : ''));
 const tempOf = () => (TEMP_OVERRIDE != null ? TEMP_OVERRIDE : 0.6);
 
 // ── 🌍 v2.73 LIVE WEB GROUNDING — user: "grok එකෙ හොදට ඇත්ත කියනවා මූ හරියට කියන්නෙ නෑ".
@@ -256,7 +270,7 @@ function needsWeb(q) {               // anime topic → always; සාමාන�
     q = String(q || '');
     if (!q || q.length < 8 || looksLikeImageAsk(q)) return false;
     if (KB && KB.matches(q)) return true;
-    return q.length > 15 && /\b(search|google|web)\b|හොයන්න|හොයලා|සර්ච්|\b(who|when|where|how many|latest|news|release|air(?:ed|ing)?|born|died)\b|20\d{2}|කවද්?ද|කීයද|කවුද|අලුත්ම/i.test(q);
+    return q.length > 15 && /\b(search|google|web)\b|හොයන්න|හොයලා|සර්ච්|\b(who|when|where|how many|latest|news|release|air(?:ed|ing)?|born|died)\b|20\d{2}|\bvs\b|සසඳන්න|කවද්?ද|කීයද|කවුද|අලුත්ම/i.test(q);
 }
 function webQueries(q) {             // search queries — bot prefixes / quoted blocks අයින්; latin + raw (සිංහල) දෙකම; "s2 ep3" → "season 2 episode 3" expand (DDG recall)
     let s = String(q || '').replace(/^ANIME EXPERT MODE[^:]*:\s*/i, '').replace(/"""[\s\S]*?"""/g, ' ')
@@ -407,7 +421,8 @@ async function askGroq(key, msgs) {
  *  ai.js msgs use {role, text} → pollinations wants {role, content}. Baked default key → key param may be ''. */
 async function askPolli(key, msgs) {
     const P = require('./pollinations');
-    const body = [...(KB_OVERRIDE ? [{ role: 'system', content: KB_OVERRIDE }] : []), ...(WEB_OVERRIDE ? [{ role: 'system', content: WEB_OVERRIDE }] : []), ...(msgs || []).slice(-14).map((m) => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: String(m.text ?? m.content ?? '') }))];   // 🎌 v2.72 KB + 🌍 v2.73 WEB — system msgs විදිහට
+    // 🆔 v2.94 FIX: polli fallback එකටත් SYSTEM (identity/rules) යනවා — කලින් polli replies වලට identity/rules reach වෙන්නේ නැතුව "අනිත් AI" වගේ උත්තර දෙන්න පුළුවන් වුණා
+    const body = [{ role: 'system', content: sysOf() }, ...(msgs || []).slice(-14).map((m) => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: String(m.text ?? m.content ?? '') }))];   // sysOf = SYSTEM + OWNER + KB + WEB (set වෙලා තියෙනවා නම්)
     const r = await P.chat(body, { max_tokens: 3072, timeout: 120e3 });   // v2.74: default cap → 3072 (Grok-class detail)
     return { text: r.text, model: r.model };
 }
@@ -600,8 +615,9 @@ async function imgPromptEn(question, keys) {   // සිංහල request එක
 }
 
 /** ask with memory; user's preferred provider first (AUTO = Gemini -> Groq -> Z.ai).
- *  🧠 per-model memory (v2.50): කැමති model එකක් select කරලා නම් ඒ model ගේම store එක — AUTO නම් shared. */
-async function ask(chatId, question) {
+ *  🧠 per-model memory (v2.50): කැමති model එකක් select කරලා නම් ඒ model ගේම store එක — AUTO නම් shared.
+ *  👑 v2.94: opts.owner = true → OWNER_CONTEXT system එකට append (owner chat = boss context) */
+async function ask(chatId, question, opts) {
     const keys = getKeys();
     if (!keys.gemini && !keys.groq && !keys.zai && !keys.polli) {
         const e = new Error('NO_KEY');
@@ -626,14 +642,15 @@ async function ask(chatId, question) {
         const h = (history.get(mk) || []).filter(m => now - (m.t || now) < TTL_MS); // TTL prune
         const msgs = [...(roast ? h.slice(-2) : h), { role: 'user', text: question }];   // 🔥 roast → fresh context (garbled history loop guard)
         try {
-            // 🔥 roast — බැනුමක්ද → roast persona එකෙන් ආපහු බැනීම (fn call එකට විතරක් override)
+            // 🔥 roast — බැනුමක්ද → roast persona එකෙන් ආපහු බැනීම (fn call එකට විතරක් override) · 👑 v2.94 owner ctx
             SYS_OVERRIDE = roast ? ROAST_SYSTEM : null;
+            OWN_OVERRIDE = (!roast && opts && opts.owner) ? OWNER_CONTEXT : null;
             TEMP_OVERRIDE = roast ? 0.95 : null;   // roast වලට උණුසුම් creativity
             KB_OVERRIDE = (!roast && KB) ? KB.contextFor(question) : null;   // 🎌 v2.72 anime KB (roast mode එකට බලපෑමක් නෑ)
             WEB_OVERRIDE = webCtx || null;   // 🌍 v2.73 live web context
             let res;
             try { res = await fn(keys[name], msgs, chatId, keys); }
-            finally { SYS_OVERRIDE = null; TEMP_OVERRIDE = null; KB_OVERRIDE = null; WEB_OVERRIDE = null; }
+            finally { SYS_OVERRIDE = null; OWN_OVERRIDE = null; TEMP_OVERRIDE = null; KB_OVERRIDE = null; WEB_OVERRIDE = null; }
             let text = toWhatsApp(res.text);
             let images = Array.isArray(res.images) ? res.images : [];   // 🖼 v2.51.1 FIX: කලින් images drop වෙනවා — GLM generate_image ගහලාත් photo නොගිය හැම්බයි!
             if (!images.length && getTools() && looksLikeImageAsk(question)) {   // 🖼 fallback — provider එක මොකක වුණත් (AUTO/Gemini/Groq) photo එනවා
