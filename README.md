@@ -40,3 +40,10 @@ Private WhatsApp bot (Baileys v7) — `.ai` (Gemini / Groq), `.moviedex` (movies
 1. Files edit කරන්න (repo root).
 2. `manifest.json` → `version` වැඩි කරන්න + `notes`; අලුත් file එකක් නම් `files` list එකට දාන්න.
 3. Push → bot එකේ `.update`.
+
+## 📁 Project Structure
+- `bot.js` `index.js` `launcher.js` — bot core + entry (panel Main file: `index.js`)
+- runtime modules (`ai.js` `guard.js` `downloader.js` `moviedex.js` …) — repo root එකේම
+- `tests/` — test suites (`test.js` + `test_v*.js`) → repo root එකෙන් `node tests/test.js`
+- `docs/` — `README-SI.txt` සිංහල changelog
+- `downloads/` — panel / Termux zips
