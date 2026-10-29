@@ -71,7 +71,14 @@ async function ttsBuf(text, { voice = 'nova', timeout = 90e3 } = {}) {
 /** speech → text (whisper-large-v3) — buf: Buffer, mime: audio/mpeg|audio/ogg; opus …
  *  🐛 v2.97 FIX: filename hardcoded as audio.bin නිසා Pollinations whisper 400 'extension "bin" not
  *  supported' — WhatsApp voice notes හැම එකක්ම fail (user screenshot 2026-10-30). Ext එක දැන් mime
- *  එකෙන් derive වෙනවා (whisper allowlist: ogg/oga/opus→ogg, mp3, mp4, m4a, wav, webm, flac…). */
+ *  එකෙන් derive වෙනවා (whisper allowlist: ogg/oga/opus→ogg, mp3, mp4, m4a, wav, webm, flac…).
+ *  ⚡ v2.98: language opt (OpenAI-compatible form field — 'si' forced-decode = Sinhala audio වලට
+ *  English-hallucination failure mode එක නැති කරනවා; probe: auto='Oh, yeah.' → lang=si='(empty)'). */
+function sttExtName(mime = 'audio/ogg') {   // v2.98: exported — Groq STT stage (ai.js transcribeAudio) එකත් ඒකම allowlist එක use කරනවා
+    const m = String(mime || 'audio/ogg').split(';')[0].trim().toLowerCase() || 'audio/ogg';
+    const sub = m.split('/')[1] || '';
+    return STT_EXT[m] || (/^[a-z0-9]{2,5}$/.test(sub) ? sub : 'ogg');   // known mime → map · sane subtype → as-is · garbage → ogg (WhatsApp dominant)
+}
 const STT_EXT = {
     'audio/ogg': 'ogg', 'audio/oga': 'oga', 'audio/opus': 'ogg', 'application/ogg': 'ogg',
     'audio/mpeg': 'mp3', 'audio/mp3': 'mp3', 'audio/mpga': 'mpga', 'audio/mpeg3': 'mp3',
@@ -80,17 +87,16 @@ const STT_EXT = {
     'audio/flac': 'flac', 'audio/x-flac': 'flac',
     'audio/webm': 'webm', 'video/webm': 'webm', 'video/mp4': 'mp4', 'video/mpeg': 'mpeg',
 };
-async function sttText(buf, mime = 'audio/ogg', { model = 'whisper-large-v3', timeout = 120e3 } = {}) {
+async function sttText(buf, mime = 'audio/ogg', { model = 'whisper-large-v3', timeout = 120e3, language = '' } = {}) {
     const m = String(mime || 'audio/ogg').split(';')[0].trim().toLowerCase() || 'audio/ogg';
-    const sub = m.split('/')[1] || '';
-    const ext = STT_EXT[m] || (/^[a-z0-9]{2,5}$/.test(sub) ? sub : 'ogg');   // known mime → map · sane subtype → as-is · garbage → ogg (WhatsApp dominant)
     const fd = new FormData();
-    fd.append('file', new Blob([buf], { type: m }), 'audio.' + ext);
+    fd.append('file', new Blob([buf], { type: m }), 'audio.' + sttExtName(m));
     fd.append('model', model);
+    if (language) fd.append('language', String(language));
     const r = await fetch(`${BASE}/v1/audio/transcriptions`, { method: 'POST', headers: auth(), body: fd, signal: AbortSignal.timeout(timeout) });
     if (!r.ok) throw new Error('Pollinations stt ' + r.status + ' ' + (await r.text().catch(() => '')).slice(0, 120));
     const j = await r.json();
     return String(j?.text || '').trim();
 }
 
-module.exports = { key, hasKey, BASE, chat, imageBuf, ttsBuf, sttText };
+module.exports = { key, hasKey, BASE, chat, imageBuf, ttsBuf, sttText, sttExtName };

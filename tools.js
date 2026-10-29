@@ -106,16 +106,17 @@ async function cmdTts(send, jid, msg, args) {
     }
 }
 
-// 🎙️ v2.69 — .stt — voice note → text (Pollinations whisper-large-v3, free)
+// 🎙️ v2.69 — .stt — voice note → text (whisper) · ⚡ v2.98: ai.transcribeAudio CHAIN (Gemini සිංහල → Groq whisper → Pollinations +lang=si) — whisper එක සිංහලවලට English බොරු හදන එක fix
 async function cmdStt(send, jid, msg) {
     const m = mediaOf(msg, ['audio', 'video', 'document']);
     if (!m) return send(jid, { text: '🎙️ Voice note එකකට reply කරලා *.stt* ගහන්න — කථාව text වෙලා එනවා' }, { quoted: msg });
     const buf = await mediaDownloader(m.src);
     if (!buf || !buf.length) throw new Error('media download fail');
     const mime = m.kind === 'video' ? 'video/mp4' : (m.src.message.documentMessage?.mimetype || 'audio/ogg');
-    const text = await require('./pollinations').sttText(buf, mime);
-    if (!text) return send(jid, { text: '🤷 හඬ හම්බුණේ නෑ — audio එක හිස්ද බලන්න' }, { quoted: msg });
-    return send(jid, { text: `🎙️→📝\n${text.slice(0, 1500)}` }, { quoted: msg });
+    const tr = await require('./ai').transcribeAudio(buf, mime);
+    if (!tr || !tr.text) return send(jid, { text: '🤷 හඬ හම්බුණේ නෑ — audio එක හිස්ද / හඬ පැහැදිලිද බලන්න' }, { quoted: msg });
+    const shaky = tr.shaky ? '\n⚠️ (transcript එක අවිනිශ්චිතයි)' : '';
+    return send(jid, { text: `🎙️→📝 (${tr.via})${shaky}\n${tr.text.slice(0, 1500)}` }, { quoted: msg });
 }
 
 // ───────── weather (Open-Meteo, no key) ─────────

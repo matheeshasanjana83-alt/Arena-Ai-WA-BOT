@@ -30,7 +30,7 @@ const pkg = require('../package.json');
 const manifest = require('../manifest.json');
 const ai = require('../ai');
 ai._history.clear();   // deterministic
-require('../antibug')._state.lockdownUntil = 0;   // 🐛 v2.97.0: storm-lock persisted by earlier antibug suites (v255/v277) silently killed maybeAiReply gates (0 sends) — order-independent e2e
+require('../antibug')._state.lockdownUntil = 0;   // 🐛 v2.98.0: storm-lock persisted by earlier antibug suites (v255/v277) silently killed maybeAiReply gates (0 sends) — order-independent e2e
 const bot = require('../bot');
 const P = require('../pollinations');
 const aiSrc = fs.readFileSync(__dirname + '/../ai.js', 'utf8');
@@ -52,8 +52,8 @@ const groq = (text) => Promise.resolve({ ok: true, status: 200, text: async () =
 (async () => {
     console.log('— v2.96.0 pins + markers —');
     ok('version 2.96 pkg+manifest + notes + source markers', () => {
-        assert.strictEqual(pkg.version, '2.97.0', 'pkg ' + pkg.version);
-        assert.strictEqual(manifest.version, '2.97.0', 'manifest ' + manifest.version);
+        assert.strictEqual(pkg.version, '2.98.0', 'pkg ' + pkg.version);
+        assert.strictEqual(manifest.version, '2.98.0', 'manifest ' + manifest.version);
         assert.ok(manifest.notes.includes('GROUP SPEED'), 'notes headline');
         assert.ok(manifest.files.includes('tests/test_v296.js'), 'manifest lists test_v296.js');
         assert.ok(aiSrc.includes('AbortSignal.timeout(T_CHAT())'), 'chat fetch timeouts');
@@ -103,7 +103,9 @@ const groq = (text) => Promise.resolve({ ok: true, status: 200, text: async () =
         const sends = [];
         bot._setMediaDownloader(async () => Buffer.alloc(1024, 3));
         const origStt = P.sttText;
+        const origGT = ai.geminiTranscribe;
         P.sttText = async () => 'machan group eke kohomada';
+        ai.geminiTranscribe = async () => { throw new Error('gemini stt off (v296 mock)'); };   // ⚡ v2.98 chain: force fall-through to the whisper mock
         bot._groupLog.set('gp296b@g.us', ['Banti: hukan ban', 'Toji: Meta no bro']);
         let body = null;
         globalThis.fetch = (url, opts = {}) => {
@@ -125,7 +127,7 @@ const groq = (text) => Promise.resolve({ ok: true, status: 200, text: async () =
             const sys = body.systemInstruction.parts[0].text;
             assert.ok(sys.includes('👥 CHAT CONTEXT') && sys.includes('Death Legion'), 'group ctx');
             assert.ok(sys.includes('Banti: hukan ban') && sys.includes('Toji: Meta no bro'), 'recent group chat log injected');
-        } finally { globalThis.fetch = realFetch; P.sttText = origStt; }
+        } finally { globalThis.fetch = realFetch; P.sttText = origStt; ai.geminiTranscribe = origGT; }
     });
     await okA('group sticker/voice with NO mention/reply-to-bot → silent ×2', async () => {
         const sends = [];

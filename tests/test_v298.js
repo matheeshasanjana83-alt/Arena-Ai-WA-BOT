@@ -11,7 +11,7 @@
  *  (3) 400 → honest throw 'Pollinations stt 400' (never silent)
  *  (4) markers: no 'audio.bin' anywhere · STT_EXT map present · bot.js audio branch + tools.js
  *      cmdStt call-sites unchanged (single fix covers both)
- *  (5) pins 2.97.0 pkg+manifest + notes headline + manifest lists tests/test_v298.js
+ *  (5) pins 2.98.0 pkg+manifest + notes headline + manifest lists tests/test_v298.js
  */
 const assert = require('assert');
 const fs = require('fs');
@@ -35,19 +35,19 @@ function mockFetch(url, opts) {
 }
 
 (async () => {
-    console.log('— v2.97.0 pins + markers —');
-    ok('version 2.97.0 pkg+manifest + notes headline + manifest lists test_v298.js', () => {
-        assert.strictEqual(pkg.version, '2.97.0', 'pkg ' + pkg.version);
-        assert.strictEqual(manifest.version, '2.97.0', 'manifest ' + manifest.version);
+    console.log('— v2.98.0 pins + markers —');
+    ok('version 2.98.0 pkg+manifest + notes headline + manifest lists test_v298.js', () => {
+        assert.strictEqual(pkg.version, '2.98.0', 'pkg ' + pkg.version);
+        assert.strictEqual(manifest.version, '2.98.0', 'manifest ' + manifest.version);
         assert.ok(manifest.notes.includes('VOICE NOTE STT FIX'), 'notes headline');
         assert.ok(manifest.files.includes('tests/test_v298.js'), 'manifest lists test_v298.js');
     });
     ok('source markers: STT_EXT map present · audio.bin GONE · bot.js+tools.js call-sites unchanged', () => {
         assert.ok(polliSrc.includes('STT_EXT'), 'STT_EXT map');
         assert.ok(!polliSrc.includes("'audio.bin'"), 'audio.bin filename gone');
-        assert.ok(polliSrc.includes("'audio.' + ext"), 'derived filename');
-        assert.ok(botSrc.includes("sttText(buf, mime || 'audio/ogg')"), 'bot.js aiMediaReply audio branch intact');
-        assert.ok(toolsSrc.includes('sttText(buf, mime)'), 'tools.js cmdStt intact');
+        assert.ok(polliSrc.includes("'audio.' + sttExtName(m)"), 'derived filename');   // v2.98: ext helper extracted → Groq stage shares allowlist
+        assert.ok(botSrc.includes("ai.transcribeAudio(buf, mime || 'audio/ogg')"), 'bot.js audio branch → v2.98 STT chain');   // v2.98: whisper-only call → chain (Gemini → Groq → Pollinations+si)
+        assert.ok(toolsSrc.includes('transcribeAudio(buf, mime)'), 'tools.js cmdStt → v2.98 STT chain');
     });
 
     console.log('— 🎙️ mime → whisper extension mapping (FormData captured) —');

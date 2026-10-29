@@ -105,7 +105,7 @@ ok('tools.js: cmdStt (audio/video/doc → whisper) + CMDS .stt/.totext', () => {
     const s = src('tools.js');
     assert.ok(s.includes('async function cmdStt'), 'cmdStt missing');
     assert.ok(s.includes("mediaOf(msg, ['audio', 'video', 'document'])"), 'mediaOf kinds wrong');
-    assert.ok(s.includes('sttText(buf, mime)'), 'sttText call missing');
+    assert.ok(s.includes("transcribeAudio(buf, mime)"), 'stt chain call missing');   // v2.98: cmdStt → ai.transcribeAudio chain (Gemini → Groq → Pollinations+si)
     assert.ok(s.includes("'.stt': cmdStt, '.totext': cmdStt"), 'CMDS map missing');
 });
 ok('tools.js: cmdImagine keyed-Pollinations FIRST + cmdTts nova fallback', () => {

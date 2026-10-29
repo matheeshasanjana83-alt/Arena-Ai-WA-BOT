@@ -789,6 +789,86 @@ function splitLong(text, size = 3500) {
     return parts;
 }
 
+/** 🎙️ v2.98 — Sinhala-capable STT via Gemini audio. Whisper එක සිංහලවලට English බොරු හදනවා
+ *  (user: 'පොන්නයා' → 'Bonne nuit' · probe: 'මචං ඔයා මොකද කරන්නේ' → 'much of Mojave and Mocada currently.').
+ *  PURE transcription — history/memory side-effects නෑ (transcript එක bot.js/tools.js වලින් ai.ask එකට යනවා).
+ *  Ladder: GEMINI_MODELS (429/500/503/404 → ඊළඟ) · geo-block FAILED_PRECONDITION → net.viaPool (askVision එකම plumbing). */
+const TRANSCRIBE_PROMPT = 'Transcribe EXACTLY what is spoken in this audio. Keep the ORIGINAL language(s) — if Sinhala is spoken, output the Sinhala words in Sinhala script; if English, English; if mixed (Singlish), transcribe both as spoken. Do NOT translate. Do NOT invent words you cannot hear clearly — mark unclear parts as [?]. Output ONLY the transcript.';
+async function geminiTranscribe(buf, mime = 'audio/ogg') {
+    const keys = getKeys();
+    if (!keys.gemini) throw new Error('Gemini key නෑ');
+    const b64 = Buffer.from(buf).toString('base64');
+    const errs = [];
+    for (const model of GEMINI_MODELS) {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+        const opts = {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-goog-api-key': keys.gemini },
+            body: JSON.stringify({
+                contents: [{ role: 'user', parts: [{ text: TRANSCRIBE_PROMPT }, { inline_data: { mime_type: mime, data: b64 } }] }],
+                generationConfig: { temperature: 0.1, maxOutputTokens: 1000 }
+            })
+        };
+        try {
+            let r = await fetch(url, { ...opts, signal: AbortSignal.timeout(T_VGEM()) });
+            let body = await r.text();
+            if (!r.ok && /location is not supported|FAILED_PRECONDITION|forbidden/i.test(body)) {
+                try { const rp = await require('./net').viaPool(url, opts); const pb = await rp.text(); if (rp.ok) { r = rp; body = pb; } } catch { }   // 🌍 geo-block → proxy pool
+            }
+            if (!r.ok) {
+                errs.push('Gemini/' + model + ' ' + r.status);
+                if ([429, 500, 503, 404].includes(r.status)) continue;   // transient/quota → ඊළඟ model
+                throw new Error('Gemini stt ' + r.status);   // bad key → honest throw (caller → whisper fallback)
+            }
+            const text = (JSON.parse(body).candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('').trim();
+            if (!text) { errs.push('Gemini/' + model + ' empty'); continue; }
+            return text;
+        } catch (e) { if (/^Gemini stt \d/.test(e.message || '')) throw e; errs.push('Gemini/' + model + ' ' + String(e.message || e).slice(0, 60)); }
+    }
+    throw new Error('Gemini stt fail: ' + errs.join(' · '));
+}
+
+// 🎙️ v2.98 whisper Sinhala-hallucination signature — REAL Sinhala output NEVER pure-ASCII (සිංහල script එක ASCII නෙවෙයි);
+// auto-detect fail උනාම whisper හදන්නේ generic short English ('Oh, yeah.' / 'Bonne nuit.') — ඒ හැඩේ ටික shaky විදිහට treat කරනවා
+const asciiShortSig = (t) => !!t && !/[^\x00-\x7F]/.test(t) && t.trim().split(/\s+/).length < 6;
+
+/** 🎙️ v2.98 AUDIO STT CHAIN — Sinhala-real transcription, one entry point for bot.js audio branch + tools.js .stt.
+ *  1️⃣ Gemini audio (Sinhala-capable) → 2️⃣ Groq whisper (fast, production key) → 3️⃣ Pollinations whisper auto
+ *  → 4️⃣ Pollinations whisper language=si (English-hallucination ආපුවම Sinhala forced-decode) → shaky auto → null.
+ *  Return: { text, via, shaky, errs } · null = කවුරුත් ඇහුණේ නෑ (caller → honest 🤷 card). */
+async function transcribeAudio(buf, mime = 'audio/ogg') {
+    const P = require('./pollinations');
+    const k = getKeys();
+    const m = String(mime || 'audio/ogg').split(';')[0].trim() || 'audio/ogg';
+    const fname = 'audio.' + P.sttExtName(m);
+    const errs = [];
+    if (k.gemini) {
+        try { const t = await module.exports.geminiTranscribe(buf, m); if (t) return { text: t, via: 'Gemini', shaky: false, errs }; } catch (e) { errs.push('gemini: ' + String(e.message || e).slice(0, 70)); }   // module.exports seam — tests monkey-patch ai.geminiTranscribe
+    }
+    let asciiShort = '';
+    if (k.groq) {
+        try {
+            const fd = new FormData();
+            fd.append('file', new Blob([buf], { type: m }), fname);
+            fd.append('model', 'whisper-large-v3');
+            const r = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', { method: 'POST', headers: { Authorization: `Bearer ${k.groq}` }, body: fd, signal: AbortSignal.timeout(T_VGROQ()) });
+            if (r.ok) { const j = await r.json(); const t = String(j?.text || '').trim(); if (t && !asciiShortSig(t)) return { text: t, via: 'Groq whisper', shaky: false, errs }; if (t) asciiShort = t; }
+            else errs.push('groq: HTTP ' + r.status);
+        } catch (e) { errs.push('groq: ' + String(e.message || e).slice(0, 70)); }
+    }
+    try {
+        const t = await P.sttText(buf, m);
+        if (t && !asciiShortSig(t)) return { text: t, via: 'whisper', shaky: false, errs };
+        if (t) asciiShort = t;
+    } catch (e) { errs.push('polli: ' + String(e.message || e).slice(0, 70)); }
+    try {
+        const t = await P.sttText(buf, m, { language: 'si' });   // ⚡ v2.98 — forced Sinhala decode: English hallucination failure mode OFF
+        if (t) return { text: t, via: 'whisper(si)', shaky: false, errs };
+    } catch (e) { errs.push('polli-si: ' + String(e.message || e).slice(0, 70)); }
+    if (asciiShort) return { text: asciiShort, via: 'whisper(auto)', shaky: true, errs };   // English clip එකක් වෙන්න පුළුවන් — ඒත් Sinhala hallucination වෙන්නත් පුළුවන් → shaky flag → AI ට honesty instruction
+    return null;
+}
+
 function stats(chatId) { // 🧠 .ai memory card data
     const now = Date.now();
     let msgs = 0, oldest = Infinity;
@@ -806,4 +886,4 @@ function stats(chatId) { // 🧠 .ai memory card data
     };
 }
 
-module.exports = { ask, askVision, reset, stats, looksLikeImageAsk, looksLikeInsult, imgPromptEn, setKey, getKeys, getProvider, setProvider, getTools, setTools, getRoast, setRoast, splitLong, toWhatsApp, roastGood, mostlyEnglish, cannedRoast, needsWeb, buildWebCtx, webQueries, REFUSE_RE, ROAST_BANK, VISION_SYSTEM, GROUP_VISION_SYS, EXPLICIT_SEARCH_RE, _flags, _history: history, _memoryFile: MEM_FILE, _memKey: memKeyOf, _flush: saveMemoryNow, _lastRoast: lastRoast, _webCache: webCache };
+module.exports = { ask, askVision, geminiTranscribe, transcribeAudio, asciiShortSig, reset, stats, looksLikeImageAsk, looksLikeInsult, imgPromptEn, setKey, getKeys, getProvider, setProvider, getTools, setTools, getRoast, setRoast, splitLong, toWhatsApp, roastGood, mostlyEnglish, cannedRoast, needsWeb, buildWebCtx, webQueries, REFUSE_RE, ROAST_BANK, VISION_SYSTEM, GROUP_VISION_SYS, EXPLICIT_SEARCH_RE, _flags, _history: history, _memoryFile: MEM_FILE, _memKey: memKeyOf, _flush: saveMemoryNow, _lastRoast: lastRoast, _webCache: webCache };

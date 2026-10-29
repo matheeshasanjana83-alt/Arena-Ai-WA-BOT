@@ -24,7 +24,7 @@ const pkg = require('../package.json');
 const manifest = require('../manifest.json');
 const ai = require('../ai');
 ai._history.clear();   // deterministic — no stale in-memory history from loadMemory
-require('../antibug')._state.lockdownUntil = 0;   // 🐛 v2.97.0: storm-lock from earlier antibug suites (v255/v277) silently killed every maybeAiReply gate (0 sends) — order-independent e2e
+require('../antibug')._state.lockdownUntil = 0;   // 🐛 v2.98.0: storm-lock from earlier antibug suites (v255/v277) silently killed every maybeAiReply gate (0 sends) — order-independent e2e
 const bot = require('../bot');
 const tools = require('../tools');
 const P = require('../pollinations');           // monkey-patch target (require cache shared with bot.js)
@@ -54,8 +54,8 @@ const videoMsg = (over = {}) => ({ key: { remoteJid: 'dm295d@s.whatsapp.net', id
 (async () => {
     console.log('— v2.96.0 pins + markers —');
     ok('version 2.95 pkg+manifest + notes + source markers', () => {
-        assert.strictEqual(pkg.version, '2.97.0', 'pkg ' + pkg.version);
-        assert.strictEqual(manifest.version, '2.97.0', 'manifest ' + manifest.version);
+        assert.strictEqual(pkg.version, '2.98.0', 'pkg ' + pkg.version);
+        assert.strictEqual(manifest.version, '2.98.0', 'manifest ' + manifest.version);
         assert.ok(manifest.notes.includes('MEDIA AI'), 'notes headline');
         assert.ok(manifest.files.includes('tests/test_v295.js'), 'manifest lists test_v295.js');
         assert.ok(aiSrc.includes('CTX_OVERRIDE'), 'ai.js chat-context slot');
@@ -107,7 +107,9 @@ const videoMsg = (over = {}) => ({ key: { remoteJid: 'dm295d@s.whatsapp.net', id
     await okA('DM voice note → stt transcript → ai.ask song-identify question', async () => {
         const sends = [];
         const origStt = P.sttText;
+        const origGT = ai.geminiTranscribe;
         P.sttText = async () => 'what does the fox say... the fox song lyrics line';
+        ai.geminiTranscribe = async () => { throw new Error('gemini stt off (v295 mock)'); };   // ⚡ v2.98 chain: Gemini stage first — force fall-through to the whisper mock
         captured.length = 0;
         globalThis.fetch = mockFetch;
         try {
@@ -117,7 +119,7 @@ const videoMsg = (over = {}) => ({ key: { remoteJid: 'dm295d@s.whatsapp.net', id
             assert.ok(sends[0].text.includes('🎙️ ඇහනවා'), 'listening bubble');
             const q = captured[0].contents[0].parts[0].text;
             assert.ok(q.includes('voice/audio transcript') && q.includes('fox song'), 'transcript injected into question');
-        } finally { globalThis.fetch = realFetch; P.sttText = origStt; }
+        } finally { globalThis.fetch = realFetch; P.sttText = origStt; ai.geminiTranscribe = origGT; }
     });
     await okA('DM text document → file content → ai.ask', async () => {
         const sends = [];
