@@ -21,10 +21,10 @@ const aiSrc = fs.readFileSync(__dirname + '/ai.js', 'utf8');
 const botSrc = fs.readFileSync(__dirname + '/bot.js', 'utf8');
 
 (async () => {
-    console.log('— v2.94.0 pins —');
+    console.log('— v2.95.0 pins —');
     ok('version 2.94 pkg+manifest + notes + markers', () => {
-        assert.strictEqual(pkg.version, '2.94.0', 'pkg ' + pkg.version);
-        assert.strictEqual(manifest.version, '2.94.0', 'manifest ' + manifest.version);
+        assert.strictEqual(pkg.version, '2.95.0', 'pkg ' + pkg.version);
+        assert.strictEqual(manifest.version, '2.95.0', 'manifest ' + manifest.version);
         assert.ok(manifest.notes.includes('AI REBRAND'), 'notes headline');
         assert.ok(aiSrc.includes('👑 OWNER MODE'), 'ai.js owner-mode marker');
         assert.ok(aiSrc.includes('IDENTITY LOCK (highest rule)'), 'ai.js identity-lock marker');
@@ -107,7 +107,7 @@ const botSrc = fs.readFileSync(__dirname + '/bot.js', 'utf8');
         assert.ok(!/Together FLUX → Gemini → Pollinations \(auto fallback\)/.test(botSrc), 'old chain gone');
     });
     ok('owner plumbing: auto-chat + .ai command both pass { owner }', () => {
-        assert.ok(botSrc.includes('ai.ask(jid, text, { owner })'), 'maybeAiReply passes owner');
+        assert.ok(botSrc.includes('ai.ask(jid, text, { owner, context: chatCtx })'), 'maybeAiReply passes owner+ctx (v2.95 shape)');
         assert.ok(botSrc.includes('ai.ask(jid, question, { owner: isFromOwner(msg.key) })'), 'handleAI passes owner');
     });
 

@@ -430,13 +430,33 @@ async function cmdFact(send, jid, msg, args) {
     return send(jid, { text: '🧠 *Fact*\n\n' + t }, { quoted: msg });
 }
 async function cmdQuote(send, jid, msg) { const j = await getJson('https://zenquotes.io/api/random'); return send(jid, { text: `💬 _"${j[0].q}"_\n\n— *${j[0].a}*` }, { quoted: msg }); }
+// 📖 v2.95 — .define <word> — English dictionary (api.dictionaryapi.dev, free, no key)
+async function cmdDefine(send, jid, msg, args) {
+    const w = String(args[0] || '').replace(/[^a-zA-Z'-]/g, '').toLowerCase();
+    if (!w) return send(jid, { text: '📖 *.define <word>* — English word එකක් දෙන්න\nඋදා: *.define serendipity*' }, { quoted: msg });
+    let j;
+    try { j = await getJson(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(w)}`); } catch { j = null; }
+    if (!Array.isArray(j) || !j.length) return send(jid, { text: `🤷 "*${w}*" කියන word එක dictionary එකේ හම්බුණේ නෑ — spelling එක බලලා ආයෙත් try කරන්න.` }, { quoted: msg });
+    const e0 = j[0];
+    const ph = e0.phonetic || (e0.phonetics || []).find((p) => p.text)?.text || '';
+    const lines = [];
+    for (const m of (e0.meanings || []).slice(0, 3)) {
+        const defs = (m.definitions || []).slice(0, 2);
+        for (const d of defs) {
+            lines.push(`• *${m.partOfSpeech || '?'}* — ${d.definition || ''}`);
+            if (d.example) lines.push(`  _"${String(d.example).slice(0, 120)}"_`);
+        }
+    }
+    if (!lines.length) return send(jid, { text: `📖 *${e0.word || w}*${ph ? ` ${ph}` : ''}\n\ndefinitions හම්බුණේ නෑ 🤷` }, { quoted: msg });
+    return send(jid, { text: `📖 *${e0.word || w}*${ph ? ` ${ph}` : ''}\n\n${lines.join('\n')}\n\n💡 තව ගැඹුරට දැනගන්න *.ai ${e0.word || w} කියන වචනේ අර්ථය උදාහරණ සිංහලෙන්*` }, { quoted: msg });
+}
 const BALL = ['✅ ඔව්, අනිවාර්යයෙන්ම', '✅ ඔව්', '🤔 බොහෝවිට ඔව්', '🔮 ලකුණු හොඳයි', '😶 දැන් කියන්න බෑ, ආයෙත් අහන්න', '🤷 පස්සේ අහන්න', '🙅 මම හිතන්නේ නෑ', '❌ නෑ', '❌ කොහෙත්ම නෑ', '😬 ලකුණු එච්චර හොඳ නෑ'];
 function cmd8ball(send, jid, msg, args) {
     if (!args.length) return send(jid, { text: '🎱 *.8ball <ප්‍රශ්නය>*' }, { quoted: msg });
     return send(jid, { text: `🎱 _${args.join(' ').slice(0, 200)}_\n\n${BALL[Math.floor(Math.random() * BALL.length)]}` }, { quoted: msg });
 }
 
-const CMDS = { '.tts': cmdTts, '.say': cmdTts, '.stt': cmdStt, '.totext': cmdStt, '.tr': cmdTr, '.translate': cmdTr, '.weather': cmdWeather, '.lyrics': cmdLyrics, '.toimg': cmdToImg, '.tourl': cmdToUrl, '.url': cmdToUrl, '.uploadtra': cmdUploadTra, '.uploadgo': cmdUploadGo, '.uploadtm': cmdUploadTm, '.mirror': cmdMirror, '.link': cmdMirror, '.ss': cmdSs, '.qr': cmdQr, '.short': cmdShort, '.calc': cmdCalc, '.github': cmdGithub, '.imagine': cmdImagine, '.img': cmdImagine, '.joke': cmdJoke, '.fact': cmdFact, '.quote': cmdQuote, '.8ball': cmd8ball, '.del': null, '.delete': null, '.setpp': null };
+const CMDS = { '.tts': cmdTts, '.say': cmdTts, '.stt': cmdStt, '.totext': cmdStt, '.tr': cmdTr, '.translate': cmdTr, '.weather': cmdWeather, '.lyrics': cmdLyrics, '.toimg': cmdToImg, '.tourl': cmdToUrl, '.url': cmdToUrl, '.uploadtra': cmdUploadTra, '.uploadgo': cmdUploadGo, '.uploadtm': cmdUploadTm, '.mirror': cmdMirror, '.link': cmdMirror, '.ss': cmdSs, '.qr': cmdQr, '.short': cmdShort, '.calc': cmdCalc, '.github': cmdGithub, '.imagine': cmdImagine, '.img': cmdImagine, '.joke': cmdJoke, '.fact': cmdFact, '.quote': cmdQuote, '.define': cmdDefine, '.8ball': cmd8ball, '.del': null, '.delete': null, '.setpp': null };
 
 async function handle(c, { send, jid, msg, rest, sock, me, react }) {
     if (!(c in CMDS)) return false;

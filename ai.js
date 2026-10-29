@@ -25,6 +25,8 @@ const SYSTEM = `You are "KAVIZ MD V1", a friendly WhatsApp AI assistant living i
 - LANGUAGE: The user is Sri Lankan. They write colloquial spoken Sinhala, Singlish (Sinhala typed in English letters — glossary: "kohomada" = කොහොමද, "mokada/mokakda" = මොකද, "ubata" = ඔයාට, "mama" = මම, "karanna" = කරන්න, "one" = ඕනේ, "hari/hrd" = හරි, "dn" = දන්නවා/දැන්, "meka" = මේක, "eka" = එකා, "oya" = ඔයා, "mage" = මගේ, "machan" = මචං, "balanna" = බලන්න, "kiyanna" = කියන්න, "band/ban" = ban කරන එක, e.g. "how to band whatsapp" = "WhatsApp එක ban වෙන්නේ කොහොමද"), or Sinhala mixed with English slang, with typos. Understand the REAL meaning behind broken words.
 - ALWAYS reply in Sinhala (සිංහලෙන්ම උත්තර දෙන්න) — ALWAYS means ALWAYS: even greetings ("hi", "Hy", "hello", "good morning") get Sinhala replies (e.g. "හායි! 😊 මොකද වෙන්නේ?"), even short/broken messages get Sinhala replies. NEVER reply in English unless the user wrote full proper English sentences AND clearly expects an English answer. Never switch to English just because the question has English words in it.
 - SINHALA QUALITY: use correct everyday spoken Sinhala with real words only. NEVER invent non-existent Sinhala words, never write broken/garbled sentences that don't make sense, never repeat the same sentence twice in a row. If a sentence you wrote wouldn't make sense to a Sri Lankan friend, rewrite it simply. Write like a real Sri Lankan friend types on WhatsApp, not like a machine.
+- PROFESSIONAL QUALITY (v2.95): every reply looks clean and polished — correct spelling, tidy WhatsApp formatting (*bold* where it helps, numbered points when long), no random ALL-CAPS, no emoji spam (1-2 fitting emojis in casual chat max). Friendly-warm but composed — a smart, well-mannered friend, never sloppy.
+- GROUP CHATS: in group chats keep replies short and natural (1-4 lines) unless it's a real knowledge question (depth rules still apply). Don't flood the group; address the person by name when it helps. The group name and who you're replying to arrive in a CHAT CONTEXT note when provided — use it.
 - If the user's message is unreadable gibberish, say playfully in ONE Sinhala line that you can't read it (e.g. "බන් ඔයා ලියපු එක කියවන්නත් බෑ 😂 ආයෙ ලියන්න").
 - ANSWER DEPTH (v2.74 — match the answer to the QUESTION, never be lazy):
   • Casual chat (greetings "hi", "මොකද වෙන්නේ", thanks, small talk, jokes) → 1-4 short friend-like lines.
@@ -48,7 +50,7 @@ const REFUSE_RE = /i\s*('|a)?m\s+sorry|sorry,?\s|\bsorry\b|i\s+can\s*'?t\s+(help
 
 // 👁🦾 v2.71 SUPER VISION — photo/PDF වලට dedicated deep-analysis brain. chat SYSTEM එකේ "BE SHORT 1-4 lines" rule එක
 // vision answers lazy කරනවා (user: "ලොකු විස්තරයක් දෙන්නෙ නැනෙ") → vision calls ට විතරක් මේ prompt එක:
-const VISION_SYSTEM = `You are the SUPER VISION engine of "KAVIZ MD V1" — a world-class image & document analyst living inside WhatsApp. Nobody analyses images better than you.
+const VISION_SYSTEM = `You are the SUPER VISION engine of "KAVIZ MD V1" — a world-class image, document & video analyst living inside WhatsApp. Nobody analyses images better than you.
 - LANGUAGE: ALWAYS reply in Sinhala (spoken, friendly, correct — like a smart Sri Lankan friend). Keep technical terms / product names / code / URLs in English inside the Sinhala explanation. Translate any foreign-language text found in the image into Sinhala as part of your answer.
 - DEPTH: This is the ONE place long answers are WANTED. Give a RICH, DETAILED analysis — 8 to 20 WhatsApp lines when the image has real content. NEVER reply with 1-2 lazy lines. But every line must come from what is ACTUALLY visible — no invented filler, no repetition.
 - STRUCTURE (WhatsApp formatting: *bold* section labels + • lists, no markdown headings):
@@ -253,11 +255,12 @@ function apiError(provider, status, body) {
 // 🔥 roast request එකකදී SYSTEM එක roast persona එකට swap කරනවා (fn call එක ඇතුළේ විතරයි — imgPromptEn/වෙනත් calls වලට බලපෑමක් නෑ)
 let SYS_OVERRIDE = null;
 let OWN_OVERRIDE = null;    // 👑 v2.94 — owner turns: SYSTEM එකට OWNER_CONTEXT append (KB/WEB සමඟ compose වෙනවා)
+let CTX_OVERRIDE = null;    // 👥 v2.95 — per-turn CHAT CONTEXT (group name + sender) — group chat quality
 let TEMP_OVERRIDE = null;   // 🌡 v2.56 — roast replies වලට temperature 0.95 (creativity); normal 0.6
 let KB_OVERRIDE = null;     // 🎌 v2.72 — anime KB context (ask() එකේදී topic-detect කරලා set වෙනවා)
 let WEB_OVERRIDE = null;    // 🌍 v2.73 — live web-search context (Grok-style truth grounding)
 const KB = (() => { try { return require('./anime_kb'); } catch { return null; } })();   // KB missing → bot එක වැඩ කරනවා, KB නෑ විතරක්
-const sysOf = () => SYS_OVERRIDE || (SYSTEM + (OWN_OVERRIDE ? '\n\n' + OWN_OVERRIDE : '') + (KB_OVERRIDE && KB ? '\n\n' + KB_OVERRIDE : '') + (WEB_OVERRIDE ? '\n\n' + WEB_OVERRIDE : ''));
+const sysOf = () => SYS_OVERRIDE || (SYSTEM + (CTX_OVERRIDE ? '\n\n' + CTX_OVERRIDE : '') + (OWN_OVERRIDE ? '\n\n' + OWN_OVERRIDE : '') + (KB_OVERRIDE && KB ? '\n\n' + KB_OVERRIDE : '') + (WEB_OVERRIDE ? '\n\n' + WEB_OVERRIDE : ''));
 const tempOf = () => (TEMP_OVERRIDE != null ? TEMP_OVERRIDE : 0.6);
 
 // ── 🌍 v2.73 LIVE WEB GROUNDING — user: "grok එකෙ හොදට ඇත්ත කියනවා මූ හරියට කියන්නෙ නෑ".
@@ -570,7 +573,7 @@ async function askVision(chatId, question, media) {
     }
 
     // 4️⃣ ඔක්කොම fail — friendly Sinhala (raw 503 dump වෙනුවට)
-    if (!keys.gemini && !isImg) { const e = new Error('PDF vision වලට Gemini key එක ඕනේ — *.setkey gemini <KEY>*'); e.noGemini = true; throw e; }
+    if (!keys.gemini && !isImg) { const e = new Error('PDF/Video vision වලට Gemini key එක ඕනේ — *.setkey gemini <KEY>*'); e.noGemini = true; throw e; }
     const last = errs.length ? String(errs[errs.length - 1]) : 'unknown';
     throw new Error(`AI servers ටිකක් busy 😔 — විනාඩියකින් ආයෙත් try කරන්න 🙏\n> ${last.slice(0, 140)}`);
 }
@@ -642,15 +645,16 @@ async function ask(chatId, question, opts) {
         const h = (history.get(mk) || []).filter(m => now - (m.t || now) < TTL_MS); // TTL prune
         const msgs = [...(roast ? h.slice(-2) : h), { role: 'user', text: question }];   // 🔥 roast → fresh context (garbled history loop guard)
         try {
-            // 🔥 roast — බැනුමක්ද → roast persona එකෙන් ආපහු බැනීම (fn call එකට විතරක් override) · 👑 v2.94 owner ctx
+            // 🔥 roast — බැනුමක්ද → roast persona එකෙන් ආපහු බැනීම (fn call එකට විතරක් override) · 👑 v2.94 owner ctx · 👥 v2.95 chat ctx
             SYS_OVERRIDE = roast ? ROAST_SYSTEM : null;
             OWN_OVERRIDE = (!roast && opts && opts.owner) ? OWNER_CONTEXT : null;
+            CTX_OVERRIDE = (!roast && opts && opts.context) ? '👥 CHAT CONTEXT: ' + String(opts.context).slice(0, 280) : null;
             TEMP_OVERRIDE = roast ? 0.95 : null;   // roast වලට උණුසුම් creativity
             KB_OVERRIDE = (!roast && KB) ? KB.contextFor(question) : null;   // 🎌 v2.72 anime KB (roast mode එකට බලපෑමක් නෑ)
             WEB_OVERRIDE = webCtx || null;   // 🌍 v2.73 live web context
             let res;
             try { res = await fn(keys[name], msgs, chatId, keys); }
-            finally { SYS_OVERRIDE = null; OWN_OVERRIDE = null; TEMP_OVERRIDE = null; KB_OVERRIDE = null; WEB_OVERRIDE = null; }
+            finally { SYS_OVERRIDE = null; OWN_OVERRIDE = null; CTX_OVERRIDE = null; TEMP_OVERRIDE = null; KB_OVERRIDE = null; WEB_OVERRIDE = null; }
             let text = toWhatsApp(res.text);
             let images = Array.isArray(res.images) ? res.images : [];   // 🖼 v2.51.1 FIX: කලින් images drop වෙනවා — GLM generate_image ගහලාත් photo නොගිය හැම්බයි!
             if (!images.length && getTools() && looksLikeImageAsk(question)) {   // 🖼 fallback — provider එක මොකක වුණත් (AUTO/Gemini/Groq) photo එනවා

@@ -126,7 +126,7 @@ function getText(m) {
         if (!inner) break;
         x = inner;
     }
-    return (x?.conversation || x?.extendedTextMessage?.text || x?.imageMessage?.caption || x?.documentMessage?.caption || '').trim();
+    return (x?.conversation || x?.extendedTextMessage?.text || x?.imageMessage?.caption || x?.documentMessage?.caption || x?.videoMessage?.caption || '').trim();
 }
 
 const HELP = `*◈ KAVIZ MD V1 ◈* — commands
@@ -138,7 +138,7 @@ const HELP = `*◈ KAVIZ MD V1 ◈* — commands
 📱 *.tiktok* · *.fb* · *.ig* · *.x* <link>
 🖼️ *.s* (reply) · *.take* Pack | Author
 🔍 *.wiki* <මාතෘකාව>
-🛠️ *.tr* · *.tts* · *.weather* · *.lyrics* · *.imagine* · *.toimg* · *.tourl* · *.uploadtra* · *.uploadgo* · *.uploadtm* · *.ss* · *.qr* · *.short* · *.calc* · *.github* · *.del* · *.setpp* · *.getdp* · *.vv*
+🛠️ *.tr* · *.tts* · *.weather* · *.lyrics* · *.define* · *.imagine* · *.toimg* · *.tourl* · *.uploadtra* · *.uploadgo* · *.uploadtm* · *.ss* · *.qr* · *.short* · *.calc* · *.github* · *.del* · *.setpp* · *.getdp* · *.vv*
 🎉 *.joke* · *.fact* · *.quote* · *.8ball*
 👥 *.groupinfo* · *.grouplink* · *.tagall* · *.kick* · *.promote* · *.demote* · *.mute* · *.resetlink* · *.jid*
 🤖 *.ai <ප්‍රශ්නය>* (reply කරලත් · *.ai reset* · *.ai memory*)
@@ -540,7 +540,7 @@ const CATS = [
     ['📱', 'Social', `*📱 SOCIAL*\n\n✦ *.tiktok <link>* — watermark නෑ (*.tt*)\n✦ *.fb <link>* — Facebook (*.facebook*)\n✦ *.ig <link>* — Instagram\n✦ *.x <link>* — X / Twitter`],
     ['🔍', 'Search', `*🔍 SEARCH*\n\n✦ *.wiki <මාතෘකාව>* — Wikipedia\n✦ *.wiki si <මාතෘකාව>* — සිංහල wiki\n✦ *.yts <නම>* — YouTube search`],
     ['🖼️', 'Sticker', `*🖼️ STICKER*\n\n✦ *.s* — photo/video reply → sticker\n✦ *.take Pack | Author* — නම වෙනස් කරන්න\n\n> video sticker — තත්පර 6 දක්වා`],
-    ['🛠️', 'Tools', `*🛠️ TOOLS*\n\n✦ *.tr <භාෂාව> <text>* — translate\n✦ *.remind <time> <note>* — ⏰ reminders\n✦ *.stt* — 🎙️ voice note → text\n✦ *.tts <text>* — voice (සිංහල OK)\n✦ *.weather <නගරය>* — කාලගුණය · දින 3\n✦ *.lyrics <සින්දුව>* — lyrics\n✦ *.imagine <විස්තරය>* — AI image\n✦ *.toimg* — sticker → photo\n✦ *.getdp <number>* — 🖼️ profile photo\n✦ *.vv* — 🕵️ view-once reveal\n✦ *.tourl* — media → 🔗 link\n✦ *.uploadtra* — file → 📤 transfer.archivete.am link (delete link එකත් · fail උනොත් gofile auto-fallback)
+    ['🛠️', 'Tools', `*🛠️ TOOLS*\n\n✦ *.tr <භාෂාව> <text>* — translate\n✦ *.remind <time> <note>* — ⏰ reminders\n✦ *.stt* — 🎙️ voice note → text\n✦ *.tts <text>* — voice (සිංහල OK)\n✦ *.weather <නගරය>* — කාලගුණය · දින 3\n✦ *.lyrics <සින්දුව>* — lyrics\n✦ *.define <word>* — 📖 English dictionary\n✦ *.imagine <විස්තරය>* — AI image\n✦ *.toimg* — sticker → photo\n✦ *.getdp <number>* — 🖼️ profile photo\n✦ *.vv* — 🕵️ view-once reveal\n✦ *.tourl* — media → 🔗 link\n✦ *.uploadtra* — file → 📤 transfer.archivete.am link (delete link එකත් · fail උනොත් gofile auto-fallback)
 ✦ *.uploadgo* — file → 📤 gofile.io link (~10d · browser download)
 ✦ *.uploadtm* — file → ⏳ tmpfiles.org link (60 min · bot download වලටත් වැඩ)\n✦ *.ss <site>* · *.qr* · *.short* · *.calc*\n✦ *.github <user>* · *.del* · *.setpp*\n✦ *.hentai* · *.hneko* · *.hmidriff* · *.pgif* — 🔞 NSFW (18+ only)\n✦ *.hentaiv <name>* — 🔞 video + quality menu → file එක එවනවා (18+)\n✦ *.ep <query>* — 🔞 eporner video + quality menu → file (18+)\n✦ *.javdn <code>* — 🔞 javbus search → details → 🧲 magnet links (18+)\n✦ *.metdn <නම/link>* — 🔞 mat6tube search → quality menu → mp4 (18+)
 ✦ *.hentaimng <name>* — 🔞 hitomi manga → cover + pages images (18+)`],
@@ -548,7 +548,7 @@ const CATS = [
     ['👥', 'Group', `*👥 GROUP* — group එකේ ඔයා ගහන්න\n\n✦ *.groupinfo* · *.grouplink* · *.jid*\n✦ *.tagall [msg]* — විනාඩි 10 කට 1\n✦ *.kick @user* · *.promote* · *.demote*\n✦ *.mute* · *.unmute* · *.tagadmins* · *.resetlink*\n\n> @mention නැත්නම් message එකකට reply කරන්න`],
     ['🤖', 'AI', `*🤖 AI*\n\n✦ *.ai <ප්‍රශ්නය>* — සිංහල OK\n✦ message එකකට reply + *.ai* — ඒක ගැනම\n✦ *.anime <ප්‍රශ්නය>* — 🎌 verified anime/manga knowledge (Black Clover 🥇)\n✦ *.ai reset* — අලුත් කතාවක්
 ✦ *.ai memory* — මතකය status · save state
-✦ photo/PDF එකකට reply + *.ai* — 👁 බලලා කියනවා
+✦ photo/sticker/video/voice/PDF එකකට reply + *.ai* — 👁 බලලා කියනවා (group එකේ @mention එක්ක media එකක් = auto reply)
 ✦ *.remind 10m <note>* — ⏰ මතක් කරන්න
 ✦ *.ai tools* — smart connector (search/weather/YT)
 ✦ *.ai roast* — 🔥 බැනුමට ආපහු බැනීම (on/off)
@@ -845,15 +845,102 @@ async function handleForward(send, jid, msg, arg) {
 
 // ───────── 🤖 AI auto-chat (v2.41) — mode panel 5/6 + 11-16 වලින් control වෙනවා ─────────
 const aiLast = new Map();   // chat jid → last AI auto-reply ts (per-chat 4s gap)
-// ───────── .proxies — free proxy pool (stats / check / on / off) ─────────
+// ───────── 👥 v2.95 GROUP CHAT + 🎨 MEDIA AI (sticker/photo/video/voice/document) ─────────
+const unwrap = (m) => m?.viewOnceMessage?.message || m?.viewOnceMessageV2?.message || m?.ephemeralMessage?.message || m;   // module-level (local ones shadow — v2.95 media AI needs it)
+const gmetaCache = new Map();   // group jid → { name, t } — 10 min cache (groupMetadata per message නෑ)
+async function groupName(jid) {
+    const hit = gmetaCache.get(jid);
+    if (hit && Date.now() - hit.t < 600e3) return hit.name;
+    try {
+        const md = await SOCK?.groupMetadata?.(jid);
+        const name = String(md?.subject || '').slice(0, 60);
+        gmetaCache.set(jid, { t: Date.now(), name });
+        if (gmetaCache.size > 100) gmetaCache.delete(gmetaCache.keys().next().value);
+        return name;
+    } catch { return ''; }
+}
+function aiMediaOf(msg) {   // own-or-quoted media for AI chat — sticker/photo/video/voice/document
+    const pick = (m) => m?.stickerMessage ? 'sticker' : m?.imageMessage ? 'image' : m?.videoMessage ? 'video' : m?.audioMessage ? 'audio' : m?.documentMessage ? 'document' : null;
+    const own = unwrap(msg.message);
+    const d = pick(own);
+    if (d) return { kind: d, src: { key: msg.key, message: own } };
+    const ci = own?.extendedTextMessage?.contextInfo || own?.imageMessage?.contextInfo || own?.videoMessage?.contextInfo || own?.documentMessage?.contextInfo || own?.audioMessage?.contextInfo || own?.stickerMessage?.contextInfo;
+    const q = ci?.quotedMessage && unwrap(ci.quotedMessage);
+    const qk = q && pick(q);
+    if (qk) return { kind: qk, src: { key: { remoteJid: msg.key.remoteJid, id: ci.stanzaId, fromMe: false, participant: ci.participant }, message: q } };
+    return null;
+}
+const TEXTISH_MIME = /text\/|json|javascript|xml|csv|markdown|html|python|shell/i;
+const TEXTISH_EXT = /\.(txt|js|ts|py|java|html?|css|json|xml|csv|md|log|php|c|cpp|h|sh|sql|ini|yaml|yml)$/i;
+async function aiSendParts(send, jid, text, status) {   // status bubble → edit first part, extra parts after
+    const ps = ai.splitLong(String(text));
+    if (status) { try { await send(jid, { text: ps[0], edit: status.key }); } catch { await send(jid, { text: ps[0] }); } }
+    else await send(jid, { text: ps[0] });
+    for (let i = 1; i < ps.length; i++) await send(jid, { text: ps[i] });
+}
+async function aiMediaReply({ md, msg, jid, q, owner, chatCtx, send, edit }) {   // 🎨 one media = one deep AI reply
+    const own = unwrap(md.src.message);
+    const mm = own?.stickerMessage || own?.imageMessage || own?.videoMessage || own?.audioMessage || own?.documentMessage;
+    const mime = String(mm?.mimetype || (md.kind === 'sticker' ? 'image/webp' : md.kind === 'image' ? 'image/jpeg' : md.kind === 'video' ? 'video/mp4' : 'audio/ogg'));
+    const fname = String(mm?.fileName || '').slice(0, 80);
+    const fl = Number(mm?.fileLength || 0);
+    if (md.kind === 'sticker' || md.kind === 'image') {
+        if (fl > 8 * 1048576) return edit('🖼 media එක ලොකු වැඩියි (8 MB cap) — පොඩි එකක් එවන්න.');
+        const buf = await mediaDownloader(md.src);
+        if (!buf || buf.length < 100) throw new Error('media download fail — ආයෙත් එවන්න');
+        const r = await ai.askVision(jid, q || (md.kind === 'sticker'
+            ? 'මේ sticker එක ගැන කියන්න — මොකක්ද, character/anime/brand එක දැනනම් කියන්න, joke/meme එකක් නම් ඒක සිංහලෙන් explain කරන්න.'
+            : 'මේක මොකක්ද? සම්පූර්ණ විස්තරාත්මක විශ්ලේෂණයක් දෙන්න — මොනවද පේන්නේ, ලියවිලි තියෙනවා නම් ඒවා, ඇත්තටම මොනවද වෙන්නේ.'), { mime: mime || 'image/webp', b64: Buffer.from(buf).toString('base64') });
+        return aiSendParts(send, jid, r.text);
+    }
+    if (md.kind === 'video') {   // 🎬 Gemini inline video (≤20MB) — scene + audio දෙකම තේරුම් ගන්නවා
+        const k = ai.getKeys();
+        if (!k.gemini) { const e = new Error('Video vision වලට Gemini key එක ඕනේ — *.setkey gemini <KEY>*'); e.noGemini = true; throw e; }
+        if (fl > 20 * 1048576) return edit('🎬 video එක ලොකු වැඩියි (20 MB cap) — පොඩි clip එකක් එවන්න.');
+        const buf = await mediaDownloader(md.src);
+        if (!buf || buf.length < 100) throw new Error('video download fail — ආයෙත් එවන්න');
+        const r = await ai.askVision(jid, q || 'මේ video එක ගැන සම්පූර්ණ විස්තරයක් දෙන්න — මොනවද වෙන්නේ scene by scene, කවුද ඉන්නේ, කොහෙද, audio/කතාවෙන් මොකද තේරෙන්නේ, අන්තිමට කෙටි සාරාංශයක්.', { mime: mime || 'video/mp4', b64: Buffer.from(buf).toString('base64') });
+        return aiSendParts(send, jid, r.text);
+    }
+    if (md.kind === 'audio') {   // 🎙️ voice note / song → whisper transcript → AI (song identify ඇතුළුව)
+        if (fl > 15 * 1048576) return edit('🎙️ audio එක ලොකු වැඩියි (15 MB cap).');
+        const buf = await mediaDownloader(md.src);
+        if (!buf || buf.length < 100) throw new Error('audio download fail — ආයෙත් එවන්න');
+        const st = await require('./pollinations').sttText(buf, mime || 'audio/ogg');
+        if (!st) return edit('🤷 හඬ හම්බුණේ නෑ — audio එක හිස්ද බලන්න.');
+        const r = await ai.ask(jid, `🎙️ voice/audio transcript: """${st.slice(0, 3000)}"""\n\n${q || 'මේ voice/audio එකේ content එකට සිංහලෙන් උත්තර දෙන්න. Song/song clip එකක් නම් මොන song එකද, කවුරුද ගායනා කරන්නේ කියලා හඳුනාගෙන ඒ ගැන කියන්න. Voice note එකක් නම් කියපු දේට උත්තර දෙන්න.'}`, { owner, context: chatCtx });
+        return aiSendParts(send, jid, r.text);
+    }
+    if (md.kind === 'document') {   // 📄 PDF → vision · text-like → read · binary → honest card
+        if (/pdf/i.test(mime)) {
+            if (fl > 8 * 1048576) return edit('📄 PDF එක ලොකු වැඩියි (8 MB cap).');
+            const buf = await mediaDownloader(md.src);
+            if (!buf || buf.length < 100) throw new Error('document download fail — ආයෙත් එවන්න');
+            const r = await ai.askVision(jid, q || 'මේ PDF එක කියවලා සම්පූර්ණ summary එකක් දෙන්න — ප්‍රධාන points, වැදගත් numbers/tables.', { mime: 'application/pdf', b64: Buffer.from(buf).toString('base64') });
+            return aiSendParts(send, jid, r.text);
+        }
+        if (TEXTISH_MIME.test(mime) || TEXTISH_EXT.test(fname)) {
+            if (fl > 1048576) return edit('📄 text file එක ලොකු වැඩියි (1 MB cap).');
+            const buf = await mediaDownloader(md.src);
+            if (!buf || !buf.length) throw new Error('document download fail — ආයෙත් එවන්න');
+            const body = buf.toString('utf8').slice(0, 4000);
+            const r = await ai.ask(jid, `📄 file: ${fname || 'document.' + (mime.split('/')[1] || 'txt')}\n"""${body}"""\n\n${q || 'මේ file එකේ content එක ගැන සිංහලෙන් කියන්න — මොකක්ද, මොනවද තියෙන්නේ, වැදගත් දේවල්.'}`, { owner, context: chatCtx });
+            return aiSendParts(send, jid, r.text);
+        }
+        return edit(`📄 ${fname || 'file'} — binary file එකක්. මට කියවන්න පුළුවන් PDF · photo/sticker · text files · audio · video විතරයි. zip/apk වගේ ඒවට dedicated commands තියෙනවා (*.\u0061\u0070k* බලන්න).`);
+    }
+}
 function maybeAiReply({ msg, jid, text, owner, send }) {
     try {
-        if (!text || text.length > 2000) return;
         if (antibug.lockedDown()) return;                     // 🌩️ v2.55: bug storm → AI silent 5 min (echo/amplifier guard)
-        if (/^\d{1,3}$/.test(text.trim())) return;            // 🔢 v2.58: bare number = stray menu pick (numbers are QUOTE-ONLY now) — AI silent, quota නාස්තියක් නෑ
         const isGroup = jid.endsWith('@g.us');
+        const md = aiMediaOf(msg);                            // 🎨 v2.95 — media AI (sticker/photo/video/voice/doc)
+        text = String(text || '').trim();
+        if (md) text = text.slice(0, 300);                    // caption/reply-text = the question (media-first)
+        else if (!text || text.length > 2000) return;
+        if (!md && /^\d{1,3}$/.test(text)) return;            // 🔢 v2.58: bare number = stray menu pick (numbers are QUOTE-ONLY now) — AI silent, quota නාස්තියක් නෑ
         if (isGroup) {   // groups: @mention the bot or reply to a bot message only — any-text flood නෑ
-            const ci = msg.message?.extendedTextMessage?.contextInfo;
+            const ci = unwrap(msg.message)?.extendedTextMessage?.contextInfo || unwrap(msg.message)?.imageMessage?.contextInfo || unwrap(msg.message)?.videoMessage?.contextInfo || unwrap(msg.message)?.documentMessage?.contextInfo;
             const mentioned = (ci?.mentionedJid || []).some((j) => bareJid(j) === ME.pn || bareJid(j) === ME.lid);
             const repliedToMe = ci?.participant && (bareJid(ci.participant) === ME.pn || bareJid(ci.participant) === ME.lid);
             if (!mentioned && !repliedToMe) return;
@@ -866,19 +953,34 @@ function maybeAiReply({ msg, jid, text, owner, send }) {
         if (now - last < 4000) return;
         aiLast.set(jid, now); if (aiLast.size > 200) aiLast.delete(aiLast.keys().next().value);
         runJob(async () => {
-            const r = await ai.ask(jid, text, { owner });   // 👑 v2.94 — owner chat = boss context
-            const out = (typeof r === 'string' ? r : r?.text || '').trim();
-            const imgs = r && Array.isArray(r.images) ? r.images : [];   // 🖼 v2.53 FIX: auto-chat replies වලටත් photo යනවා (කලින් images drop — අනිත් අයගෙ chat වල photo නොවැඩ කරන හේතුව)
-            if (imgs.length) {
-                await send(jid, { image: imgs[0], caption: out || '🖼 හදලා දුන්නා!' }, { quoted: msg });
-                for (let i = 1; i < Math.min(imgs.length, 3); i++) await send(jid, { image: imgs[i] }, { quoted: msg });
-            } else if (out) { const ps = ai.splitLong(out); await send(jid, { text: ps[0] }, { quoted: msg }); for (let i2 = 1; i2 < ps.length; i2++) await send(jid, { text: ps[i2] }, { quoted: msg }); }   // v2.74: සම්පූර්ණ උත්තරේම යනවා (කලින් [0] විතරයි — deep answers cut වෙනවා) · v2.54: reply-bar
-            log(`🤖 AI chat → ${jid.slice(0, 24)}`);
+            try {
+                // 👥 v2.95 chat context — group name + sender name → AI එකට කවුද/කොහෙද කියලා තේරෙනවා
+                const ctxBits = [];
+                if (isGroup) { const gn = await groupName(jid); if (gn) ctxBits.push(`group "${gn}"`); }
+                const pn = String(msg.pushName || '').slice(0, 40);
+                if (pn) ctxBits.push(`replying to ${pn}`);
+                const chatCtx = ctxBits.join(' · ');
+                if (md) {
+                    const status = await send(jid, { text: md.kind === 'audio' ? '🎙️ ඇහනවා... 🧠' : md.kind === 'document' ? '📄 කියවනවා... 🧠' : md.kind === 'video' ? '🎬 බලනවා... 🧠' : '👀 බලනවා... 🧠' }, { quoted: msg });
+                    const edit = async (t) => { try { await send(jid, { text: t, edit: status.key }); } catch { await send(jid, { text: t }, { quoted: msg }); } };
+                    try { await aiMediaReply({ md, msg, jid, q: text, owner, chatCtx, send, edit }); } catch (e) {
+                        await edit(`❌ ${String(e.message || e).slice(0, 200)}`);
+                    }
+                    log(`🤖 AI media(${md.kind}) → ${jid.slice(0, 24)}`);
+                    return;
+                }
+                const r = await ai.ask(jid, text, { owner, context: chatCtx });   // 👑 v2.94 owner + 👥 v2.95 chat context
+                const out = (typeof r === 'string' ? r : r?.text || '').trim();
+                const imgs = r && Array.isArray(r.images) ? r.images : [];   // 🖼 v2.53 FIX: auto-chat replies වලටත් photo යනවා (කලින් images drop — අනිත් අයගෙ chat වල photo නොවැඩ කරන හේතුව)
+                if (imgs.length) {
+                    await send(jid, { image: imgs[0], caption: out || '🖼 හදලා දුන්නා!' }, { quoted: msg });
+                    for (let i = 1; i < Math.min(imgs.length, 3); i++) await send(jid, { image: imgs[i] }, { quoted: msg });
+                } else if (out) { const ps = ai.splitLong(out); await send(jid, { text: ps[0] }, { quoted: msg }); for (let i2 = 1; i2 < ps.length; i2++) await send(jid, { text: ps[i2] }, { quoted: msg }); }   // v2.74: සම්පූර්ණ උත්තරේම යනවා (කලින් [0] විතරයි — deep answers cut වෙනවා) · v2.54: reply-bar
+                log(`🤖 AI chat → ${jid.slice(0, 24)}`);
+            } catch { }
         }).catch(() => { });
     } catch { }
 }
-
-// ───────── .proxies — free proxy pool (stats / check / on / off) ─────────
 async function handleProxies(send, jid, msg, sub) {
     const pool = require('./proxypool');
     if (sub === 'on' || sub === 'off') {
@@ -1053,16 +1155,20 @@ async function quotedMediaOf(msg) {
     try {
         const unwrap = (m) => m?.viewOnceMessage?.message || m?.viewOnceMessageV2?.message || m?.ephemeralMessage?.message || m;
         const own = unwrap(msg.message);
-        const ctx = own?.extendedTextMessage?.contextInfo || own?.imageMessage?.contextInfo || own?.documentMessage?.contextInfo || own?.videoMessage?.contextInfo;
+        const ctx = own?.extendedTextMessage?.contextInfo || own?.imageMessage?.contextInfo || own?.documentMessage?.contextInfo || own?.videoMessage?.contextInfo || own?.stickerMessage?.contextInfo;
         const qm = ctx?.quotedMessage && unwrap(ctx.quotedMessage);
         if (!qm) return null;
-        const im = qm.imageMessage, dm = qm.documentMessage;
-        const mime = im ? (im.mimetype || 'image/jpeg') : (dm && /pdf/i.test(dm.mimetype || '') ? 'application/pdf' : null);
+        const im = qm.imageMessage, dm = qm.documentMessage, sm = qm.stickerMessage, vm = qm.videoMessage;   // 🎨 v2.95 + sticker/video
+        const mime = im ? (im.mimetype || 'image/jpeg')
+            : sm ? (sm.mimetype || 'image/webp')
+            : vm ? (vm.mimetype || 'video/mp4')
+            : (dm && /pdf/i.test(dm.mimetype || '') ? 'application/pdf' : null);
         if (!mime) return null;
-        const fl = Number((im || dm).fileLength || 0);
-        if (fl > 8 * 1048576) return null;   // Gemini inline safety cap
+        const fl = Number((im || sm || vm || dm).fileLength || 0);
+        const cap = /video\//i.test(mime) ? 20 * 1048576 : 8 * 1048576;   // 🎬 v2.95 video inline 20MB (Gemini limit)
+        if (fl > cap) return null;
         const buf = await mediaDownloader({ key: { remoteJid: msg.key.remoteJid, id: ctx.stanzaId, fromMe: false, participant: ctx.participant }, message: qm });
-        if (!buf || buf.length < 100 || buf.length > 9 * 1048576) return null;
+        if (!buf || buf.length < 100 || buf.length > cap + 1048576) return null;
         return { mime, b64: Buffer.from(buf).toString('base64') };
     } catch { return null; }
 }

@@ -40,7 +40,7 @@ const live = (name, cond) => { if (cond) { livePass++; console.log('  🌐 ' + n
     ok('12 handleKey whitelist together (+polli v2.69)', /\['gemini', 'groq', 'zai', 'together'(, 'polli')?\]/.test(bs));
     ok('13 KEY_HELP together section', /setkey together/.test(bs) && /api\.together\.ai\/settings\/api-keys/.test(bs));
     ok('14 .keys card together line', /Together \(🖼 image\)/.test(bs));
-    ok('15 ai tools card chain text', /smart image engine (auto fallback)/.test(bs));
+    ok('15 ai tools card chain text', /smart image engine \(auto fallback\)/.test(bs));
 
     console.log('— ai.js wiring (source asserts) —');
     const as = require('fs').readFileSync('./ai.js', 'utf8');
