@@ -231,7 +231,7 @@ function loadNet(routePref) {
                 module: { exports: {} }, __dirname: ROOT, __filename: path.join(ROOT, 'patch' + (2) + '.js'),
                 console, Buffer, setTimeout, clearTimeout, setInterval, clearInterval, URL, TextEncoder, AbortSignal, Date, performance, path,
                 require: (name) => {
-                    if (name === './mirror') return { upTransfer: async () => ({ url: 'https://x/y', days: 7, host: 'transfer', del: null }) };
+                    if (name === './mirror') return { upTransfer: async () => ({ url: 'https://x/y', days: 7, host: 'transfer', del: null }), upGofile: async () => { throw new Error('gofile (unit-mock)'); } };
                     if (name === './media') return { mediaOf: (msg) => msg.__media || null };
                     if (name === './style') return { foot: (s) => '· ' + s };
                     return require('module').createRequire(path.join(ROOT, 'tools.js'))(name);
@@ -260,7 +260,7 @@ function loadNet(routePref) {
             module: { exports: {} }, __dirname: ROOT, __filename: path.join(ROOT, 'patch' + (3) + '.js'),
             console, Buffer, setTimeout, clearTimeout, setInterval, clearInterval, URL, TextEncoder, AbortSignal, Date, performance, path,
             require: (name) => {
-                if (name === './mirror') return { upTransfer: upTransferImpl, uploadBuffer: async () => { throw new Error('n/a'); }, QUAX_MAX: 1, BUF_MAX: 1 };
+                if (name === './mirror') return { upTransfer: upTransferImpl, upGofile: async () => { throw new Error('gofile HTTP 503 (unit-mock)'); }, uploadBuffer: async () => { throw new Error('n/a'); }, QUAX_MAX: 1, BUF_MAX: 1 };
                 if (name === './media') return { mediaOf: (msg) => msg.__media || null };
                 if (name === './style') return { foot: (s) => '· ' + s };
                 return require('module').createRequire(path.join(ROOT, 'tools.js'))(name);
@@ -308,12 +308,13 @@ function loadNet(routePref) {
         assert(calls.some((c) => c.text && c.text.startsWith('🔗 https://transfer.archivete.am/k/r')));
     });
 
-    await okA('9. both attempts fail → honest slow/block card, no ✅', async () => {
+    await okA('9. both attempts fail + gofile fallback fails → honest combined card, no ✅ (v2.90: fallback added)', async () => {
         let n = 0;
         const { calls, reacts } = await runCmd(async () => { n++; throw Object.assign(new Error('aborted'), { code: 'ABORT_ERR' }); }, Buffer.alloc(2 * 1048576));
         assert.strictEqual(n, 2, 'exactly one retry, no infinite loop');
-        const failCard = calls.find((c) => c.text && c.text.includes('upload fail') && c.text.includes('slow/block'));
-        assert(failCard, 'honest card: ' + JSON.stringify(calls.map((c) => (c.text || '').slice(0, 40))));
+        const failCard = calls.find((c) => c.text && c.text.includes('upload fail') && c.text.includes('gofile:'));
+        assert(failCard, 'honest combined card: ' + JSON.stringify(calls.map((c) => (c.text || '').slice(0, 40))));
+        assert.ok(failCard.text.includes('.uploadtm'), 'next-host hint');
         assert(!reacts.includes('✅'));
     });
 

@@ -31,8 +31,14 @@ async function resolve(raw) {
     // ── MEGA ──
     if (host === 'mega.nz' || host === 'mega.co.nz') return { kind: 'mega', url: raw };
 
-    // ── gofile / limewire: protected, can't download outside the browser ──
-    if (host === 'gofile.io') throw new Error('gofile links bot එකකට download කරන්න බෑ (site එක bots block කරනවා). Browser එකෙන් download කරන්න.');
+    // ── gofile (v2.90 update): guest UPLOAD works (.uploadgo) but DOWNLOAD is locked at the API —
+    //    contents = error-notPremium (guest tier), /download/web/ = 302 page, site uses wt.obf.js anti-bot token
+    //    (all 4 paths LIVE-PROBED 2026-10-27) → honest card, code-validated
+    if (host === 'gofile.io') {
+        const code = (u.pathname.match(/\/d\/([\w-]+)/) || [])[1];
+        if (!code) throw new Error('gofile link එක වැරදියි — gofile.io/d/CODE shape එක විතරයි support');
+        throw new Error('gofile files API එකෙන් guest download කරන්න බෑ (site එක bots block කරනවා) — browser එකෙන් download කරන්න. bot-uploadable host: *.uploadtm* / *.uploadtra* / *.tourl*');
+    }
     if (host === 'limewire.com') throw new Error('LimeWire files encrypt කරලා — browser එකෙන් විතරයි download වෙන්නේ.');
 
     // ── GitHub ──
@@ -93,6 +99,25 @@ async function resolve(raw) {
     if (/^(?:[\w-]+\.)*(?:terabox\.app|terabox\.com|teraboxshare\.com|1024terabox\.com|teraboxlink\.com|4funbox\.com|mirrobox\.com|nephobox\.com)$/i.test(host)) {
         const ndus = require('./terabox').readNdus();
         return { kind: 'http', url: raw, ...(ndus ? { cookie: 'ndus=' + ndus } : {}) };
+    }
+
+    // ── tmpfiles.org (v2.90 .uploadtm) — page link → scrape the /dl/<ts>.<hash>/ direct link.
+    //    The hashed direct link is SINGLE-USE (rotates per page fetch) → NEVER cache; every download
+    //    re-resolves fresh. Already-hashed links pass through untouched.
+    if (host === 'tmpfiles.org') {
+        if (/^\/dl\/\d+\.[a-f0-9]+\//.test(u.pathname)) return { kind: 'http', url: raw, referer: 'https://tmpfiles.org/' };
+        if (/^\/api/.test(u.pathname)) throw new Error('tmpfiles API link එකක් නෙමෙයි — file page link එකක් එවන්න');
+        const p = u.pathname.startsWith('/dl/') ? u.pathname : '/dl' + u.pathname;
+        const page = await fetchText('https://tmpfiles.org' + p);
+        if (page.status !== 200) throw new Error('tmpfiles file එක නෑ — 60 min expiry එකෙන් පස්සේ auto-delete වෙනවා');
+        let m = page.text.match(/https?:\/\/tmpfiles\.org(\/dl\/\d+\.[a-f0-9]+\/[^"'\s<>]+)/);
+        if (!m) {   // relative href fallback (site serves both shapes)
+            const rel = page.text.match(/["'](\/dl\/\d+\.[a-f0-9]+\/[^"'\s<>]+)["']/);
+            if (rel) m = ['https://tmpfiles.org' + rel[1]];
+        }
+        const link = m && m[0];
+        if (!link) throw new Error('tmpfiles direct link එක හොයාගන්න බෑ — file එක expire වෙලා ඇති (60 min)');
+        return { kind: 'http', url: link, referer: 'https://tmpfiles.org/' };
     }
 
     // ── everything else: treat as direct link ──

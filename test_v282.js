@@ -38,8 +38,8 @@ const plainMsg = () => ({ key: { remoteJid: JID, id: 'A3', fromMe: true }, messa
 (async () => {
     console.log('— v2.82.0 pins —');
     ok('version + manifest', () => {
-        assert.ok(['2.81.0', '2.82.0', '2.83.0', '2.84.0', '2.85.0', '2.86.0', '2.87.0', '2.88.0', '2.89.0', '2.90.0', '2.91.0', '2.92.0'].includes(pkg.version), 'pkg ' + pkg.version);
-        assert.ok(['2.81.0', '2.82.0', '2.83.0', '2.84.0', '2.85.0', '2.86.0', '2.87.0', '2.88.0', '2.89.0', '2.90.0', '2.91.0', '2.92.0'].includes(manifest.version), 'manifest ' + manifest.version);
+        assert.ok(['2.81.0', '2.82.0', '2.83.0', '2.84.0', '2.85.0', '2.86.0', '2.87.0', '2.88.0', '2.93.0'].includes(pkg.version), 'pkg ' + pkg.version);
+        assert.ok(['2.81.0', '2.82.0', '2.83.0', '2.84.0', '2.85.0', '2.86.0', '2.87.0', '2.88.0', '2.93.0'].includes(manifest.version), 'manifest ' + manifest.version);
         assert.ok(/UPLOADTRA/i.test(manifest.notes), 'notes');
         assert.ok(manifest.files.includes('test_v282.js'), 'files');
     });
@@ -98,16 +98,32 @@ const plainMsg = () => ({ key: { remoteJid: JID, id: 'A3', fromMe: true }, messa
         } finally { mirror.upTransfer = orig; }
     });
 
-    await okA('upload error → honest fail card with .tourl hint', async () => {
+    await okA('upload error → gofile fallback (v2.90) → link delivered', async () => {
         sent = []; reacts = [];
         tools.setMediaDownloader(async () => Buffer.alloc(10, 1));
-        const orig = mirror.upTransfer;
+        const orig = mirror.upTransfer, origG = mirror.upGofile;
         mirror.upTransfer = async () => { throw new Error('transfer HTTP 503 boom'); };
+        mirror.upGofile = async (buf, name) => ({ url: 'https://gofile.io/d/FB282', host: 'gofile', days: 10, fileId: 'f1', guestToken: 'g1' });
         try {
             await tools.handle('.uploadtra', { send, jid: JID, msg: docMsg('x.zip'), rest: [], react });
             const final = sent[sent.length - 1].content.text;
-            assert.ok(/upload fail/.test(final) && /503/.test(final) && /tourl/.test(final), final);
-        } finally { mirror.upTransfer = orig; }
+            assert.ok(/gofile\.io\/d\/FB282/.test(final) && /fallback/.test(final), final);
+            assert.ok(reacts.includes('✅'), 'fallback success reacts ✅');
+        } finally { mirror.upTransfer = orig; mirror.upGofile = origG; }
+    });
+
+    await okA('transfer + gofile both fail → honest combined card', async () => {
+        sent = []; reacts = [];
+        tools.setMediaDownloader(async () => Buffer.alloc(10, 1));
+        const orig = mirror.upTransfer, origG = mirror.upGofile;
+        mirror.upTransfer = async () => { throw new Error('transfer HTTP 503 boom'); };
+        mirror.upGofile = async () => { throw new Error('gofile HTTP 503 dead'); };
+        try {
+            await tools.handle('.uploadtra', { send, jid: JID, msg: docMsg('x.zip'), rest: [], react });
+            const final = sent[sent.length - 1].content.text;
+            assert.ok(/upload fail/.test(final) && /503/.test(final) && /gofile/.test(final) && /tourl/.test(final), final);
+            assert.ok(!reacts.includes('✅'), 'no ✅ on total failure');
+        } finally { mirror.upTransfer = orig; mirror.upGofile = origG; }
     });
 
     await okA('empty buffer → error card (media හිස්)', async () => {

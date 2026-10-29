@@ -24,10 +24,11 @@ const BUF_MAX = 190 * 1048576;           // buffer-upload ceiling (read whole fi
 
 const safeName = (n) => encodeURIComponent(String(n || 'file.bin').replace(/[^\w.\-() ]+/g, '_').slice(0, 120));
 
-/** hand-rolled multipart → body is a plain Buffer, reusable across smartFetch route retries */
-function multipart(buf, name) {
+/** hand-rolled multipart → body is a plain Buffer, reusable across smartFetch route retries
+ *  v2.90: field param — qu.ax wants "files[]", gofile/tmpfiles want "file" */
+function multipart(buf, name, field = 'files[]') {
     const b = safeName(name);
-    const head = Buffer.from('--KV\r\nContent-Disposition: form-data; name="files[]"; filename="' + b + '"\r\nContent-Type: application/octet-stream\r\n\r\n');
+    const head = Buffer.from('--KV\r\nContent-Disposition: form-data; name="' + field + '"; filename="' + b + '"\r\nContent-Type: application/octet-stream\r\n\r\n');
     const tail = Buffer.from('\r\n--KV--\r\n');
     return { body: Buffer.concat([head, buf, tail]), type: 'multipart/form-data; boundary=KV' };
 }
@@ -61,6 +62,47 @@ async function upTransfer(bufOrPath, name, opts = {}) {
     return { url: t, host: 'transfer', days: 7, del };
 }
 
+/** gofile.io — v2.90 .uploadgo: guest API (LIVE-PROBED 2026-10-27): GET /servers → store list ok;
+ *  POST {server}.gofile.io/contents/uploadfile (multipart field "file") → {downloadPage, guestToken, id}.
+ *  Guests can UPLOAD but NOT download via API (contents = error-notPremium, /download/web/ = 302 page,
+ *  site wt.obf.js anti-bot token) → card links the browser downloadPage; free files clean after ~10d inactive. */
+async function upGofile(buf, name, opts = {}) {
+    const mp = multipart(buf, name, 'file');
+    const sr = await fetchFn('https://api.gofile.io/servers', { ...opts, headers: { ...UA } });
+    if (!sr.ok) throw new Error('gofile servers HTTP ' + sr.status);
+    const sj = await sr.json().catch(() => null);
+    const sname = sj && sj.data && sj.data.servers && sj.data.servers[0] && sj.data.servers[0].name;
+    if (!sname) throw new Error('gofile servers list හිස්');
+    const r = await fetchFn('https://' + sname + '.gofile.io/contents/uploadfile', {
+        method: 'POST', body: mp.body,
+        headers: { ...UA, 'Content-Type': mp.type },
+        ...opts,
+    });
+    const j = await r.json().catch(() => null);
+    const d = j && j.data;
+    if (!r.ok || !d || !d.downloadPage) throw new Error('gofile HTTP ' + r.status + ' ' + String((j && j.status) || '').slice(0, 40));
+    return { url: d.downloadPage, host: 'gofile', days: 10, fileId: d.id || null, guestToken: d.guestToken || null };
+}
+
+/** tmpfiles.org — v2.90 .uploadtm: POST /api/v1/upload (field "file") → { data: { url } }.
+ *  100 MB cap · files expire in 60 MINUTES (card warns). The /dl/<ts>.<hash>/ direct link is
+ *  SINGLE-USE → resolvers.js re-derives it from the page at download time (never cached). */
+const TMPFILES_MAX = 100 * 1048576;
+async function upTmpfiles(buf, name, opts = {}) {
+    if (buf.length > TMPFILES_MAX) throw new Error('tmpfiles 100 MB cap — මේ file එක ලොකු වැඩියි (.uploadgo/.uploadtra use කරන්න)');
+    const mp = multipart(buf, name, 'file');
+    const r = await fetchFn('https://tmpfiles.org/api/v1/upload', {
+        method: 'POST', body: mp.body,
+        headers: { ...UA, 'Content-Type': mp.type },
+        ...opts,
+    });
+    if (!r.ok) throw new Error('tmpfiles HTTP ' + r.status);
+    const j = await r.json().catch(() => null);
+    const u = j && j.data && j.data.url;
+    if (!/^https?:\/\/tmpfiles\.org\//.test(u || '')) throw new Error('tmpfiles bad reply');
+    return { url: u, host: 'tmpfiles', days: 0.04 };   // ~1h — the command formats this as ⏳ 60 min
+}
+
 /** Buffer → best host (qu.ax 30d first, transfer fallback) */
 async function uploadBuffer(buf, name) {
     if (buf.length <= QUAX_MAX) { try { return await upQuax(buf, name); } catch { } }
@@ -75,4 +117,4 @@ async function uploadFile(filePath, name) {
     return await upTransfer(filePath, name);
 }
 
-module.exports = { uploadBuffer, uploadFile, upQuax, upTransfer, QUAX_MAX, BUF_MAX };
+module.exports = { uploadBuffer, uploadFile, upQuax, upTransfer, upGofile, upTmpfiles, TMPFILES_MAX, QUAX_MAX, BUF_MAX };

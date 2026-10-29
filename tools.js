@@ -205,7 +205,16 @@ async function cmdUploadTra(send, jid, msg, args, react) {
                 await edit(`📤 ${mb} MB retry… (පළවෙනි attempt එක slow වෙලා)`);
                 r = await mirror.upTransfer(buf, base, { signal: AbortSignal.timeout(180e3) });
             } catch (e2) {
-                return await edit(`❌ upload fail: ${String(e2.message || e2).slice(0, 120)}\n> transfer.archivete.am මේ file එකට දැනට slow/block — ටිකකින් නැවත try කරන්න, නැත්නම් *.tourl* (qu.ax)`);
+                clearInterval(tick);
+                // v2.90: transfer දෙකම fail → gofile auto-fallback ("කැඩිලා" host එකට upload එක නැති වෙන්නේ නෑ)
+                try {
+                    await edit(`📤 ${mb} MB gofile fallback… (transfer.archivete.am මේ file එකට slow/block)`);
+                    const g = await mirror.upGofile(buf, base, { signal: AbortSignal.timeout(180e3) });
+                    react?.('✅');
+                    return await edit(`🔗 ${g.url}\n${foot(`${mb} MB · gofile.io (transfer fallback) · ~10d inactive`)}`);
+                } catch (e3) {
+                    return await edit(`❌ upload fail: transfer: ${String(e2.message || e2).slice(0, 90)} · gofile: ${String(e3.message || e3).slice(0, 90)}\n> ටිකකින් නැවත try කරන්න, නැත්නම් *.uploadtm* / *.tourl* (qu.ax)`);
+                }
             }
         }
         clearInterval(tick);
@@ -213,6 +222,81 @@ async function cmdUploadTra(send, jid, msg, args, react) {
         return await edit(`🔗 ${r.url}\n${foot(`${mb} MB · ~${r.days}d · ${r.host === 'transfer' ? 'transfer.archivete.am' : r.host}${r.del ? '\n🗑️ delete: ' + r.del : ''}`)}`);
     } catch (e) {
         return await edit(`❌ upload fail: ${String(e.message || e).slice(0, 140)}\n> ආයෙත් try කරන්න, නැත්නම් *.tourl* (qu.ax host එක)`);
+    }
+}
+
+// ───────── media → gofile.io link (.uploadgo — v2.90) ─────────
+async function cmdUploadGo(send, jid, msg, args, react) {
+    const m = mediaOf(msg);
+    if (!m) return send(jid, { text: `📤 media එකකට reply කරලා *.uploadgo*\n${foot('photo · video · audio · file → gofile.io 🔗')}` }, { quoted: msg });
+    const st = await send(jid, { text: '📤 gofile upload…' }, { quoted: msg });
+    const edit = async (t) => { try { await send(jid, { text: t, edit: st.key }); } catch { } };
+    try {
+        const buf = await mediaDownloader(m.src);
+        if (!buf || !buf.length) throw new Error('media එක හිස්');
+        if (buf.length > 190 * 1048576) return await edit('❌ 190 MB ට වඩා ලොකුයි — මේ host එකට upload කරන්න බෑ');
+        const mm = m.src.message[m.kind + 'Message'] || {};
+        const base = (mm.fileName && path.basename(mm.fileName)) || ('kaviz-' + Date.now().toString(36) + ({ image: '.jpg', video: '.mp4', sticker: '.webp', audio: '.mp3' }[m.kind] || '.bin'));
+        const mb = (buf.length / 1048576).toFixed(1);
+        // bounded budget + liveness tick + one retry (v2.87 .uploadtra pattern — host එක කොහෙ හරි slow උනත් card එක හිමින්ම තියන්නේ නෑ)
+        const budgetMs = buf.length > 50 * 1048576 ? 420e3 : 150e3;
+        const t0 = Date.now();
+        await edit(`📤 ${mb} MB gofile upload…`);
+        const tick = setInterval(() => edit(`📤 ${mb} MB gofile upload… ⏱ ${Math.round((Date.now() - t0) / 1000)}s (ලොකු files වලට වෙලා යන්න පුළුවන්)`), 20000);
+        let r;
+        try {
+            r = await mirror.upGofile(buf, base, { signal: AbortSignal.timeout(budgetMs) });
+        } catch (e1) {
+            clearInterval(tick);
+            try {
+                await edit(`📤 ${mb} MB retry… (පළවෙනි attempt එක slow වෙලා)`);
+                r = await mirror.upGofile(buf, base, { signal: AbortSignal.timeout(180e3) });
+            } catch (e2) {
+                return await edit(`❌ gofile upload fail: ${String(e2.message || e2).slice(0, 120)}\n> ටිකකින් නැවත try කරන්න, නැත්නම් *.uploadtra* / *.uploadtm* / *.tourl*`);
+            }
+        }
+        clearInterval(tick);
+        react?.('✅');
+        return await edit(`🔗 ${r.url}\n${foot(`${mb} MB · gofile.io · ~10d inactive · ${path.basename(base)}`)}\n> 💾 මේ link එක browser එකෙන් download කරන්න (gofile bot downloads block කරනවා) · bot-uploadable: *.uploadtm* / *.uploadtra*`);
+    } catch (e) {
+        return await edit(`❌ upload fail: ${String(e.message || e).slice(0, 140)}\n> ආයෙත් try කරන්න, නැත්නම් *.tourl* (qu.ax host එක)`);
+    }
+}
+
+// ───────── media → tmpfiles.org link (.uploadtm — v2.90) ─────────
+async function cmdUploadTm(send, jid, msg, args, react) {
+    const m = mediaOf(msg);
+    if (!m) return send(jid, { text: `📤 media එකකට reply කරලා *.uploadtm*\n${foot('photo · video · audio · file → tmpfiles.org 🔗 (60 min)')}` }, { quoted: msg });
+    const st = await send(jid, { text: '📤 tmpfiles upload…' }, { quoted: msg });
+    const edit = async (t) => { try { await send(jid, { text: t, edit: st.key }); } catch { } };
+    try {
+        const buf = await mediaDownloader(m.src);
+        if (!buf || !buf.length) throw new Error('media එක හිස්');
+        if (buf.length > mirror.TMPFILES_MAX) return await edit(`❌ tmpfiles cap = 100 MB — මේ file එක ${(buf.length / 1048576).toFixed(1)} MB\n> *.uploadgo* / *.uploadtra* use කරන්න`);
+        const mm = m.src.message[m.kind + 'Message'] || {};
+        const base = (mm.fileName && path.basename(mm.fileName)) || ('kaviz-' + Date.now().toString(36) + ({ image: '.jpg', video: '.mp4', sticker: '.webp', audio: '.mp3' }[m.kind] || '.bin'));
+        const mb = (buf.length / 1048576).toFixed(1);
+        const budgetMs = buf.length > 50 * 1048576 ? 420e3 : 150e3;
+        const t0 = Date.now();
+        await edit(`📤 ${mb} MB tmpfiles upload…`);
+        const tick = setInterval(() => edit(`📤 ${mb} MB tmpfiles upload… ⏱ ${Math.round((Date.now() - t0) / 1000)}s`), 20000);
+        let r;
+        try {
+            r = await mirror.upTmpfiles(buf, base, { signal: AbortSignal.timeout(budgetMs) });
+        } catch (e1) {
+            clearInterval(tick);
+            try {
+                await edit(`📤 ${mb} MB retry… (පළවෙනි attempt එක slow වෙලා)`);
+                r = await mirror.upTmpfiles(buf, base, { signal: AbortSignal.timeout(180e3) });
+            } catch (e2) {
+                return await edit(`❌ tmpfiles upload fail: ${String(e2.message || e2).slice(0, 120)}\n> ටිකකින් නැවත try කරන්න, නැත්නම් *.uploadgo* / *.uploadtra* / *.tourl*`);
+            }
+        }
+        clearInterval(tick);
+        react?.('✅');
+        return await edit(`🔗 ${r.url}\n${foot(`${mb} MB · tmpfiles.org · ⏳ ~60 min (${path.basename(base)})`)}\n> ⚠️ file එක මිනිත්තු 60කින් auto-delete — ඉක්මනට share කරන්න\n> 🤖 bot download වලටත් වැඩ: *.download ${r.url}*`);
+    } catch (e) {
+        return await edit(`❌ upload fail: ${String(e.message || e).slice(0, 140)}\n> ආයෙත් try කරන්න, නැත්නම් *.uploadgo* / *.tourl*`);
     }
 }
 
@@ -352,7 +436,7 @@ function cmd8ball(send, jid, msg, args) {
     return send(jid, { text: `🎱 _${args.join(' ').slice(0, 200)}_\n\n${BALL[Math.floor(Math.random() * BALL.length)]}` }, { quoted: msg });
 }
 
-const CMDS = { '.tts': cmdTts, '.say': cmdTts, '.stt': cmdStt, '.totext': cmdStt, '.tr': cmdTr, '.translate': cmdTr, '.weather': cmdWeather, '.lyrics': cmdLyrics, '.toimg': cmdToImg, '.tourl': cmdToUrl, '.url': cmdToUrl, '.uploadtra': cmdUploadTra, '.mirror': cmdMirror, '.link': cmdMirror, '.ss': cmdSs, '.qr': cmdQr, '.short': cmdShort, '.calc': cmdCalc, '.github': cmdGithub, '.imagine': cmdImagine, '.img': cmdImagine, '.joke': cmdJoke, '.fact': cmdFact, '.quote': cmdQuote, '.8ball': cmd8ball, '.del': null, '.delete': null, '.setpp': null };
+const CMDS = { '.tts': cmdTts, '.say': cmdTts, '.stt': cmdStt, '.totext': cmdStt, '.tr': cmdTr, '.translate': cmdTr, '.weather': cmdWeather, '.lyrics': cmdLyrics, '.toimg': cmdToImg, '.tourl': cmdToUrl, '.url': cmdToUrl, '.uploadtra': cmdUploadTra, '.uploadgo': cmdUploadGo, '.uploadtm': cmdUploadTm, '.mirror': cmdMirror, '.link': cmdMirror, '.ss': cmdSs, '.qr': cmdQr, '.short': cmdShort, '.calc': cmdCalc, '.github': cmdGithub, '.imagine': cmdImagine, '.img': cmdImagine, '.joke': cmdJoke, '.fact': cmdFact, '.quote': cmdQuote, '.8ball': cmd8ball, '.del': null, '.delete': null, '.setpp': null };
 
 async function handle(c, { send, jid, msg, rest, sock, me, react }) {
     if (!(c in CMDS)) return false;
