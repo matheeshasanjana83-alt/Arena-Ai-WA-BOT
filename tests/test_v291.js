@@ -28,8 +28,8 @@ const fresh = () => { msgs = []; };
 (async () => {
     console.log('— v2.96.0 pins —');
     ok('version 2.91 pkg+manifest + notes + source markers', () => {
-        assert.strictEqual(pkg.version, '2.96.2', 'pkg ' + pkg.version);
-        assert.strictEqual(manifest.version, '2.96.2', 'manifest ' + manifest.version);
+        assert.strictEqual(pkg.version, '2.97.0', 'pkg ' + pkg.version);
+        assert.strictEqual(manifest.version, '2.97.0', 'manifest ' + manifest.version);
         assert.ok(manifest.notes.includes('SECOND BOT'), 'notes headline');
         assert.ok(hubSrc.includes('v2.91: double-pick race'), 'hvGo busy guard marker');
         assert.ok(hubSrc.includes("back.busy = false"), 'restoreBack clears busy');
