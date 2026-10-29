@@ -467,8 +467,7 @@ async function askZai(key, msgs, chatId, allKeys) {
             const r = await fetch('https://api.z.ai/api/paas/v4/chat/completions', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
-                signal: AbortSignal.timeout(T_ZAI()),   // ⚡ v2.96 timeout
-                signal: AbortSignal.timeout(T_ZAI()),   // ⚡ v2.96 timeout
+                signal: AbortSignal.timeout(T_ZAI()),   // ⚡ v2.96 timeout · v2.96.2: duplicate signal key එක අයින් (leaked timer per call)
                 body: JSON.stringify(payload)
             });
             const body = await r.text();

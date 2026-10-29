@@ -923,7 +923,7 @@ async function aiMediaReply({ md, msg, jid, q, owner, chatCtx, group, send, edit
         if (!buf || buf.length < 100) throw new Error('audio download fail — ආයෙත් එවන්න');
         const st = await require('./pollinations').sttText(buf, mime || 'audio/ogg');
         if (!st) return edit('🤷 හඬ හම්බුණේ නෑ — audio එක හිස්ද බලන්න.');
-        const r = await ai.ask(jid, `🎙️ voice/audio transcript: """${st.slice(0, 3000)}"""\n\n${q || 'මේ voice/audio එකේ content එකට සිංහලෙන් උත්තර දෙන්න. Song/song clip එකක් නම් මොන song එකද, කවුරුද ගායනා කරන්නේ කියලා හඳුනාගෙන ඒ ගැන කියන්න. Voice note එකක් නම් කියපු දේට උත්තර දෙන්න.'}`, { owner, context: chatCtx, group: !!group });
+        const r = await ai.ask(jid, `🎙️ voice/audio transcript: """${st.slice(0, 3000)}"""\n\n${q || 'මේ voice/audio එකේ content එකට සිංහලෙන් උත්තර දෙන්න. Song/song clip එකක් නම් මොන song එකද, කවුරුද ගායනා කරන්නේ කියලා හඳුනාගෙන ඒ ගැන කියන්න. Voice note එකක් නම් කියපු දේට උත්තර දෙන්න.'}`, { owner, context: chatCtx, group });
         return aiSendParts(send, jid, r.text);
     }
     if (md.kind === 'document') {   // 📄 PDF → vision · text-like → read · binary → honest card
@@ -939,7 +939,7 @@ async function aiMediaReply({ md, msg, jid, q, owner, chatCtx, group, send, edit
             const buf = await mediaDownloader(md.src);
             if (!buf || !buf.length) throw new Error('document download fail — ආයෙත් එවන්න');
             const body = buf.toString('utf8').slice(0, 4000);
-            const r = await ai.ask(jid, `📄 file: ${fname || 'document.' + (mime.split('/')[1] || 'txt')}\n"""${body}"""\n\n${q || 'මේ file එකේ content එක ගැන සිංහලෙන් කියන්න — මොකක්ද, මොනවද තියෙන්නේ, වැදගත් දේවල්.'}`, { owner, context: chatCtx, group: !!group });
+            const r = await ai.ask(jid, `📄 file: ${fname || 'document.' + (mime.split('/')[1] || 'txt')}\n"""${body}"""\n\n${q || 'මේ file එකේ content එක ගැන සිංහලෙන් කියන්න — මොකක්ද, මොනවද තියෙන්නේ, වැදගත් දේවල්.'}`, { owner, context: chatCtx, group });
             return aiSendParts(send, jid, r.text);
         }
         return edit(`📄 ${fname || 'file'} — binary file එකක්. මට කියවන්න පුළුවන් PDF · photo/sticker · text files · audio · video විතරයි. zip/apk වගේ ඒවට dedicated commands තියෙනවා (*.\u0061\u0070k* බලන්න).`);
@@ -992,7 +992,7 @@ ${gtail.join('\n')}`);
                     log(`🤖 AI media(${md.kind}) → ${jid.slice(0, 24)}`);
                     return;
                 }
-                const r = await ai.ask(jid, text, { owner, context: chatCtx, group: !!group });   // 👑 v2.94 owner + 👥 v2.95 chat context
+                const r = await ai.ask(jid, text, { owner, context: chatCtx, group: isGroup });   // 👑 v2.94 owner + 👥 v2.95 chat ctx · 🐛 v2.96.2 FIX: `group` කියන variable මෙතන නෑ (isGroup) — ReferenceError → catch{} → TEXT auto-replies හැම එකක්ම SILENT (sticker/media path විතරයි උත්තර දුන්නේ!)
                 const out = (typeof r === 'string' ? r : r?.text || '').trim();
                 const imgs = r && Array.isArray(r.images) ? r.images : [];   // 🖼 v2.53 FIX: auto-chat replies වලටත් photo යනවා (කලින් images drop — අනිත් අයගෙ chat වල photo නොවැඩ කරන හේතුව)
                 if (imgs.length) {
@@ -1000,9 +1000,9 @@ ${gtail.join('\n')}`);
                     for (let i = 1; i < Math.min(imgs.length, 3); i++) await send(jid, { image: imgs[i] }, { quoted: msg });
                 } else if (out) { const ps = ai.splitLong(out); await send(jid, { text: ps[0] }, { quoted: msg }); for (let i2 = 1; i2 < ps.length; i2++) await send(jid, { text: ps[i2] }, { quoted: msg }); }   // v2.74: සම්පූර්ණ උත්තරේම යනවා (කලින් [0] විතරයි — deep answers cut වෙනවා) · v2.54: reply-bar
                 log(`🤖 AI chat → ${jid.slice(0, 24)}`);
-            } catch { }
-        }).catch(() => { });
-    } catch { }
+            } catch (e) { log(`🤖❌ AI chat fail: ${String(e?.message || e).slice(0, 160)}`); }   // 🐛 v2.96.2: AI fail = කවදාවත් blind නෑ — console එකේ පේනවා (v2.89 never-silent)
+        }).catch((e) => { log(`🤖❌ AI job fail: ${String(e?.message || e).slice(0, 160)}`); });
+    } catch (e) { log(`🤖❌ AI gate fail: ${String(e?.message || e).slice(0, 160)}`); }
 }
 async function handleProxies(send, jid, msg, sub) {
     const pool = require('./proxypool');
