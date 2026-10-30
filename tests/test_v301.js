@@ -15,7 +15,7 @@
  *  (2) matchScore fuzzy title matching
  *  (3) zetaDownload engine (now in zetasub): ranged-parallel write + CF-challenge honest throw
  *  (4) UN-MIX markers: moviedex has ZERO zeta references · zetasub exports zetaDownload
- *  (5) pins 3.03.0 pkg+manifest + notes headline + manifest lists zetasub.js + cinesite.js + test_v302
+ *  (5) pins 3.03.1 pkg+manifest + notes headline + manifest lists zetasub.js + cinesite.js + test_v302
  */
 process.env.ARENA_AI_MEMORY_FILE = __dirname + '/../.test_v301_mem.json';
 const fs = require('fs');
@@ -34,10 +34,10 @@ const mvSrc = fs.readFileSync(REPO + '/moviedex.js', 'utf8');
 const zetaSrc = fs.readFileSync(REPO + '/zetasub.js', 'utf8');
 
 (async () => {
-    console.log('— v3.03.0 pins + markers —');
-    ok('version 3.03.0 pkg+manifest · notes headline · manifest lists zetasub.js + cinesite.js + test_v302.js', () => {
-        assert.strictEqual(pkg.version, '3.03.0', 'pkg ' + pkg.version);
-        assert.strictEqual(manifest.version, '3.03.0', 'manifest ' + manifest.version);
+    console.log('— v3.03.1 pins + markers —');
+    ok('version 3.03.1 pkg+manifest · notes headline · manifest lists zetasub.js + cinesite.js + test_v302.js', () => {
+        assert.strictEqual(pkg.version, '3.03.1', 'pkg ' + pkg.version);
+        assert.strictEqual(manifest.version, '3.03.1', 'manifest ' + manifest.version);
         assert.ok(manifest.notes.includes('CINESUBZ + CINERU SEPARATE COMMANDS'), 'notes headline');
         assert.ok(manifest.files.includes('zetasub.js'), 'manifest lists zetasub.js');
         assert.ok(manifest.files.includes('cinesite.js'), 'manifest lists cinesite.js');

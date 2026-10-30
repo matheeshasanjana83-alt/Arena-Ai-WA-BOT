@@ -17,8 +17,32 @@
  */
 'use strict';
 
+const fs = require('fs');
+const path = require('path');
+const { spawn } = require('child_process');
+
 let browser = null;
 let browserFailed = false;
+let bgInstall = false;   // v3.03.1: one background Chrome download at a time
+
+const MISSING_CHROME = /Could not find Chrome|Could not find Chromium|ENOENT[\s\S]{0,80}chrome|chrome[\s\S]{0,80}ENOENT/i;
+
+/** v3.03.1 self-heal: puppeteer JS installed but Chrome binary missing (panel boot truth
+ *  2026-10-30) → run puppeteer's own installer DETACHED in the background; the next solve
+ *  attempt (or next reboot) finds it. Never throws, never blocks the caller. */
+function ensureChrome(log) {
+    if (bgInstall) return;
+    bgInstall = true;
+    try {
+        const inst = path.join(__dirname, 'node_modules', 'puppeteer', 'install.mjs');
+        if (!fs.existsSync(inst)) { bgInstall = false; return; }
+        const child = spawn(process.execPath, [inst], { stdio: 'ignore', detached: true });
+        child.on('error', () => { bgInstall = false; });
+        child.on('exit', (code) => { bgInstall = false; browserFailed = false; if (log) log(`Chrome background install exit ${code} — .animepahe ආයෙත් try කරන්න`); });
+        try { child.unref(); } catch { }
+        if (log) log('Chrome missing → background download started (~170MB, once) — .animepahe ටිකකින් ආයෙත් try කරන්න');
+    } catch { bgInstall = false; }
+}
 
 function libsAvailable() {
     try { require('puppeteer-extra'); require('puppeteer-extra-plugin-stealth'); return true; } catch { return false; }
@@ -40,6 +64,7 @@ async function getBrowser(log) {
     } catch (e) {
         browserFailed = true;
         if (log) log('cfsolver launch FAIL: ' + String((e && e.message) || e).slice(0, 140));
+        if (MISSING_CHROME.test(String((e && e.message) || e))) ensureChrome(log);   // v3.03.1 self-heal
         return null;
     }
 }
@@ -86,6 +111,6 @@ async function shutdown() {
     if (browser) { try { await browser.close(); } catch { } browser = null; }
 }
 
-function _reset() { browser = null; browserFailed = false; }   // tests
+function _reset() { browser = null; browserFailed = false; bgInstall = false; }   // tests
 
-module.exports = { solve, getBrowser, libsAvailable, shutdown, _reset };
+module.exports = { solve, getBrowser, libsAvailable, shutdown, ensureChrome, MISSING_CHROME, _reset };

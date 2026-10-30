@@ -1,5 +1,5 @@
 /**
- * test_v302.js — 🍿 .cinesubz + .cineru SEPARATE COMMANDS (v3.03.0)
+ * test_v302.js — 🍿 .cinesubz + .cineru SEPARATE COMMANDS (v3.03.1)
  * User directive: "Moviedex command එකට cinesubz,cineru mix කරන්න එපා ඒ දෙක වෙනම command දෙකක් ලෙස
  * ඇඩ් කරන්න" → cinesite.js = one zetaflix engine, per-host sessions, NO cross-domain fallback.
  * LIVE-VERIFIED 2026-10-30 (probe_sites_v2100* + probe_series_v2100): /?s= search display-item
@@ -16,7 +16,7 @@
  *  (5) honest failures: empty search card · bad pick · no-download ctx · expired session
  *  (6) bridge: reply-only cardId enforcement + per-command routing (.cinesubz go N vs .cineru go N)
  *  (7) separate-commands markers: SITES per-host, no domain ladder in cinesite · moviedex un-mixed (test_v301 covers deep)
- *  (8) pins 3.03.0 pkg+manifest+notes+manifest.files
+ *  (8) pins 3.03.1 pkg+manifest+notes+manifest.files
  */
 process.env.ARENA_AI_MEMORY_FILE = __dirname + '/../.test_v302_mem.json';
 const fs = require('fs');
@@ -72,10 +72,10 @@ const mkCtx = () => {
 let ctx;
 
 (async () => {
-    console.log('— v3.03.0 pins —');
-    ok('version 3.03.0 pkg+manifest · notes headline · manifest lists cinesite.js + test_v302.js', () => {
-        assert.strictEqual(pkg.version, '3.03.0', 'pkg ' + pkg.version);
-        assert.strictEqual(manifest.version, '3.03.0', 'manifest ' + manifest.version);
+    console.log('— v3.03.1 pins —');
+    ok('version 3.03.1 pkg+manifest · notes headline · manifest lists cinesite.js + test_v302.js', () => {
+        assert.strictEqual(pkg.version, '3.03.1', 'pkg ' + pkg.version);
+        assert.strictEqual(manifest.version, '3.03.1', 'manifest ' + manifest.version);
         assert.ok(manifest.notes.includes('CINESUBZ + CINERU SEPARATE COMMANDS'), 'notes headline');
         assert.ok(manifest.files.includes('cinesite.js'), 'manifest lists cinesite.js');
         assert.ok(manifest.files.includes('tests/test_v302.js'), 'manifest lists test_v302.js');
