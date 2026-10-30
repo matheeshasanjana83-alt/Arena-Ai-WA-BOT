@@ -44,8 +44,8 @@ const sendMock = (sent) => { let n = 0; return async (j, c) => { const k = 'K' +
 (async () => {
     console.log('— v2.86.0 pins —');
     ok('version + manifest + notes + wiring greps', () => {
-        assert.ok(['2.85.0', '2.86.0', '2.87.0', '2.88.0', '2.89.0', '3.02.0', '3.02.0', '3.02.0'].includes(pkg.version), 'pkg ' + pkg.version);
-        assert.ok(['2.85.0', '2.86.0', '2.87.0', '2.88.0', '2.89.0', '3.02.0', '3.02.0', '3.02.0'].includes(manifest.version), 'manifest ' + manifest.version);
+        assert.ok(['2.85.0', '2.86.0', '2.87.0', '2.88.0', '2.89.0', '3.03.0', '3.03.0', '3.03.0'].includes(pkg.version), 'pkg ' + pkg.version);
+        assert.ok(['2.85.0', '2.86.0', '2.87.0', '2.88.0', '2.89.0', '3.03.0', '3.03.0', '3.03.0'].includes(manifest.version), 'manifest ' + manifest.version);
         assert.ok(/METDN/i.test(manifest.notes), 'notes');
         assert.ok(manifest.files.includes('metdn.js') && manifest.files.includes('tests/test_v286.js'), 'files');
         assert.ok(botSrc.includes("require('./metdn')") && botSrc.includes('metdn.handle'), 'router');

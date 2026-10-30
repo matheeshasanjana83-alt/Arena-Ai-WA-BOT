@@ -41,16 +41,71 @@ const MENU_ROWS = 10;
 const EP_CAP = 300;                       // hard cap (menu honest about truncation)
 const EP_PAGES_MAX = 8;                   // release pages fetched (30/page → ~240 eps)
 const TIMEOUT = 30e3;
-const CMDS = { '.animepahe': 1, '.aphe': 1 };
+const CMDS = { '.animepahe': 1, '.aphe': 1, '.animepahae': 1, '.anemepahe': 1 };   // last two = user typos (2026-10-30)
 
 // net.js smartFetch — fetcher seam (metdn/cinesite pattern): tests inject a mock; live = smartFetch.
 let fetcher = (u, o) => smartFetch(u, o);
 const setFetcher = (f) => { const prev = fetcher; fetcher = f; return prev; };
+
+// ── 🥷 v3.03 CF stealth-solve ladder (user directive: Puppeteer + Stealth) — cf_clearance is
+// IP+UA-bound, so we cache { cookie, ua } from a real stealth-Chrome solve and reuse BOTH with
+// plain fetch. Lazy: puppeteer absent (npm optional) → getSolver() null → honest wall card.
+let solver = null;                                    // test seam; live = require('./cfsolver') (lazy)
+const setSolver = (s) => { const p = solver; solver = s; return p; };
+function getSolver() {
+    if (solver !== null) return solver === false ? null : solver;
+    try { solver = require('./cfsolver'); } catch { solver = false; }   // false = absent, cached
+    return solver === false ? null : solver;
+}
+const cfCache = new Map();                            // host → { cookie, ua, at }
+const CF_TTL = 25 * 60e3;                             // refresh window (cookie nominal 1y, site may rotate)
+const SOLVE_COOLDOWN = 90e3;                          // ≤ 1 browser solve / 90s bot-wide (RAM guard)
+const FAIL_GIVEUP = 5, FAIL_BACKOFF = 15 * 60e3;      // 5 fails → stop browser attempts 15 min (RAM guard)
+let lastSolveAt = 0, lastFailAt = 0, failStreak = 0;
+
+async function clearance(host) {
+    const hit = cfCache.get(host);
+    if (hit && Date.now() - hit.at < CF_TTL) return hit;
+    if (failStreak >= FAIL_GIVEUP && Date.now() - lastFailAt < FAIL_BACKOFF) return null;
+    if (Date.now() - lastSolveAt < SOLVE_COOLDOWN) return null;
+    lastSolveAt = Date.now();
+    const mod = getSolver();
+    if (!mod || typeof mod.solve !== 'function') return null;
+    let r = null;
+    try { r = await mod.solve('https://' + host + '/', (m) => console.log('[ANIMEPAHE] ' + m)); } catch { r = null; }
+    if (r && r.ok && r.cookie) {
+        failStreak = 0;
+        cfCache.set(host, { cookie: r.cookie, ua: r.ua || UA, at: Date.now() });
+        console.log(`[ANIMEPAHE] 🥷 CF solve OK — cf_clearance cached (${host}, reuse ${CF_TTL / 60e3}m) ✅`);
+        return cfCache.get(host);
+    }
+    failStreak++; lastFailAt = Date.now();
+    console.log(`[ANIMEPAHE] 🥷 CF solve FAIL — ${String((r && r.why) || 'null').slice(0, 60)} (streak ${failStreak}) ⚠️`);
+    return null;
+}
+
 async function grab(url, o = {}) {
-    const r = await fetcher(url, {
-        headers: { 'User-Agent': UA, Accept: o.accept || 'text/html,*/*', 'Accept-Language': 'en-US,en;q=0.9', ...(o.referer ? { Referer: o.referer } : {}), ...(o.headers || {}) },
+    const headers = { 'User-Agent': UA, Accept: o.accept || 'text/html,*/*', 'Accept-Language': 'en-US,en;q=0.9', ...(o.referer ? { Referer: o.referer } : {}), ...(o.headers || {}) };
+    let r = await fetcher(url, {
+        headers,
         ...(o.method ? { method: o.method, body: o.body } : {}), signal: AbortSignal.timeout(o.timeout || TIMEOUT),
     });
+    if (r.status === 403 && !o.noSolve) {              // 🥷 CF wall → stealth-solve once → retry with clearance
+        const t403 = await r.text().catch(() => '');
+        if (isCF(t403)) {
+            const c = await clearance(new URL(url).host);
+            if (c) {
+                r = await fetcher(url, {
+                    headers: { ...headers, 'User-Agent': c.ua, Cookie: c.cookie },
+                    ...(o.method ? { method: o.method, body: o.body } : {}), signal: AbortSignal.timeout(o.timeout || TIMEOUT),
+                });
+            } else {
+                throw cfErr(new URL(url).host);
+            }
+        } else {
+            r = { ok: r.ok, status: r.status, headers: r.headers, text: async () => t403 };   // non-CF 403: re-readable
+        }
+    }
     if (!r.ok && !o.allowFail) {
         const e = new Error('HTTP ' + r.status + ' @ ' + url.slice(0, 60));
         if (r.status === 403) e.cf = true;
@@ -61,7 +116,7 @@ async function grab(url, o = {}) {
 const grabText = async (url, o = {}) => await (await grab(url, o)).text();
 
 // CF block page detector — the honest-wall signature
-const isCF = (txt) => /Attention Required|challenge-platform|Just a moment|cf-browser-verification/i.test(String(txt || '').slice(0, 4000));
+const isCF = (txt) => /Attention Required|challenge-platform|Just a moment|cf-browser-verification|Verifying you are human|Checking if you are human|Access denied|Error 1020/i.test(String(txt || '').slice(0, 4000));
 const cfErr = (host) => Object.assign(new Error(`${host} bot-traffic wall එකෙන් ඇතුලේ යන්න බෑ (Cloudflare) — ටික වෙලාවකින් ආයෙත් try කරන්න`), { cf: true });
 
 // ── API (JSON) ──
@@ -228,14 +283,16 @@ async function resolveDirect(pageUrl) {
     const tok = extractFormTokens(html);
     if (!tok) throw new Error('download form එක හම්බුණේ නෑ — file links expire වෙලා වෙන්න පුළුවන්');
     const u = new URL(pageUrl);
+    const cl = await clearance(u.host);   // 🥷 v3.03 stealth clearance reuse for the pahe.win POST (cached — no re-solve)
+    const cookieLine = [setCookies.join('; '), cl && cl.cookie].filter(Boolean).join('; ');
     const post = await fetch(tok.action, {
         method: 'POST',
         headers: {
-            'User-Agent': UA,
             'Content-Type': 'application/x-www-form-urlencoded',
             Referer: pageUrl,
             Origin: u.origin,
-            ...(setCookies.length ? { Cookie: setCookies.join('; ') } : {}),
+            ...(cookieLine ? { Cookie: cookieLine } : {}),
+            'User-Agent': cl && cl.ua ? cl.ua : UA,
         },
         body: '_token=' + encodeURIComponent(tok.token),
         redirect: 'manual',
@@ -417,18 +474,29 @@ function bridge(jid, qid, digits) {
     return s.cmd + ' go ' + d;
 }
 
-// boot health probe — one-shot console log (panel-network truth, 8s after boot)
+// boot health probe — one-shot console log (panel-network truth, ~9s after boot). v3.03: on a CF
+// wall it goes one step further — reports whether the stealth solver is installed and actually
+// tries ONE solve, so the boot log is the definitive "does .animepahe work here" truth.
 let booted = false;
 function healthCheck(delayMs = 9000) {
     if (booted) return;
     booted = true;
     const t = setTimeout(async () => {
         try {
+            if (process.env.ARENA_APHE_SOLVER === '0') { console.log('[ANIMEPAHE] solver disabled (ARENA_APHE_SOLVER=0) — plain fetch only'); }
             const r = await fetcher(`${BASE}/api?m=search&q=a&page=1`, { headers: { 'User-Agent': UA, Referer: BASE + '/' }, signal: AbortSignal.timeout(15e3) });
             const txt = await r.text().catch(() => '');
-            const cf = isCF(txt) ? ' CF-WALLED' : '';
+            const cf = isCF(txt);
             const json = !cf && /"data"/.test(txt) ? ' JSON-OK' : '';
-            console.log(`[ANIMEPAHE] ${HOST} boot probe = ${r.status}${cf}${json}${!cf && json ? ' ✅' : ' ⚠️'}`);
+            console.log(`[ANIMEPAHE] ${HOST} boot probe = ${r.status}${cf ? ' CF-WALLED' : ''}${json}${!cf && json ? ' ✅' : ' ⚠️'}`);
+            if (r.status === 403 || cf) {
+                if (process.env.ARENA_APHE_SOLVER === '0') { console.log('[ANIMEPAHE] → .animepahe answers honest wall cards (solver off by env)'); return; }
+                const mod = getSolver();
+                if (!mod) { console.log('[ANIMEPAHE] solver: puppeteer ABSENT (npm optionalDependencies not installed) — honest wall cards stay'); return; }
+                const c = await clearance(HOST);
+                if (c) console.log('[ANIMEPAHE] ✅ stealth SOLVE OK — cf_clearance cached, .animepahe READY 🥷');
+                else console.log('[ANIMEPAHE] ❌ stealth solve failed — honest wall cards stay (check panel RAM / chromium libs)');
+            }
         } catch (e) {
             console.log(`[ANIMEPAHE] ${HOST} boot probe FAIL ${String((e && e.message) || e).slice(0, 60)} ⚠️`);
         }
@@ -437,7 +505,13 @@ function healthCheck(delayMs = 9000) {
 }
 
 module.exports = {
-    handle, bridge, healthCheck, setFetcher, CMDS, BASE, HOST,
+    handle, bridge, healthCheck, setFetcher, setSolver, getSolver, clearance, CMDS, BASE, HOST,
     parseSearchRows, parseReleaseRows, parsePickDownload, extractFormTokens, resolveDirect,
-    fetchReleases, epLabel, isApUrl, _sessions: sessions,
+    fetchReleases, epLabel, isApUrl, _sessions: sessions, _cfCache: cfCache,
+    _cfTest: (p = {}) => {   // tests: deterministic solver-ladder state
+        if ('failStreak' in p) failStreak = p.failStreak;
+        if ('lastSolveAt' in p) lastSolveAt = p.lastSolveAt;
+        if ('lastFailAt' in p) lastFailAt = p.lastFailAt;
+        return { failStreak, lastSolveAt, lastFailAt };
+    },
 };

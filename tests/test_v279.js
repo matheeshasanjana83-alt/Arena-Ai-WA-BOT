@@ -40,8 +40,8 @@ if (!process.env.ARENA_OFFLINE) {
 
 console.log('— v2.79.0 pins —');
 ok('version + manifest', () => {
-    assert.ok(['2.79.0', '2.80.0', '2.81.0', '2.82.0', '2.83.0', '2.84.0', '2.85.0', '2.86.0', '2.87.0', '2.88.0', '2.89.0', '3.02.0', '3.02.0', '3.02.0'].includes(pkg.version), 'pkg ' + pkg.version);
-    assert.ok(['2.79.0', '2.80.0', '2.81.0', '2.82.0', '2.83.0', '2.84.0', '2.85.0', '2.86.0', '2.87.0', '2.88.0', '2.89.0', '3.02.0', '3.02.0', '3.02.0'].includes(manifest.version), 'manifest ' + manifest.version);
+    assert.ok(['2.79.0', '2.80.0', '2.81.0', '2.82.0', '2.83.0', '2.84.0', '2.85.0', '2.86.0', '2.87.0', '2.88.0', '2.89.0', '3.03.0', '3.03.0', '3.03.0'].includes(pkg.version), 'pkg ' + pkg.version);
+    assert.ok(['2.79.0', '2.80.0', '2.81.0', '2.82.0', '2.83.0', '2.84.0', '2.85.0', '2.86.0', '2.87.0', '2.88.0', '2.89.0', '3.03.0', '3.03.0', '3.03.0'].includes(manifest.version), 'manifest ' + manifest.version);
     assert.ok(manifest.notes.includes('EPISODE MENU FIX'), 'notes');
     assert.ok(manifest.files.includes('animehub.js') && manifest.files.includes('tests/test_v279.js'), 'files');
     assert.ok(typeof hub.epsWHFromHtml === 'function' && hub._cards.hvEpsCard, 'exports');
