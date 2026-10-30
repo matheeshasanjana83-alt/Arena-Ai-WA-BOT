@@ -1,15 +1,19 @@
 /**
- * cfsolver.js — v3.03.0 🥷 Cloudflare stealth solver (puppeteer-extra + stealth plugin)
+ * cfsolver.js — v3.03.2 🥷 Cloudflare stealth solver (v3.03.2: @sparticuz/chromium + puppeteer-core PRIMARY)
  * User directive: "වැඩි කල් පවතින ක්‍රමය: Puppeteer + Stealth — හරියටම ඇත්ත මිනිහෙක් Chrome
  * browser එකකින් ගේම් එකට එනවා වගේ" (2026-10-30, after .animepahe hit the CF wall).
  *
+ * Browser provisioning (panel truth 2026-10-30): puppeteer's CDN Chrome download produced an
+ * EMPTY version dir on the panel (install.mjs "exit 0" + /.cache/puppeteer/chrome/linux-… = [])
+ * → v3.03.2 ships the browser FROM THE NPM REGISTRY (@sparticuz/chromium ~72MB Brotli, the
+ * serverless standard) + puppeteer-core + stealth via addExtra() — the same channel that already
+ * installs every bot dependency reliably. Full-puppeteer stays as a fallback path.
+ *
  * Design:
- *  - ALL puppeteer code lives HERE — the bot requires this module lazily; if puppeteer is not
- *    installed (npm optionalDependencies skipped on the panel) require() fails and the caller
- *    answers the honest wall card. The bot NEVER crashes because of the browser.
+ *  - ALL browser code lives HERE — lazily required; absent installs = honest wall cards, the bot
+ *    NEVER crashes because of the browser.
  *  - ONE persistent browser (launched on first solve, kept warm) — not per-request (user knows
- *    the RAM cost: ~1GB class). Pages open/close per solve; browser.idle shutdown is NOT used
- *    (restart churn is worse than idle RAM on a panel).
+ *    the RAM cost: ~1GB class). Pages open/close per solve.
  *  - solve() returns { ok, cookie, ua, clearance } — the cookie is IP+UA-bound, so callers MUST
  *    reuse the SAME ua with plain fetch (cf_clearance pairs with the UA the browser showed).
  *  - Honest failure modes: no-chromium · ip-blocked ("Attention Required" = hard WAF block,
@@ -45,27 +49,48 @@ function ensureChrome(log) {
 }
 
 function libsAvailable() {
-    try { require('puppeteer-extra'); require('puppeteer-extra-plugin-stealth'); return true; } catch { return false; }
+    try { require('@sparticuz/chromium'); require('puppeteer-core'); return true; } catch { }
+    try { require('puppeteer-extra'); require('puppeteer-extra-plugin-stealth'); return true; } catch { }
+    return false;
 }
 
 async function getBrowser(log) {
     if (browser) return browser;
     if (browserFailed) return null;
     try {
-        const pe = require('puppeteer-extra');
-        const StealthPlugin = require('puppeteer-extra-plugin-stealth');
-        pe.use(StealthPlugin());
-        browser = await pe.launch({
-            headless: true,   // v25+: real Chrome-for-testing headless (not the old HeadlessChrome shell)
-            args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu', '--no-first-run', '--disable-blink-features=AutomationControlled'],
+        // PRIMARY: @sparticuz/chromium (npm-shipped real Chrome, self-extracts to /tmp) + puppeteer-core + stealth
+        const chromiumMod = require('@sparticuz/chromium');
+        const chromium = chromiumMod.default || chromiumMod;
+        const { addExtra } = require('puppeteer-extra');
+        const core = addExtra(require('puppeteer-core'));
+        try { core.use(require('puppeteer-extra-plugin-stealth')()); } catch { }
+        const exe = await chromium.executablePath();
+        browser = await core.launch({
+            headless: true,
+            executablePath: exe,
+            args: [...(chromium.args || []), '--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+            defaultViewport: chromium.defaultViewport || { width: 1366, height: 768 },
         });
         if (browser && typeof browser.on === 'function') browser.on('disconnected', () => { browser = null; });
         return browser;
-    } catch (e) {
-        browserFailed = true;
-        if (log) log('cfsolver launch FAIL: ' + String((e && e.message) || e).slice(0, 140));
-        if (MISSING_CHROME.test(String((e && e.message) || e))) ensureChrome(log);   // v3.03.1 self-heal
-        return null;
+    } catch (e1) {
+        // FALLBACK: full puppeteer (optionalDeps + CDN chrome) — the v3.03.0 path
+        try {
+            const pe = require('puppeteer-extra');
+            pe.use(require('puppeteer-extra-plugin-stealth')());
+            browser = await pe.launch({
+                headless: true,
+                args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu', '--no-first-run', '--disable-blink-features=AutomationControlled'],
+            });
+            if (browser && typeof browser.on === 'function') browser.on('disconnected', () => { browser = null; });
+            return browser;
+        } catch (e2) {
+            browserFailed = true;
+            const why = String((e2 && e2.message) || e2).slice(0, 140);
+            if (log) log('cfsolver launch FAIL (sparticuz: ' + String((e1 && e1.message) || e1).slice(0, 60) + ' | puppeteer: ' + why + ')');
+            if (MISSING_CHROME.test(why)) ensureChrome(log);   // v3.03.1 self-heal (legacy path only)
+            return null;
+        }
     }
 }
 

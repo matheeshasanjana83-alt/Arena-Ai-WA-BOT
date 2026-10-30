@@ -1,6 +1,6 @@
 {
   "name": "kaviz-md-v1",
-  "version": "3.03.1",
+  "version": "3.03.2",
   "description": "KAVIZ MD V1 — private WhatsApp bot (download, moviedex movies/series, youtube, social, AI, tools)",
   "main": "index.js",
   "scripts": {
@@ -18,14 +18,13 @@
     "pino": "^9.5.0",
     "undici": "^6.21.3",
     "youtubei.js": "^18.1.0",
-    "yt-search": "^2.13.1"
+    "yt-search": "^2.13.1",
+    "@sparticuz/chromium": "^153.0.0",
+    "puppeteer-core": "^25.16.0",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2"
   },
   "engines": {
     "node": ">=20.0.0"
-  },
-  "optionalDependencies": {
-    "puppeteer": "^25.16.0",
-    "puppeteer-extra": "^3.3.6",
-    "puppeteer-extra-plugin-stealth": "^2.11.2"
   }
 }
