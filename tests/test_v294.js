@@ -23,8 +23,8 @@ const botSrc = fs.readFileSync(__dirname + '/../bot.js', 'utf8');
 (async () => {
     console.log('— v2.96.0 pins —');
     ok('version 2.94 pkg+manifest + notes + markers', () => {
-        assert.strictEqual(pkg.version, '3.00.0', 'pkg ' + pkg.version);
-        assert.strictEqual(manifest.version, '3.00.0', 'manifest ' + manifest.version);
+        assert.strictEqual(pkg.version, '3.01.0', 'pkg ' + pkg.version);
+        assert.strictEqual(manifest.version, '3.01.0', 'manifest ' + manifest.version);
         assert.ok(manifest.notes.includes('AI REBRAND'), 'notes headline');
         assert.ok(aiSrc.includes('👑 OWNER MODE'), 'ai.js owner-mode marker');
         assert.ok(aiSrc.includes('IDENTITY LOCK (highest rule)'), 'ai.js identity-lock marker');
@@ -107,7 +107,7 @@ const botSrc = fs.readFileSync(__dirname + '/../bot.js', 'utf8');
         assert.ok(!/Together FLUX → Gemini → Pollinations \(auto fallback\)/.test(botSrc), 'old chain gone');
     });
     ok('owner plumbing: auto-chat + .ai command both pass { owner }', () => {
-        assert.ok(botSrc.includes('ai.ask(jid, text, { owner, context: chatCtx, group: isGroup })'), 'maybeAiReply passes owner+ctx (v3.00.0 shape — !!group was the ReferenceError bug)');   // v3.00.0: pin follows the FIX
+        assert.ok(botSrc.includes('ai.ask(jid, text, { owner, context: chatCtx, group: isGroup })'), 'maybeAiReply passes owner+ctx (v3.01.0 shape — !!group was the ReferenceError bug)');   // v3.01.0: pin follows the FIX
         assert.ok(botSrc.includes('ai.ask(jid, question, { owner: isFromOwner(msg.key), context: gctx || undefined, fast: false })'), 'handleAI passes owner (v2.96 shape)');
     });
 

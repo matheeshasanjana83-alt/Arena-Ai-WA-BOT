@@ -1,6 +1,9 @@
 'use strict';
 /**
- * zetasub.js — KAVIZ MD V1 v3.00.0 — 🎬 CineSubz/Cineru (zetaflix-family) mirror source for MovieDex.
+ * zetasub.js — KAVIZ MD V1 v3.01.0 — 🎬 CineSubz/Cineru (zetaflix-family) engine for the
+ * SEPARATE .cinesubz / .cineru commands (v3.01.0 — user: "Moviedex command එකට cinesubz,cineru
+ * mix කරන්න එපා ඒ දෙක වෙනම command දෙකක් ලෙස ඇඩ් කරන්න" → moviedex is MovieBox-ONLY again;
+ * every zeta touchpoint lives HERE, nothing leaks into moviedex menus).
  *
  * WHY: MovieBox VIP-blocked whole titles (user: '.moviedex mashle' → EVERY episode/quality answers
  * 'MovieBox මේ item එක VIP-only වෙලා — free copy එකක් නෑ' — verified 2026-10-30: all 4 mashle subject-ids,
@@ -10,7 +13,8 @@
  *
  * SOURCE LADDER: cinesubz.net (LIVE-verified end-to-end from sandbox 2026-10-30: search → tvshow →
  * episode pages → download links → resolve) → cineru.lk (CF-challenges the sandbox IP but the panel/
- * residential routes may pass — same zetaflix theme, same scraper).
+ * residential routes may pass — same zetaflix theme, same scraper). v3.01: NO auto domain-ladder in
+ * the commands (each command sticks to ITS site; ladder kept for zetaRow back-compat callers only).
  *
  * PIPELINE (all LIVE-verified against cinesubz.net):
  *   1. search  GET /wp-json/zetaflix/search/?keyword=X&nonce=<n>  — nonce from any page HTML
@@ -24,9 +28,11 @@
  *   4. resolve link page JS: masked href 'https://google.com/serverN/1:/…' + urlMappings
  *      [{search:[...],replace:'https://drive.csplayer2.space/serverN/'}] → real CDN url
  *      + '.mp4?bot=…' → '?ext=mp4&bot=…' fix (parsed from the page, never hardcoded)
- *   5. download ranged-parallel (moviedex downloadDash row.zeta route) — CF may challenge datacenter
- *      IPs on the CDN; bot.js never fakes success — honest error when the mirror refuses.
+ *   5. download ranged-parallel zetaDownload() (moved here from moviedex v3.01) — CF may challenge
+ *      datacenter IPs on the CDN; on 403-challenge one proxy-pool window, then HONEST fail.
  */
+const fs = require('fs');
+const path = require('path');
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
 const TTL = 10 * 60e3;
 const DOMAINS = ['https://cinesubz.net', 'https://cineru.lk'];
@@ -228,4 +234,106 @@ async function zetaRow(title, se, ep, wantH = 0, cache) {
     return { label: pick.label, h: pick.h, sizeMB: pick.sizeMB, lang: pick.lang, url: res.url, fname: res.fname || found.showInfo.name, showName: found.showInfo.name, isMovie: !!found.isMovie };
 }
 
-module.exports = { DOMAINS, UA, parseNonce, parseSearch, parseTv, parseLinks, parseLinkPage, matchScore, normTitle, getNonce, markBad, isBad, zetaSearch, zetaFindShow, zetaTvPage, zetaEpisodeUrl, zetaLinks, zetaResolve, zetaRow, _state: dState };
+/* ───────── zetaDownload — ranged-parallel CDN download (moved here from moviedex v3.01) ─────────
+ * CineSubz/Cineru CDN MP4s (drive.csplayer2.space time-signed links, zetaResolve output).
+ * Ranged-parallel, browser UA; the CDN CF-challenges some datacenter IPs — on a 403 challenge the
+ * engine gives the free-proxy pool ONE window (small episodes may pass), then fails HONESTLY. */
+async function zetaDownload(zeta, { tmpDir, finalName, onProgress }) {
+    fs.mkdirSync(tmpDir, { recursive: true });
+    const outPath = path.join(tmpDir, finalName);
+    const url = zeta.url;
+    const hdrs = () => ({ 'User-Agent': UA, Accept: '*/*', 'Accept-Language': 'en-US,en;q=0.9', Referer: 'https://cinesubz.net/' });
+    const openRes = async (u, range) => {
+        const r = await fetch(u, { headers: { ...hdrs(), ...(range ? { Range: range } : {}) }, redirect: 'follow', signal: AbortSignal.timeout(60000) });
+        return r;
+    };
+    const cfHit = (r) => r.status === 403 && /cf-mitigated|challenge/i.test([...r.headers.keys()].map((k) => k + ':' + r.headers.get(k)).join(' '));
+    const head = await openRes(url, 'bytes=0-1');
+    const headCf = cfHit(head);
+    if (!head.ok && head.status !== 206 && !headCf) { try { await head.body?.cancel(); } catch { } throw new Error('mirror CDN HTTP ' + head.status); }
+    const cr = head.headers.get('content-range') || '';
+    let total = Number((cr.split('/')[1] || head.headers.get('content-length') || 0)) || 0;
+    try { await head.body?.cancel(); } catch { }
+    if (!total && !headCf) throw new Error('mirror file size එක unknown');
+    // ⚡ CF-challenge fallback — one proxy-pool window (residential exits often pass Cloudflare)
+    let dispatcher = null;
+    if (headCf) {
+        console.log('[zetasub] 🪞 mirror CDN challenged → proxy pool window…');
+        const pool = require('./proxypool');
+        try { await pool.ensureReady(20000); } catch { }
+        const cands = pool.candidates(2);
+        let poolOk = false;
+        for (const p of cands) {
+            try {
+                const undici = require('undici');
+                const r2 = await undici.fetch(url + (url.includes('?') ? '&' : '?') + 'zc=' + Date.now(), {
+                    dispatcher: new undici.ProxyAgent({ uri: p, connect: { timeout: 8000 } }),
+                    headers: { ...hdrs(), Range: 'bytes=0-1023' }, signal: AbortSignal.timeout(25000),
+                });
+                const b = await r2.arrayBuffer();
+                if (r2.status === 206 && b.byteLength > 100) {
+                    poolOk = true;
+                    dispatcher = new undici.ProxyAgent({ uri: p, connect: { timeout: 15000 }, bodyTimeout: 120e3, headersTimeout: 60e3 });
+                    total = Number((r2.headers.get('content-range') || '').split('/')[1]) || total;
+                    console.log('[zetasub] 🪞 pool proxy හරහා වැඩ ✅ (' + new URL(p).host + ')');
+                    break;
+                }
+            } catch { }
+        }
+        if (!poolOk) throw new Error('mirror CDN මේ server IP එකට CF-block — proxy pool එකෙනුත් බැරි උනා');
+    }
+    const CHUNK = 4 * 1048576;
+    const chunks = Math.ceil(total / CHUNK);
+    let got = 0, cursor = 0, stop = false, lastByteAt = Date.now();
+    const wd = setInterval(() => { if (Date.now() - lastByteAt > 150e3) stop = true; }, 15000);
+    const fd = fs.openSync(outPath, 'w');
+    try {
+        try { fs.ftruncateSync(fd, total); } catch { }
+        const results = new Map();
+        let nextWrite = 0;
+        const nW = parseInt(process.env.ARENA_DL_WORKERS || '10', 10) || 10;
+        const doFetch = dispatcher
+            ? (u, range) => require('undici').fetch(u + (u.includes('?') ? '&' : '?') + 'zc=' + Math.random().toString(36).slice(2, 7), { dispatcher, headers: { ...hdrs(), ...(range ? { Range: range } : {}) }, signal: AbortSignal.timeout(90000) })
+            : openRes;
+        await Promise.all(Array.from({ length: Math.min(nW, chunks) }, async () => {
+            while (!stop) {
+                const idx = cursor < chunks ? cursor++ : null;
+                if (idx == null) return;
+                let ok = false;
+                for (let t = 0; t < 3 && !stop && !ok; t++) {
+                    try {
+                        const r = await doFetch(url, `bytes=${idx * CHUNK}-${Math.min(total, (idx + 1) * CHUNK) - 1}`);
+                        if (r.status === 206 || r.ok) {
+                            const buf = Buffer.from(await r.arrayBuffer());
+                            try { await r.body?.cancel(); } catch { }
+                            if (buf.length > 0) {
+                                results.set(idx, buf);
+                                lastByteAt = Date.now();
+                                while (results.has(nextWrite)) {
+                                    const b = results.get(nextWrite); results.delete(nextWrite);
+                                    fs.writeSync(fd, b, 0, b.length, nextWrite * CHUNK);
+                                    got += b.length; nextWrite++;
+                                }
+                                if (onProgress && nextWrite % 2 === 0) onProgress(Math.min(99, Math.floor(nextWrite * 100 / chunks)), got);
+                                ok = true;
+                            }
+                        } else { try { await r.body?.cancel(); } catch { } }
+                    } catch { }
+                    if (!ok && t < 2) await sleepMs(400 * (t + 1));
+                }
+                if (!ok) { stop = true; throw new Error('mirror CDN chunk fail — ආයෙත් try'); }
+            }
+        }));
+        if (got < total) throw new Error('mirror download අසම්පූර්ණ (' + Math.round(got * 100 / total) + '%)');
+        clearInterval(wd);
+        fs.closeSync(fd);
+        return { path: outPath, bytes: got, hevc: false };
+    } catch (e) {
+        clearInterval(wd);
+        try { fs.closeSync(fd); } catch { }
+        try { fs.rmSync(outPath, { force: true }); } catch { }
+        throw e;
+    }
+}
+
+module.exports = { DOMAINS, UA, parseNonce, parseSearch, parseTv, parseLinks, parseLinkPage, matchScore, normTitle, getNonce, markBad, isBad, zetaSearch, zetaFindShow, zetaTvPage, zetaEpisodeUrl, zetaLinks, zetaResolve, zetaRow, zetaDownload, _state: dState };

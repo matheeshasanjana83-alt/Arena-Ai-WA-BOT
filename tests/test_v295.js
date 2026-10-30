@@ -24,7 +24,7 @@ const pkg = require('../package.json');
 const manifest = require('../manifest.json');
 const ai = require('../ai');
 ai._history.clear();   // deterministic — no stale in-memory history from loadMemory
-require('../antibug')._state.lockdownUntil = 0;   // 🐛 v3.00.0: storm-lock from earlier antibug suites (v255/v277) silently killed every maybeAiReply gate (0 sends) — order-independent e2e
+require('../antibug')._state.lockdownUntil = 0;   // 🐛 v3.01.0: storm-lock from earlier antibug suites (v255/v277) silently killed every maybeAiReply gate (0 sends) — order-independent e2e
 const bot = require('../bot');
 const tools = require('../tools');
 const P = require('../pollinations');           // monkey-patch target (require cache shared with bot.js)
@@ -54,8 +54,8 @@ const videoMsg = (over = {}) => ({ key: { remoteJid: 'dm295d@s.whatsapp.net', id
 (async () => {
     console.log('— v2.96.0 pins + markers —');
     ok('version 2.95 pkg+manifest + notes + source markers', () => {
-        assert.strictEqual(pkg.version, '3.00.0', 'pkg ' + pkg.version);
-        assert.strictEqual(manifest.version, '3.00.0', 'manifest ' + manifest.version);
+        assert.strictEqual(pkg.version, '3.01.0', 'pkg ' + pkg.version);
+        assert.strictEqual(manifest.version, '3.01.0', 'manifest ' + manifest.version);
         assert.ok(manifest.notes.includes('MEDIA AI'), 'notes headline');
         assert.ok(manifest.files.includes('tests/test_v295.js'), 'manifest lists test_v295.js');
         assert.ok(aiSrc.includes('CTX_OVERRIDE'), 'ai.js chat-context slot');

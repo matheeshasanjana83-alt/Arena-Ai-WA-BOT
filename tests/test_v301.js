@@ -1,21 +1,21 @@
 /**
- * test_v301.js — 🎬 MOVIEDEX ZETA MIRROR (user: 'Asitha md moviepro එකෙ ඔනි එකක් ගන්න පුලුවන් මගෙ එකෙ error එනවා moviedex එකෙ එක බලලා හදන්න').
- * EVIDENCE (live probes 2026-10-30): MovieBox VIP-blocked ALL mashle sids × resolutions × both paths
+ * test_v301.js — 🎬 CINESUBZ/CINERU ENGINE (v3.00 zeta mirror → v3.01 SEPARATE commands).
+ * HISTORY (live probes 2026-10-30): MovieBox VIP-blocked ALL mashle sids × resolutions × both paths
  * ('VIP-only' throw) while Asitha-MD MoviePro downloads the same series — its API docs list /cinesubz/*
  * + /cineru/* (zetaflix-family Sri-Lankan sites). cinesubz.net verified END-TO-END from sandbox:
  * search (zetaflix API + nonce) → tvshow page episode anchors (data-pid/data-season/data-episode) →
  * episode page zt-links + download-meta → link-page urlMappings → drive.csplayer2.space real MP4
  * (S1E1 720p 280MB · S2E1 480p 150MB constructed-slug · The Flash movie 480p 900MB).
- * FIX: zetasub.js NEW (pure parsers + domain ladder cinesubz→cineru) · moviedex downloadDash row.zeta
- * route (zetaDownload ranged engine + CF-challenge → one proxy-pool window → honest fail) ·
- * deliverStream VIP-only → auto mirror fallback (recursive, 🪞) · season-pack per-ep mirror fallback.
+ * v3.01 USER DIRECTIVE: 'Moviedex command එකට cinesubz,cineru mix කරන්න එපා ඒ දෙක වෙනම command දෙකක් ලෙස'
+ * → moviedex UN-MIXED (zero zeta refs — VIP-only honest error again); zetaDownload engine MOVED to
+ * zetasub.js; .cinesubz/.cineru commands = cinesite.js (own suite test_v302).
  * Tested here (ALL OFFLINE — fixtures from the live-captured shapes, fetch mocked):
  *  (1) parseNonce / parseSearch / parseTv (slug base incl. trailing slash) / parseLinks (episode +
  *      movie meta variants) / parseLinkPage (mask+mappings+ext fix + entity decode + already-direct)
  *  (2) matchScore fuzzy title matching
- *  (3) zetaDownload engine: ranged-parallel write + CF-challenge honest throw
- *  (4) moviedex integration markers: row.zeta route · deliverStream VIP fallback · season-loop fallback
- *  (5) pins 3.00.0 pkg+manifest + notes headline + manifest lists zetasub.js + test_v301.js
+ *  (3) zetaDownload engine (now in zetasub): ranged-parallel write + CF-challenge honest throw
+ *  (4) UN-MIX markers: moviedex has ZERO zeta references · zetasub exports zetaDownload
+ *  (5) pins 3.01.0 pkg+manifest + notes headline + manifest lists zetasub.js + cinesite.js + test_v302
  */
 process.env.ARENA_AI_MEMORY_FILE = __dirname + '/../.test_v301_mem.json';
 const fs = require('fs');
@@ -34,24 +34,32 @@ const mvSrc = fs.readFileSync(REPO + '/moviedex.js', 'utf8');
 const zetaSrc = fs.readFileSync(REPO + '/zetasub.js', 'utf8');
 
 (async () => {
-    console.log('— v3.00.0 pins + markers —');
-    ok('version 3.00.0 pkg+manifest · notes headline · manifest lists zetasub.js + test_v301.js', () => {
-        assert.strictEqual(pkg.version, '3.00.0', 'pkg ' + pkg.version);
-        assert.strictEqual(manifest.version, '3.00.0', 'manifest ' + manifest.version);
-        assert.ok(manifest.notes.includes('MOVIEDEX ZETA MIRROR'), 'notes headline');
+    console.log('— v3.01.0 pins + markers —');
+    ok('version 3.01.0 pkg+manifest · notes headline · manifest lists zetasub.js + cinesite.js + test_v302.js', () => {
+        assert.strictEqual(pkg.version, '3.01.0', 'pkg ' + pkg.version);
+        assert.strictEqual(manifest.version, '3.01.0', 'manifest ' + manifest.version);
+        assert.ok(manifest.notes.includes('CINESUBZ + CINERU SEPARATE COMMANDS'), 'notes headline');
         assert.ok(manifest.files.includes('zetasub.js'), 'manifest lists zetasub.js');
-        assert.ok(manifest.files.includes('tests/test_v301.js'), 'manifest lists test_v301.js');
+        assert.ok(manifest.files.includes('cinesite.js'), 'manifest lists cinesite.js');
+        assert.ok(manifest.files.includes('tests/test_v302.js'), 'manifest lists test_v302.js');
     });
-    ok('integration markers: moviedex row.zeta route + deliverStream VIP fallback + season-loop fallback · zetasub ladder', () => {
-        assert.ok(mvSrc.includes("require('./zetasub')"), 'ZETA require');
-        assert.ok(mvSrc.includes('if (row.zeta) return zetaDownload(row.zeta'), 'downloadDash zeta route');
-        assert.ok(mvSrc.includes('/VIP-only/.test(em) && row.direct && !qrow._zetaTried'), 'deliverStream VIP fallback gate');
-        assert.ok(mvSrc.includes('ZETA.zetaRow(show ||'), 'deliverStream mirror lookup');
-        assert.ok(mvSrc.includes('CineSubz/Cineru mirror'), 'mirror UX strings');
-        assert.ok(/VIP-only\/\.test\(String\(err\.message/.test(mvSrc), 'season-loop VIP gate');
-        assert.ok(mvSrc.includes('zetaCache'), 'season-run title cache');
+    ok('UN-MIX markers: moviedex has ZERO zeta refs · zetasub owns zetaDownload · cinesite wired in bot.js', () => {
+        assert.ok(!mvSrc.includes("require('./zetasub')"), 'moviedex zeta require GONE');
+        assert.ok(!mvSrc.includes('zetaDownload'), 'moviedex zetaDownload GONE');
+        assert.ok(!mvSrc.includes('zetaRow'), 'moviedex zetaRow GONE');
+        assert.ok(!mvSrc.includes('_zetaTried'), 'moviedex _zetaTried GONE');
+        assert.ok(!mvSrc.includes('zetaCache'), 'moviedex zetaCache GONE');
+        assert.ok(mvSrc.includes('row.direct) return directDownload'), 'downloadDash direct route intact');
+        assert.ok(zetaSrc.includes('async function zetaDownload'), 'zetaDownload now in zetasub.js');
+        const botSrc = fs.readFileSync(REPO + '/bot.js', 'utf8');
+        assert.ok(botSrc.includes("require('./cinesite')"), 'bot.js requires cinesite');
+        assert.ok(botSrc.includes("cinesite.handle(c"), 'bot.js dispatches cinesite.handle');
+        assert.ok(botSrc.includes('cinesite.bridge(jid0, qid, text)'), 'bot.js numeric bridge chain');
+        assert.ok(botSrc.includes("'.cinesubz', '.cineru'"), 'HEAVY has both commands');
+        assert.ok(botSrc.includes('cinesite.healthCheck(8000)'), 'boot health probe wired');
         assert.ok(zetaSrc.includes("DOMAINS = ['https://cinesubz.net', 'https://cineru.lk']"), 'domain ladder');
-        assert.ok(zetaSrc.includes('cf-mitigated') === false && mvSrc.includes('cf-mitigated'), 'CF challenge detection in downloader');
+        assert.ok(zetaSrc.includes('cfHit') && zetaSrc.includes('cf-mitigated'), 'CF challenge detection in zetasub downloader (cfHit + cf-mitigated regex)');
+        assert.ok(!mvSrc.includes('cf-mitigated') && !mvSrc.includes('zetaRow'), 'moviedex stays CF/zeta-free');
     });
 
     console.log('— pure parsers (live-shaped fixtures) —');
@@ -135,8 +143,7 @@ const zetaSrc = fs.readFileSync(REPO + '/zetasub.js', 'utf8');
         };
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'zeta-test-'));
         try {
-            const mvx = require('../moviedex');
-            const res = await mvx.downloadDash({ zeta: { url: 'https://cdn.test/file.mp4?ext=mp4' } }, { tmpDir, finalName: 'test.mp4', onProgress: null });
+            const res = await Z.zetaDownload({ url: 'https://cdn.test/file.mp4?ext=mp4' }, { tmpDir, finalName: 'test.mp4', onProgress: null });
             assert.strictEqual(res.bytes, total, 'bytes complete');
             const st = fs.statSync(res.path);
             assert.strictEqual(st.size, total, 'file size');
@@ -147,9 +154,8 @@ const zetaSrc = fs.readFileSync(REPO + '/zetasub.js', 'utf8');
         globalThis.fetch = async () => ({ status: 403, ok: false, headers: new Map([['cf-mitigated', 'challenge']]), body: { cancel: async () => { } } });
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'zeta-cf-'));
         try {
-            const mvx = require('../moviedex');
             let msg = '';
-            try { await mvx.downloadDash({ zeta: { url: 'https://cdn.test/x.mp4' } }, { tmpDir, finalName: 'x.mp4', onProgress: null }); }
+            try { await Z.zetaDownload({ url: 'https://cdn.test/x.mp4' }, { tmpDir, finalName: 'x.mp4', onProgress: null }); }
             catch (e) { msg = String(e.message || e); }
             assert.ok(/CF-block/.test(msg), 'honest CF error: ' + msg);
         } finally { globalThis.fetch = realFetch; fs.rmSync(tmpDir, { recursive: true, force: true }); }

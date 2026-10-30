@@ -34,7 +34,7 @@ const pkg = require('../package.json');
 const manifest = require('../manifest.json');
 const ai = require('../ai');
 ai._history.clear();
-require('../antibug')._state.lockdownUntil = 0;   // 🐛 v3.00.0: storm-lock from earlier antibug suites silently killed maybeAiReply gates (order-independent e2e)
+require('../antibug')._state.lockdownUntil = 0;   // 🐛 v3.01.0: storm-lock from earlier antibug suites silently killed maybeAiReply gates (order-independent e2e)
 const bot = require('../bot');
 const aiSrc = fs.readFileSync(__dirname + '/../ai.js', 'utf8');
 const botSrc = fs.readFileSync(__dirname + '/../bot.js', 'utf8');
@@ -60,10 +60,10 @@ const stickerVisionFetch = (url) => {
 };
 
 (async () => {
-    console.log('— v3.00.0 pins + markers —');
-    ok('version 3.00.0 pkg+manifest + manifest lists test_v297.js', () => {
-        assert.strictEqual(pkg.version, '3.00.0', 'pkg ' + pkg.version);
-        assert.strictEqual(manifest.version, '3.00.0', 'manifest ' + manifest.version);
+    console.log('— v3.01.0 pins + markers —');
+    ok('version 3.01.0 pkg+manifest + manifest lists test_v297.js', () => {
+        assert.strictEqual(pkg.version, '3.01.0', 'pkg ' + pkg.version);
+        assert.strictEqual(manifest.version, '3.01.0', 'manifest ' + manifest.version);
         assert.ok(manifest.files.includes('tests/test_v297.js'), 'manifest lists test_v297.js');
         assert.ok(manifest.notes.includes('TEXT'), 'notes headline mentions TEXT fix');
     });
