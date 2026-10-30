@@ -1,5 +1,5 @@
 /**
- * test_v305.js — 🥷 CHROME SELF-HEAL (v3.03.1)
+ * test_v305.js — 🥷 CHROME SELF-HEAL (v3.03.3)
  * Panel boot truth (v3.03.0 boot log 2026-10-30): puppeteer JS installed on the panel but the
  * Chrome binary was MISSING → "Could not find Chrome (ver. 156…)" → solve honestly failed.
  * Fix: (1) scripts/get-chrome.js runs puppeteer's own installer on every npm install (postinstall
@@ -20,10 +20,10 @@ const manifest = JSON.parse(fs.readFileSync(REPO + '/manifest.json', 'utf8'));
 const cs = require('../cfsolver');
 
 (async () => {
-    console.log('— v3.03.1 pins —');
-    ok('version 3.03.1 pkg+manifest · notes headline · manifest lists scripts/get-chrome.js + test_v305.js', () => {
-        assert.strictEqual(pkg.version, '3.03.1', 'pkg ' + pkg.version);
-        assert.strictEqual(manifest.version, '3.03.1', 'manifest ' + manifest.version);
+    console.log('— v3.03.3 pins —');
+    ok('version 3.03.3 pkg+manifest · notes headline · manifest lists scripts/get-chrome.js + test_v305.js', () => {
+        assert.strictEqual(pkg.version, '3.03.3', 'pkg ' + pkg.version);
+        assert.strictEqual(manifest.version, '3.03.3', 'manifest ' + manifest.version);
         assert.ok(manifest.notes.includes('CHROME SELF-HEAL'), 'notes headline');
         assert.ok(manifest.files.includes('scripts/get-chrome.js'), 'get-chrome in manifest');
         assert.ok(manifest.files.includes('tests/test_v305.js'), 'test in manifest');

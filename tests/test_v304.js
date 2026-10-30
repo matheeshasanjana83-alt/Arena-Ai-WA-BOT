@@ -1,5 +1,5 @@
 /**
- * test_v304.js — 🥷 CF STEALTH SOLVER LADDER (v3.03.2)
+ * test_v304.js — 🥷 CF STEALTH SOLVER LADDER (v3.03.3)
  * User directive (2026-10-30): "වැඩි කල් පවතින ක්‍රමය: Puppeteer + Stealth" — real stealth Chrome
  * solves the Cloudflare wall, cf_clearance (IP+UA-bound) + its exact UA are cached and reused with
  * plain fetch. cfsolver.js holds ALL puppeteer code (lazy require — absent install = honest wall).
@@ -7,7 +7,7 @@
  * status:403 } in 658ms — hard WAF block honestly detected, never faked. Panel verdict = boot log
  * ([ANIMEPAHE] stealth SOLVE OK / FAILED).
  * Tested here (ALL OFFLINE — solver stub injected via setSolver, mock fetcher):
- *  (1) pins 3.03.2 · optionalDependencies (puppeteer/extra/stealth) · cfsolver source markers
+ *  (1) pins 3.03.3 · optionalDependencies (puppeteer/extra/stealth) · cfsolver source markers
  *  (2) FULL ladder e2e: 403 CF → solve → retry with Cookie+exact-UA → 200 JSON → search card
  *  (3) cookie cache: second wall uses cached clearance, solver NOT called again (RAM guard)
  *  (4) honest fallbacks: solver ABSENT → wall card · solver throws → wall card · non-CF 403 → plain HTTP error, solver untouched
@@ -59,10 +59,10 @@ const JID = '94724768017@s.whatsapp.net';
 const resetState = () => { ap._cfCache.clear(); ap._cfTest({ failStreak: 0, lastSolveAt: 0, lastFailAt: 0 }); };
 
 (async () => {
-    console.log('— v3.03.2 pins & markers —');
-    ok('version 3.03.2 pkg+manifest · notes headline · manifest lists cfsolver.js + test_v304.js', () => {
-        assert.strictEqual(pkg.version, '3.03.2', 'pkg ' + pkg.version);
-        assert.strictEqual(manifest.version, '3.03.2', 'manifest ' + manifest.version);
+    console.log('— v3.03.3 pins & markers —');
+    ok('version 3.03.3 pkg+manifest · notes headline · manifest lists cfsolver.js + test_v304.js', () => {
+        assert.strictEqual(pkg.version, '3.03.3', 'pkg ' + pkg.version);
+        assert.strictEqual(manifest.version, '3.03.3', 'manifest ' + manifest.version);
         assert.ok(manifest.notes.includes('CF STEALTH SOLVER'), 'notes headline');
         assert.ok(manifest.files.includes('cfsolver.js') && manifest.files.includes('tests/test_v304.js'), 'manifest files');
     });

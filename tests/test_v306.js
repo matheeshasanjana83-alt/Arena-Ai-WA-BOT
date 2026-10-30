@@ -1,8 +1,8 @@
 /**
- * test_v306.js — 🥷 NPM-SHIPPED CHROMIUM (v3.03.2)
+ * test_v306.js — 🥷 NPM-SHIPPED CHROMIUM (v3.03.3)
  * Panel truth deepened: v3.03.1 install.mjs "exit 0" twice, yet /.cache/puppeteer/chrome/
  * linux-156.0.8078.47 = EMPTY dir (panel file-list API) — the CDN Chrome download never lands
- * on the panel. v3.03.2 ships the browser from the NPM REGISTRY instead:
+ * on the panel. v3.03.3 ships the browser from the NPM REGISTRY instead:
  *   @sparticuz/chromium (real Chrome build, self-extracts to /tmp) + puppeteer-core +
  *   puppeteer-extra/stealth via addExtra() — the same channel that installs every bot dep.
  * Sandbox e2e evidence (2026-10-30): sparticuz launch → example.com title OK, UA = real Chrome
@@ -24,10 +24,10 @@ const cs = require('../cfsolver');
 const solverSrc = fs.readFileSync(REPO + '/cfsolver.js', 'utf8');
 
 (async () => {
-    console.log('— v3.03.2 pins —');
-    ok('version 3.03.2 pkg+manifest · notes headline · manifest lists test_v306.js + cfsolver.js', () => {
-        assert.strictEqual(pkg.version, '3.03.2', 'pkg ' + pkg.version);
-        assert.strictEqual(manifest.version, '3.03.2', 'manifest ' + manifest.version);
+    console.log('— v3.03.3 pins —');
+    ok('version 3.03.3 pkg+manifest · notes headline · manifest lists test_v306.js + cfsolver.js', () => {
+        assert.strictEqual(pkg.version, '3.03.3', 'pkg ' + pkg.version);
+        assert.strictEqual(manifest.version, '3.03.3', 'manifest ' + manifest.version);
         assert.ok(manifest.notes.includes('NPM-SHIPPED CHROMIUM'), 'notes headline');
         assert.ok(manifest.files.includes('tests/test_v306.js') && manifest.files.includes('cfsolver.js'), 'manifest files');
     });
@@ -66,6 +66,15 @@ const solverSrc = fs.readFileSync(REPO + '/cfsolver.js', 'utf8');
         const { execFileSync } = require('child_process');
         const out = execFileSync(process.execPath, [REPO + '/scripts/get-chrome.js'], { encoding: 'utf8', timeout: 30000 });
         assert.ok(/puppeteer not installed/.test(out), 'legacy absent log');
+    });
+
+    ok('v3.03.3 cfProxy: browser rides the SAME proxy as fetches (DL_PROXY env > settings.json proxy) — cf_clearance IP-bound', () => {
+        assert.ok(typeof cs.cfProxy === 'function', 'cfProxy export');
+        process.env.DL_PROXY = 'http://resi.example:8080';
+        try { assert.strictEqual(cs.cfProxy(), 'http://resi.example:8080', 'env proxy'); }
+        finally { delete process.env.DL_PROXY; }
+        assert.ok(solverSrc.includes('--proxy-server='), 'browser launch proxy arg');
+        assert.ok(solverSrc.includes("settings.json"), 'settings.json source parity with net.js');
     });
 
     console.log(`\n${pass} passed, ${fail} failed`);

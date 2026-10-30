@@ -31,15 +31,15 @@ const fs = require('fs');
         assert.strictEqual(typeof hub.resolveEpisode, 'function');
         assert.strictEqual(typeof hub.nekobot, 'function');
     });
-    ok('no new scrap-fat deps in package.json (v3.03.2: user-directed CF solver stack allowlisted)', () => {
+    ok('no new scrap-fat deps in package.json (v3.03.3: user-directed CF solver stack allowlisted)', () => {
         const d = pkg.dependencies;
         assert.ok(!Object.keys(d).some((k) => /cheerio|curl_cffi|hono|redis|mongo/i.test(k)), 'no scrap-fat deps');
         assert.ok(!Object.keys(d).some((k) => /^puppeteer$/.test(k)), 'no FULL puppeteer (CDN chrome dead on panel) — @sparticuz/chromium + puppeteer-core + extra/stealth are the user-directed v3.03 stack');
         assert.ok(d['@sparticuz/chromium'] && d['puppeteer-core'] && d['puppeteer-extra'], 'solver stack present');
     });
     ok('version pins (modernized v2.76/77 era)', () => {
-        assert.ok(['2.75.0', '2.76.0', '2.77.0', '2.78.0', '2.79.0', '2.80.0', '2.81.0', '2.82.0', '2.83.0', '2.84.0', '2.85.0', '2.86.0', '2.87.0', '2.88.0', '2.89.0', '3.03.2', '3.03.2', '3.03.2'].includes(pkg.version), 'pkg: ' + pkg.version);
-        assert.ok(['2.75.0', '2.76.0', '2.77.0', '2.78.0', '2.79.0', '2.80.0', '2.81.0', '2.82.0', '2.83.0', '2.84.0', '2.85.0', '2.86.0', '2.87.0', '2.88.0', '2.89.0', '3.03.2', '3.03.2', '3.03.2'].includes(manifest.version), 'manifest: ' + manifest.version);
+        assert.ok(['2.75.0', '2.76.0', '2.77.0', '2.78.0', '2.79.0', '2.80.0', '2.81.0', '2.82.0', '2.83.0', '2.84.0', '2.85.0', '2.86.0', '2.87.0', '2.88.0', '2.89.0', '3.03.3', '3.03.3', '3.03.3'].includes(pkg.version), 'pkg: ' + pkg.version);
+        assert.ok(['2.75.0', '2.76.0', '2.77.0', '2.78.0', '2.79.0', '2.80.0', '2.81.0', '2.82.0', '2.83.0', '2.84.0', '2.85.0', '2.86.0', '2.87.0', '2.88.0', '2.89.0', '3.03.3', '3.03.3', '3.03.3'].includes(manifest.version), 'manifest: ' + manifest.version);
         assert.ok(manifest.files.includes('animehub.js'), 'manifest has animehub.js');
         assert.ok(manifest.notes.includes('.aniworld'), 'manifest notes mention aniworld');
     });

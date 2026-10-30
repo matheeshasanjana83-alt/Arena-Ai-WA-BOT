@@ -1,5 +1,5 @@
 /**
- * test_v303.js — 🎌 .animepahe COMMAND (v3.03.1)
+ * test_v303.js — 🎌 .animepahe COMMAND (v3.03.3)
  * Source contract: ElijahCodes12345/animepahe-api (user-specified reference) ported keyless:
  *   search GET /api?m=search&q=&page=1 → {data:[{session,slug,title,poster,type,episodes,year}]}
  *   releases GET /api?m=release&id=&sort=episode_asc&page=N → {last_page, data:[{session,episode,episode2,audio}]}
@@ -16,7 +16,7 @@
  *  (6) honest failures: CF 403 wall card · API JSON fail · no-links episode · empty search · expired session
  *  (7) bridge: reply-only cardId enforcement + .animepahe/.aphe per-command routing · URL jumps (/play/ → quality)
  *  (8) bot.js wiring markers: require · router · 9-level numeric chain · HEAVY · boot healthCheck · HELP/CATS rows
- *  (9) pins 3.03.1 pkg+manifest+notes+manifest.files(animepahe.js + test_v303.js)
+ *  (9) pins 3.03.3 pkg+manifest+notes+manifest.files(animepahe.js + test_v303.js)
  */
 process.env.ARENA_AI_MEMORY_FILE = __dirname + '/../.test_v303_mem.json';
 const fs = require('fs');
@@ -88,10 +88,10 @@ const last = (c) => c.sent[c.sent.length - 1].content.text || '';
 const JID = '94724768017@s.whatsapp.net';
 
 (async () => {
-    console.log('— v3.03.1 pins —');
-    ok('version 3.03.1 pkg+manifest · notes headline · manifest lists animepahe.js + test_v303.js', () => {
-        assert.strictEqual(pkg.version, '3.03.1', 'pkg ' + pkg.version);
-        assert.strictEqual(manifest.version, '3.03.1', 'manifest ' + manifest.version);
+    console.log('— v3.03.3 pins —');
+    ok('version 3.03.3 pkg+manifest · notes headline · manifest lists animepahe.js + test_v303.js', () => {
+        assert.strictEqual(pkg.version, '3.03.3', 'pkg ' + pkg.version);
+        assert.strictEqual(manifest.version, '3.03.3', 'manifest ' + manifest.version);
         assert.ok(manifest.notes.includes('ANIMEPAHE COMMAND'), 'notes headline');
         assert.ok(manifest.files.includes('animepahe.js'), 'manifest lists animepahe.js');
         assert.ok(manifest.files.includes('tests/test_v303.js'), 'manifest lists test_v303.js');

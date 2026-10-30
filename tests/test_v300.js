@@ -7,7 +7,7 @@
  *  · gpt-4o-transcribe (Pollinations transcriptions endpoint, baked key) + Sinhala-script prompt REALLY decodes
  *    Sinhala: kohomada → 'කොහොමද.' ×3 STABLE · sentence → near word-for-word · OGG direct accepted (no transcode) ·
  *    English clip unaffected ('Hey bro, what's up?…') · lang=si param → HTTP 400 'not recognized' (prompt steers, not param).
- * FIX (v3.03.1): pollinations.js sttText prompt opt → ai.gpt4oTranscribe seam → chain: Gemini → gpt-4o si-shot
+ * FIX (v3.03.3): pollinations.js sttText prompt opt → ai.gpt4oTranscribe seam → chain: Gemini → gpt-4o si-shot
  * (dual-shot on non-Sinhala) → Latin ≥4-word English pass → Groq → Pollinations auto → Pollinations si (garbage-gated)
  * → shaky carry → null+logged. garbageText kills: comma-spam / char-loop / word-loop / CJK-misfire / HTML blob.
  * Tested here (ALL OFFLINE — P.sttText + seams patched, no network):
@@ -15,7 +15,7 @@
  *  (2) gpt4oTranscribe → P.sttText(model gpt-4o-transcribe, prompt forwarded)
  *  (3) chain e2e ×7: si-shot win · dual-shot 'Ping me.'→'පින්නි.' · English pass-through · gemini precedence ·
  *      gpt4o-throw → Groq · all-garbage → null + 'STT chain fail' log · shaky 'gpt-4o(auto)'
- *  (4) pins 3.03.1 pkg+manifest + notes headline + manifest lists test_v300.js + source markers
+ *  (4) pins 3.03.3 pkg+manifest + notes headline + manifest lists test_v300.js + source markers
  */
 process.env.ARENA_AI_MEMORY_FILE = __dirname + '/../.test_v300_mem.json';
 try { fs.unlinkSync(__dirname + '/../.test_v300_mem.json'); } catch { }
@@ -33,10 +33,10 @@ const aiSrc = fs.readFileSync(__dirname + '/../ai.js', 'utf8');
 const polliSrc = fs.readFileSync(__dirname + '/../pollinations.js', 'utf8');
 
 (async () => {
-    console.log('— v3.03.1 pins + source markers —');
-    ok('version 3.03.1 pkg+manifest · notes headline · manifest lists test_v300.js', () => {
-        assert.strictEqual(pkg.version, '3.03.1', 'pkg ' + pkg.version);
-        assert.strictEqual(manifest.version, '3.03.1', 'manifest ' + manifest.version);
+    console.log('— v3.03.3 pins + source markers —');
+    ok('version 3.03.3 pkg+manifest · notes headline · manifest lists test_v300.js', () => {
+        assert.strictEqual(pkg.version, '3.03.3', 'pkg ' + pkg.version);
+        assert.strictEqual(manifest.version, '3.03.3', 'manifest ' + manifest.version);
         assert.ok(manifest.notes.includes('SINHALA STT V2'), 'notes headline');
         assert.ok(manifest.files.includes('tests/test_v300.js'), 'manifest lists test_v300.js');
     });

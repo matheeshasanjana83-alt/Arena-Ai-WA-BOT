@@ -54,6 +54,15 @@ function libsAvailable() {
     return false;
 }
 
+/** v3.03.3: the browser MUST ride the SAME proxy as the plain fetches — cf_clearance is IP-bound,
+ *  so a browser via residential proxy + fetches via the same proxy is the ONLY working combo.
+ *  Source = the bot's own .setproxy setting (settings.json "proxy") or DL_PROXY env (net.js parity). */
+function cfProxy() {
+    let p = String(process.env.DL_PROXY || '').trim();
+    if (!p) { try { p = String(JSON.parse(fs.readFileSync(path.join(__dirname, 'settings.json'), 'utf8')).proxy || '').trim(); } catch { } }
+    return p;
+}
+
 async function getBrowser(log) {
     if (browser) return browser;
     if (browserFailed) return null;
@@ -65,10 +74,12 @@ async function getBrowser(log) {
         const core = addExtra(require('puppeteer-core'));
         try { core.use(require('puppeteer-extra-plugin-stealth')()); } catch { }
         const exe = await chromium.executablePath();
+        const pr = cfProxy();
+        if (pr && log) log('browser proxy: ON (' + pr.replace(/\/\/[^@]*@/, '//***@') + ') — cf_clearance will bind to the proxy IP');
         browser = await core.launch({
             headless: true,
             executablePath: exe,
-            args: [...(chromium.args || []), '--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+            args: [...(chromium.args || []), '--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', ...(pr ? ['--proxy-server=' + pr] : [])],
             defaultViewport: chromium.defaultViewport || { width: 1366, height: 768 },
         });
         if (browser && typeof browser.on === 'function') browser.on('disconnected', () => { browser = null; });
@@ -138,4 +149,4 @@ async function shutdown() {
 
 function _reset() { browser = null; browserFailed = false; bgInstall = false; }   // tests
 
-module.exports = { solve, getBrowser, libsAvailable, shutdown, ensureChrome, MISSING_CHROME, _reset };
+module.exports = { solve, getBrowser, libsAvailable, cfProxy, shutdown, ensureChrome, MISSING_CHROME, _reset };

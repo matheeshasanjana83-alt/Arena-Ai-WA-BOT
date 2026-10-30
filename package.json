@@ -1,6 +1,6 @@
 {
   "name": "kaviz-md-v1",
-  "version": "3.03.2",
+  "version": "3.03.3",
   "description": "KAVIZ MD V1 — private WhatsApp bot (download, moviedex movies/series, youtube, social, AI, tools)",
   "main": "index.js",
   "scripts": {
