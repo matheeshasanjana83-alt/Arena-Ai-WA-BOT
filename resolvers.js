@@ -28,6 +28,15 @@ async function resolve(raw) {
     try { u = new URL(raw); } catch { throw new Error('link එක වැරදියි'); }
     const host = u.hostname.replace(/^www\./, '').toLowerCase();
 
+    // ── 🎌 v3.04 #apref fragment — animepahe.js final file URL carries #apref=<page-url>;
+    // v3.02 appended it but NOTHING stripped it (latent bug — referer-less file GETs would 403
+    // on kwik/nextcdn). Strip → the page becomes the download Referer, URL loses the fragment.
+    if (u.hash.startsWith('#apref=')) {
+        const ref = decodeURIComponent(u.hash.slice(7));
+        u.hash = '';
+        return { kind: 'http', url: u.toString(), referer: ref };
+    }
+
     // ── MEGA ──
     if (host === 'mega.nz' || host === 'mega.co.nz') return { kind: 'mega', url: raw };
 

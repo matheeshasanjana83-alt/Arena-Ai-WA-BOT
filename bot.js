@@ -147,7 +147,7 @@ const HELP = `*◈ KAVIZ MD V1 ◈* — commands
 👥 *.groupinfo* · *.grouplink* · *.tagall* · *.kick* · *.promote* · *.demote* · *.mute* · *.resetlink* · *.jid*
 🤖 *.ai <ප්‍රශ්නය>* (reply කරලත් · *.ai reset* · *.ai memory*)
 ⏰ *.remind 10m <note>* · 👁 photo/PDF reply + *.ai* · 🎨 *.ai* — "image එකක් හදලා දෙන්න"
-🔧 *.net* · *.setproxy* · *.proxies* · *.setcookies* · *.setkey* · *.keys*
+🔧 *.net* · *.setproxy* · *.setconsumet* · *.proxies* · *.setcookies* · *.setkey* · *.keys*
 ⚙️ *.setting* (panel) · *.mode* · *.react* · *.maxmb* · *.setlogo* · *.autoupdate* · *.update* · *.version* · *.restart*
 🛡️ *.antibug* · *.block* · *.unblock* · *.blocklist* · *.antispam* · *.spamlog*
 
@@ -433,6 +433,7 @@ async function onMessages({ messages, type }, send, del = async () => { }) {
                     await send(jid, { text: '🔧 *Network check*\n\n' + rep, edit: st.key }); continue;
                 }
                 if (c === '.setproxy') { await handleProxy(send, del, jid, msg, rest.join(' ').trim()); continue; }
+                if (c === '.setconsumet') { await handleConsumet(send, jid, msg, rest.join(' ').trim()); continue; }
                 if (c === '.proxies' || c === '.proxypool') { await handleProxies(send, jid, msg, (rest[0] || '').toLowerCase()); continue; }
                 if (c === '.setcookies') { await handleCookies(send, del, jid, msg, rest.join(' ').trim()); continue; }
                 if (c === '.forward') { await runJob(() => handleForward(send, jid, msg, rest.join(' ').trim())); continue; }   // 🧭 owner-only (v2.41)
@@ -506,7 +507,7 @@ function dlQueue(fn, info) {
 const menuState = new Map();   // jid → { id, at } of the last menu (for number replies)
 const settingState = new Map();   // jid → { id, at } of the last .setting panel (number replies)
 const modeState = new Map();   // jid → { id, at } of the last .mode panel (number replies) — v2.41
-const OWNER_CMDS = new Set(['.mode', '.setting', '.settings', '.setkey', '.delkey', '.keys', '.autoupdate', '.update', '.restart', '.block', '.unblock', '.blocklist', '.spamlog', '.antibug', '.antispam', '.maxmb', '.setmax', '.limit', '.setlogo', '.dellogo', '.setproxy', '.proxies', '.proxypool', '.net', '.netcheck', '.setcookies', '.tbcookie', '.del', '.delete', '.react', '.forward']);   // 🔒 never for others (v2.41)
+const OWNER_CMDS = new Set(['.mode', '.setting', '.settings', '.setkey', '.delkey', '.keys', '.autoupdate', '.update', '.restart', '.block', '.unblock', '.blocklist', '.spamlog', '.antibug', '.antispam', '.maxmb', '.setmax', '.limit', '.setlogo', '.dellogo', '.setproxy', '.setconsumet', '.proxies', '.proxypool', '.net', '.netcheck', '.setcookies', '.tbcookie', '.del', '.delete', '.react', '.forward']);   // 🔒 never for others (v2.41)
 const REACTS = ['⚡', '🔥', '✨', '💠', '🚀', '😎', '🤖', '💫', '🌟', '🎯', '💎', '🫡', '👌', '🌀', '🍃'];
 const readSettings = () => { try { return JSON.parse(fs.readFileSync(path.join(__dirname, 'settings.json'), 'utf8')); } catch { return {}; } };
 const reactOn = () => !process.env.ARENA_NO_REACT && readSettings().react !== false;
@@ -566,7 +567,7 @@ const CATS = [
 ✦ AI provider තෝරන්න — *.aiprovider gemini/groq/zai/auto* · *.setting* → 10\n✦ AI chat auto-reply — *.mode* → 5/6 on·off · 11-16 modes
 ✦ Smart multi-engine fallback auto (engine එකක් down වුණත් .ai වැඩ)
 ✦ *.setkey gemini/groq/zai/together/polli <KEY>* · *.keys* · *.stt* — voice→text`],
-    ['🔧', 'Network', `*🔧 NETWORK*\n\n✦ *.net <link>* — fail වුණොත් හේතුව\n✦ *.setproxy <url|off>* — block sites වලට\n✦ *.proxies* — free pool status · *.proxies check*\n✦ *.setcookies* — YouTube bot-check fix\n✦ *.tbcookie <ndus>* — ☁️ TeraBox cookie (LIVE verify)`],
+    ['🔧', 'Network', `*🔧 NETWORK*\n\n✦ *.net <link>* — fail වුණොත් හේතුව\n✦ *.setproxy <url|off>* — block sites වලට\n✦ *.setconsumet <url|off>* — animepahe API mirror 🎌\n✦ *.proxies* — free pool status · *.proxies check*\n✦ *.setcookies* — YouTube bot-check fix\n✦ *.tbcookie <ndus>* — ☁️ TeraBox cookie (LIVE verify)`],
     ['⚙️', 'Settings', `*⚙️ SETTINGS*\n\n✦ *.setlogo* / *.dellogo* — menu logo\n✦ *.react on|off* — auto react\n✦ *.maxmb <MB>* — download limit\n✦ *.setting* — ⚙️ settings panel (අංක reply → toggle)
 ✦ *.mode* — 🛡 mode panel (public / private / inbox / groups + AI chat modes)\n✦ *.autoupdate on|off* — GitHub එකෙන් auto update (default on)\n✦ *.update* · *.restart* · *.version*`],
     ['🛡️', 'Security', `*🛡️ SECURITY*\n\n✦ commands — ඔයාට විතරයි (owner-only)\n✦ anti-ban — rate limit · human delay · backoff\n✦ *.antibug* — bug → delete + 🚀 auto report ×30 → ඉවර උනාම ⛔ block (bug ගහපු එකාට විතරයි)\n✦ *.antibug report on|off* · *.antibug count <1-100>*\n✦ *.antibug scan|test* — caught bugs · self-test\n✦ *.block <නම්බර්|reply>* · *.unblock* · *.blocklist*\n✦ *.antispam on|off|<N>* · *.spamlog* — flood guard`],
@@ -1054,6 +1055,32 @@ async function handleProxy(send, del, jid, msg, arg) {
     d.proxy = arg.replace(/\/$/, ''); require('fs').writeFileSync(f, JSON.stringify(d, null, 2));
     if (/@/.test(arg)) await del(msg.key);   // hide the password
     await send(jid, { text: `🧩 Proxy save කළා ✅ ${hide(d.proxy)}\nBlock වෙන sites වලට ඉබේම පාවිච්චි වෙනවා. Test: *.net <link>*` });
+}
+
+// ───────── .setconsumet — animepahe Consumet provider base (v3.04) ─────────
+// Official api.consumet.org = DEAD (HTTP 451, probed 2026-10-30). This points .animepahe at any
+// live consumet instance (self-hosted docker riimuru/consumet-api / mirror) — saved to
+// settings.json "consumetBase", LIVE-probed before the success card (never fakes readiness).
+async function handleConsumet(send, jid, msg, arg) {
+    const f = require('path').join(__dirname, 'settings.json');
+    let d = {}; try { d = JSON.parse(require('fs').readFileSync(f, 'utf8')); } catch { }
+    const ap = require('./animepahe');
+    if (!arg) {
+        const cur = d.consumetBase || 'https://api.consumet.org (default — DEAD, HTTP 451)';
+        return send(jid, { text: `🎌 Consumet base: ${cur}\n(වෙනස් කරන්න: *.setconsumet <api-url>* · default එකට: *.setconsumet off*)\n\n✦ .animepahe දැන් data ගන්නේ Consumet API instance එකකින් — official එක legal reasons නිසා වැහුණා (451)\n✦ වැඩ කරන instance එකක් (self-host: docker riimuru/consumet-api / mirror එකක්) url එක දාන්න — probe කරලා save කරනවා\n✦ fallback: animepahe.pw direct (*.setproxy* residential proxy එකක් දැම්මොත් ඒකෙන් වැඩ)` }, { quoted: msg });
+    }
+    if (/^(off|default|delete|remove)$/i.test(arg)) {
+        delete d.consumetBase; require('fs').writeFileSync(f, JSON.stringify(d, null, 2)); ap._cTest({ reset: true });
+        return send(jid, { text: '🎌 Consumet base default එකට ආපහු ✅ (https://api.consumet.org)' });
+    }
+    const base = arg.replace(/\/+$/, '');
+    if (!/^https?:\/\/[^\s]+$/i.test(base)) return send(jid, { text: '❌ Format එක: *.setconsumet https://your-consumet-api.example.com*' }, { quoted: msg });
+    await send(jid, { text: `🎌 ${base} — probe කරනවා…` }, { quoted: msg });
+    const p = await ap.probeConsumetBase(base);
+    d.consumetBase = base; require('fs').writeFileSync(f, JSON.stringify(d, null, 2)); ap._cTest({ reset: true });
+    return send(jid, { text: p.ok
+        ? `🎌 Consumet base save ✅ ${base}\n✅ probe = HTTP ${p.status} JSON-OK — .animepahe දැන් මේ instance එකෙන් වැඩ 🎌\nTest: *.animepahe <නම>*`
+        : `🎌 Consumet base save ✅ ${base}\n⚠️ probe = ${p.why} — instance එක දැන් dead වෙන්න පුළුවන්. Save වුණා — 10 min පාරක් retry කරනවා, alive උනාම auto වැඩ.\n💡 docker එකෙන් self-host: *docker run -p 3000:3000 riimuru/consumet-api*` });
 }
 
 // ───────── .setcookies — YouTube bot-check fix (cookies.txt) ─────────

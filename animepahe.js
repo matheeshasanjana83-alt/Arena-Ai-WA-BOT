@@ -1,32 +1,37 @@
 /**
- * animepahe.js — v3.02.0 🎌 .animepahe — anime search → episodes → quality → FILE downloads
- * Source: animepahe.pw internal API (ElijahCodes12345/animepahe-api contract, ported keyless zero-dep).
+ * animepahe.js — v3.04.0 🎌 .animepahe — anime search → episodes → quality → FILE downloads
+ * PROVIDER LADDER (user directive 2026-10-30: "Puppeteer is useless — server IP hard-blocked.
+ * Switch to the Consumet API fallback method. Scrape api.consumet.org instead of animepahe.pw"):
  *
- * LIVE-PROBED 2026-10-30 (scripts/probe_animepahe*.js): animepahe.pw = Cloudflare WAF block
- * ("Attention Required", 403) from sandbox datacenter IP AND free-proxy IPs (0/24 pass) —
- * cf-mitigated:challenge on kwik.cx/pahe.win. Panel network PASSED cinesubz CF (v3.01 boot probe),
- * so panel truth comes from healthCheck() boot log; every flow has an honest CF-wall card —
- * the command NEVER fakes success.
+ *   1) CONSUMET — GET {base}/anime/animepahe/{q}|info?id=|watch/{epId} (consumet.ts contract,
+ *      keyless JSON). Base = ARENA_CONSUMET_BASE env > settings.json "consumetBase" (.setconsumet)
+ *      > https://api.consumet.org. LIVE-PROBED 2026-10-30 (scripts/probe_consumet.js): the OFFICIAL
+ *      instance is DEAD — HTTP 451 + GitHub-Parks HTML ("Consumet API is no longer publicly
+ *      available", ByteMuseum/api.consumet.org README); mirrors probed dead too (api-v2/.net DNS
+ *      fail · onrender fail · vercel FUNCTION_INVOCATION_FAILED). Dead verdict cached 10 min then
+ *      retried — the moment ANY working instance exists (self-hosted docker riimuru/consumet-api
+ *      or a mirror), *.setconsumet <url> lights the provider up with zero other changes.
+ *   2) DIRECT — animepahe.pw internal API (ElijahCodes12345/animepahe-api contract, keyless
+ *      zero-dep) — v3.03 panel verdict: CF IP-REPUTATION HARD WAF BLOCK on datacenter IPs
+ *      (sandbox + panel + 0/24 free proxies, stealth browser had nothing to solve). This path
+ *      works the moment a residential proxy is set (*.setproxy → net.js routes everything).
  *
- * Contract (from the reference repo, exact endpoints):
- *   search:   GET /api?m=search&q=<q>&page=1          → { data: [{session, slug, title, poster,
- *                                                       type, episodes, year}] }
- *   releases: GET /api?m=release&id=<session>&sort=episode_asc&page=N
- *                                                      → { last_page, data: [{session (ep),
- *                                                       episode, episode2, audio, snapshot}] }
- *   play:     GET /play/<animeSession>/<epSession>     → HTML with #pickDownload <a href="pahe.win/…">
- *                                                       (label "fansub · 1080p (1.3GB) · eng/BD")
- *   download: pahe.win page = kwik-style form page → script builds <form action=_token> →
- *             POST _token → 302 Location = DIRECT file URL (Referer: download page needed)
+ * Direct contract (unchanged):
+ *   search:   GET /api?m=search&q=<q>&page=1 → {data:[{session,slug,title,poster,type,episodes,year}]}
+ *   releases: GET /api?m=release&id=<s>&sort=episode_asc&page=N → {last_page,data:[{session,episode,episode2,audio}]}
+ *   play:     GET /play/<a>/<e> → #pickDownload <a href="pahe.win/…">
+ *   download: pahe.win/kwik form page → POST _token → 302 Location = DIRECT file URL
+ * Consumet watch sources = kwik embed URLs → SAME form-token machinery resolves them to direct.
  *
  * Flow (cinesite.js session grammar — quote-reply only, cardId-enforced):
  *   .animepahe <name> → search menu → quote N → 📺 episode menu (ep1 first, [dub] rows) →
  *   quote M → 🎬 quality card (res · size · fansub · BD) → quote K → FILE via dlQueue.
  *   Direct URL jumps: /play/<a>/<e> → quality menu · /anime/<session> → episode menu.
- * Final URL carries #apref=<download-page> fragment → resolvers strips it into the Referer
- * (pahe.win CDN drops referer-less file requests).
+ * Final URL carries #apref=<page> fragment → resolvers.js strips it into the Referer (v3.04: REAL).
  */
 const vm = require('vm');
+const fs = require('fs');
+const path = require('path');
 const { foot } = require('./style');
 const { smartFetch, viaPool } = require('./net');
 
@@ -46,6 +51,37 @@ const CMDS = { '.animepahe': 1, '.aphe': 1, '.animepahae': 1, '.anemepahe': 1 };
 // net.js smartFetch — fetcher seam (metdn/cinesite pattern): tests inject a mock; live = smartFetch.
 let fetcher = (u, o) => smartFetch(u, o);
 const setFetcher = (f) => { const prev = fetcher; fetcher = f; return prev; };
+
+// ── 🌐 v3.04 CONSUMET base — env > settings.json (.setconsumet) > official (dead, kept as the
+// documented default so a revival / mirror at the same host lights up with zero config).
+const CONSUMET_DEFAULT = 'https://api.consumet.org';
+function consumetBase() {
+    const env = String(process.env.ARENA_CONSUMET_BASE || '').trim();
+    if (env) return env.replace(/\/+$/, '');
+    try { const s = JSON.parse(fs.readFileSync(path.join(__dirname, 'settings.json'), 'utf8')); if (s.consumetBase) return String(s.consumetBase).replace(/\/+$/, ''); } catch { }
+    return CONSUMET_DEFAULT;
+}
+// instance health state (dead verdict = 10 min skip, then one retry — never hammer a dead base)
+const C_STATE_TTL = 10 * 60e3;
+let cState = { ok: null, at: 0, status: 0 };
+const _cTest = (p = {}) => {
+    if (p.reset) cState = { ok: null, at: 0, status: 0 };
+    if ('ok' in p) cState.ok = p.ok;
+    if ('at' in p) cState.at = p.at;
+    if ('status' in p) cState.status = p.status;
+    return { ...cState };
+};
+// probe a base URL once (owner .setconsumet verify + boot healthCheck) — honest shape report
+async function probeConsumetBase(base) {
+    const b = String(base || '').trim().replace(/\/+$/, '');
+    if (!/^https?:\/\/[^\s]+$/i.test(b)) return { ok: false, status: 0, why: 'URL format එක වැරදියි' };
+    try {
+        const r = await fetcher(b + '/anime/animepahe/a', { headers: { 'User-Agent': UA, Accept: 'application/json' }, signal: AbortSignal.timeout(15e3) });
+        const txt = await r.text().catch(() => '');
+        let json = false; try { json = JSON.parse(txt) != null; } catch { }
+        return { ok: r.ok && json, status: r.status, shape: json ? 'json' : 'html', why: r.ok ? (json ? 'JSON-OK' : 'non-JSON response (instance dead/parked)') : 'HTTP ' + r.status };
+    } catch (e) { return { ok: false, status: 0, why: String((e && e.message) || e).slice(0, 60) }; }
+}
 
 // ── 🥷 v3.03 CF stealth-solve ladder (user directive: Puppeteer + Stealth) — cf_clearance is
 // IP+UA-bound, so we cache { cookie, ua } from a real stealth-Chrome solve and reuse BOTH with
@@ -275,8 +311,8 @@ function extractFormTokens(html) {
 const pageTitle = (html) => decodeEnt(((html.match(/<title>([^<]*)<\/title>/i) || [])[1] || '').replace(/\s*::\s*Kwik.*$/i, '').slice(0, 90));
 
 // ── 5. resolve pahe.win/kwik page → DIRECT file URL (POST _token → 302 Location) ──
-async function resolveDirect(pageUrl) {
-    const r = await grab(pageUrl, { referer: BASE + '/', timeout: 25e3 });
+async function resolveDirect(pageUrl, o = {}) {
+    const r = await grab(pageUrl, { referer: o.referer || BASE + '/', timeout: 25e3 });
     const setCookies = (r.headers.getSetCookie ? r.headers.getSetCookie() : []).map((c) => String(c).split(';')[0]).filter(Boolean);
     const html = await r.text();
     if (isCF(html)) throw cfErr(new URL(pageUrl).host);
@@ -305,6 +341,87 @@ async function resolveDirect(pageUrl) {
     }
     if (!dl) throw new Error('direct link එක එළියට එන්නේ නෑ (HTTP ' + post.status + ')');
     return { url: dl.replace(/&amp;/g, '&'), filename: pageTitle(html) };
+}
+
+// ── 🌐 v3.04 CONSUMET provider — consumet.ts animepahe contract (keyless JSON, zero-dep).
+// Shapes are the documented ISearch/ISource contract; parsers are defensive because the official
+// instance is dead (451) so live-shape verification is impossible until a working base exists.
+function parseConsumetSearch(j) {
+    const rows = [];
+    for (const it of (Array.isArray(j?.results) ? j.results : (Array.isArray(j) ? j : []))) {
+        if (!it || !it.id) continue;
+        rows.push({
+            session: String(it.id),
+            title: String(it.title || it.name || it.id || 'Untitled').replace(/\s+/g, ' ').trim(),
+            slug: String(it.slug || ''),
+            poster: String(it.image || it.poster || it.cover || ''),
+            type: String(it.type || ''),
+            year: String(it.year || ''),
+            episodes: Number(it.episodes) || 0,
+        });
+        if (rows.length >= MENU_ROWS) break;
+    }
+    return rows;
+}
+function parseConsumetInfo(j) {
+    const eps = [];
+    for (const it of (Array.isArray(j?.episodes) ? j.episodes : [])) {
+        if (!it || !it.id) continue;
+        const n = Number(it.number ?? it.episode ?? it.ep) || eps.length + 1;
+        eps.push({ session: String(it.id), ep: n, ep2: null, dub: false });
+    }
+    if (eps.length > 1 && eps[0].ep > eps[eps.length - 1].ep) eps.reverse();
+    return eps;
+}
+function parseConsumetWatch(j) {
+    const rows = [];
+    for (const s of (Array.isArray(j?.sources) ? j.sources : (Array.isArray(j) ? j : []))) {
+        if (!s || !s.url) continue;
+        const url = String(s.url);
+        if (/\.m3u8($|\?)/i.test(url) || s.isM3U8 === true) continue;   // HLS stream — FILE එකට බෑ (honest skip)
+        const qlab = String(s.quality || '');
+        const res = (qlab.match(/(\d{3,4})/) || url.match(/(\d{3,4})p/) || [])[1] || '';
+        rows.push({ url, label: qlab || 'file', res: res ? parseInt(res, 10) : 0, sizeMB: 0, fansub: '', dub: false, bd: false, referer: String(j?.headers?.Referer || 'https://animepahe.ru/') });
+        if (rows.length >= 20) break;
+    }
+    rows.sort((a, b) => (b.res - a.res) || (b.sizeMB - a.sizeMB));   // best-first
+    return rows;
+}
+// consumet GET — plain fetcher (NO solver: a dead/blocked instance must fail fast into the
+// direct ladder, never wake the RAM-heavy stealth browser for it)
+async function cGet(pathname, timeout = 15e3) {
+    const r = await fetcher(consumetBase() + pathname, { headers: { 'User-Agent': UA, Accept: 'application/json' }, signal: AbortSignal.timeout(timeout) });
+    const txt = await r.text().catch(() => '');
+    if (!r.ok) { const e = new Error('HTTP ' + r.status); e.status = r.status; throw e; }
+    let j; try { j = JSON.parse(txt); } catch { const e = new Error('non-JSON response (instance dead/parked)'); e.status = r.status; throw e; }
+    return j;
+}
+const cSearch = (q) => cGet('/anime/animepahe/' + encodeURIComponent(q) + '?page=1');
+const cInfo = (id) => cGet('/anime/animepahe/info?id=' + encodeURIComponent(id));
+const cWatch = (epId) => cGet('/anime/animepahe/watch/' + encodeURIComponent(epId));
+// provider ladder — consumet first (unless known-dead within TTL) → direct → honest dual-fail card
+async function searchProvider(q) {
+    const cb = consumetBase();
+    if (!(cState.ok === false && Date.now() - cState.at < C_STATE_TTL)) {
+        try {
+            const rows = parseConsumetSearch(await cSearch(q));
+            cState = { ok: true, at: Date.now(), status: 200 };
+            return { src: 'consumet', rows, base: cb };
+        } catch (e) {
+            cState = { ok: false, at: Date.now(), status: e.status || 0 };
+            console.log(`[ANIMEPAHE] consumet ${cb} FAIL ${String(e.message).slice(0, 60)} — direct ladder fallback ⚠️`);
+        }
+    }
+    try {
+        const rows = parseSearchRows(await api({ m: 'search', q, page: 1 }));
+        return { src: 'direct', rows, base: cb };
+    } catch (de) {
+        const cPart = `Consumet API (${cb}) = ${cState.status || 'fail'} — public instance එක dead 🪦`;
+        const dPart = de.cf ? `${HOST} = bot-traffic wall (Cloudflare 403 — server IP hard-blocked)` : `${HOST} = ` + String(de.message).slice(0, 80);
+        const e = new Error(`${cPart} · ${dPart}\n💡 fix 2ක්: *.setconsumet <api-url>* (වැඩ කරන instance එකක්) / *.setproxy* (residential proxy — ඔයාගේ home IP එක animepahe වලට pass)`);
+        e.cf = !!de.cf;
+        throw e;
+    }
 }
 
 // ── sessions (cinesite grammar) ──
@@ -338,14 +455,21 @@ const USAGE = `${BRAND} — *.animepahe <නම / link>* (alias *.aphe*)
 උදා: \`.animepahe frieren\`
 
 ✦ නමක් දුන්නාම → search menu → ගානක් quote කරන්න
-✦ episode menu → quality menu → 📥 FILE (pahe.win direct)
+✦ episode menu → quality menu → 📥 FILE (kwik/pahe.win direct)
 ✦ ${HOST}/play/… link එකක් දුන්නාම → කෙලින්ම quality menu එකෙන් පටන් ගන්නවා
-✦ mkv/mp4 files — සැබෑ download links (stream නෙවෙයි)\n` + foot(HOST);
+✦ mkv/mp4 files — සැබෑ download links (stream නෙවෙයි)
+✦ source: Consumet API mirror (*.setconsumet*) / animepahe.pw direct (*.setproxy*)\n` + foot(HOST);
 
 // ── flow steps ──
 async function openAnime(ctx, { send, jid, msg, st }) {
     const edit = async (t) => { try { await send(jid, { text: t, edit: st.key }); } catch { } };
-    const { eps, truncated } = await fetchReleases(ctx.session);
+    let eps, truncated;
+    if (ctx.src === 'consumet') {
+        eps = parseConsumetInfo(await cInfo(ctx.session));
+        truncated = eps.length >= EP_CAP;
+    } else {
+        ({ eps, truncated } = await fetchReleases(ctx.session));
+    }
     if (!eps.length) throw new Error('episodes හම්බුණේ නෑ — මේ anime එකේ release එකක් නෑ');
     Object.assign(ctx, { stage: 'eps', eps, truncated, at: Date.now() });
     await edit(epsCard(ctx));
@@ -355,11 +479,18 @@ async function openAnime(ctx, { send, jid, msg, st }) {
 async function openEpisode(ctx, n, { send, jid, msg, st }) {
     const edit = async (t) => { try { await send(jid, { text: t, edit: st.key }); } catch { } };
     const ep = ctx.eps[n - 1];
-    const playUrl = `${BASE}/play/${ctx.session}/${ep.session}`;
-    const html = await grabText(playUrl, { referer: BASE + '/' });
-    const qs = parsePickDownload(html);
+    let qs, title;
+    if (ctx.src === 'consumet') {
+        qs = parseConsumetWatch(await cWatch(ep.session));
+        title = ctx.title;
+    } else {
+        const playUrl = `${BASE}/play/${ctx.session}/${ep.session}`;
+        const html = await grabText(playUrl, { referer: BASE + '/' });
+        qs = parsePickDownload(html);
+        title = (pageTitle(html) || ctx.title);
+    }
     if (!qs.length) throw new Error('download links නෑ — මේ episode එක stream විතරයි');
-    Object.assign(ctx, { stage: 'quality', qs, epLabel: epLabel(ep), playUrl, title: (pageTitle(html) || ctx.title), at: Date.now() });
+    Object.assign(ctx, { stage: 'quality', qs, epLabel: epLabel(ep), title, at: Date.now() });
     const cap = qualityCard(ctx, qs);
     if (ctx.poster) {
         try {
@@ -399,9 +530,9 @@ async function goPick(send, jid, msg, n, download) {
     sessions.delete(jid);
     const st = await send(jid, { text: `${BRAND} — direct link resolve කරනවා…` }, { quoted: msg });
     try {
-        const { url, filename } = await resolveDirect(q.url);
+        const { url, filename } = await resolveDirect(q.url, { referer: q.referer });
         try { await send(jid, { text: `📥 ${filename || 'file'} — download පටන් ගන්නවා…`, edit: st.key }); } catch { }
-        await download(url + '#apref=' + encodeURIComponent(q.url), TAG + (ctx.epLabel ? ` · ${ctx.epLabel}` : '') + ` · ${q.res ? q.res + 'p' : 'file'}`);
+        await download(url + '#apref=' + encodeURIComponent(q.referer || q.url), TAG + (ctx.epLabel ? ` · ${ctx.epLabel}` : '') + ` · ${q.res ? q.res + 'p' : 'file'}`);
         return true;
     } catch (e) {
         return await (async (t) => { try { await send(jid, { text: t, edit: st.key }); } catch { } })('❌ AnimePahe: ' + String((e && e.message) || e).slice(0, 180));
@@ -452,17 +583,16 @@ async function handle(c, ctx) {
             return true;
         }
         if (arg.length > 80) throw new Error('search query එක 80 අකුරු ඇතුලේ වෙන්න ඕන');
-        const rows = parseSearchRows(await api({ m: 'search', q: arg, page: 1 }));
-        if (!rows.length) return await edit(`${BRAND} search — "${arg.slice(0, 40)}"\n\n❌ මුකුතු හම්බුණේ නෑ — වෙන නමක් / කෙටි නමක් try කරන්න\n` + foot(HOST));
-        remember(jid, { cmd: String(c).toLowerCase(), stage: 'search', q: arg.slice(0, 80), items: rows, at: Date.now(), cardId: null });
-        await edit(searchCard(arg.slice(0, 40), rows));
+        const prov = await searchProvider(arg);
+        if (!prov.rows.length) return await edit(`${BRAND} search — "${arg.slice(0, 40)}"\n\n❌ මුකුතු හම්බුණේ නෑ — වෙන නමක් / කෙටි නමක් try කරන්න\n` + foot(HOST));
+        remember(jid, { cmd: String(c).toLowerCase(), stage: 'search', q: arg.slice(0, 80), items: prov.rows, src: prov.src, at: Date.now(), cardId: null });
+        await edit(searchCard(arg.slice(0, 40), prov.rows));
         sessions.get(jid).cardId = st.key?.id || null;
         return true;
     } catch (e) {
-        return await edit('❌ AnimePahe: ' + String((e && e.message) || e).slice(0, 180));
+        return await edit('❌ AnimePahe: ' + String((e && e.message) || e).slice(0, 260));
     }
 }
-
 // numeric quote bridge (bot.js chain) — card quote එකට number → '.animepahe go N'
 function bridge(jid, qid, digits) {
     const s = sessions.get(jid);
@@ -482,6 +612,12 @@ function healthCheck(delayMs = 9000) {
     if (booted) return;
     booted = true;
     const t = setTimeout(async () => {
+        // 🌐 v3.04: consumet base probe first — the boot log carries BOTH provider truths.
+        try {
+            const cb = consumetBase();
+            const p = await probeConsumetBase(cb);
+            console.log(`[ANIMEPAHE] consumet ${cb} boot probe = ${p.status} ${p.why}${p.ok ? ' ✅ provider READY' : ' ⚠️ dead → direct ladder'}`);
+        } catch { }
         try {
             if (process.env.ARENA_APHE_SOLVER === '0') { console.log('[ANIMEPAHE] solver disabled (ARENA_APHE_SOLVER=0) — plain fetch only'); }
             const r = await fetcher(`${BASE}/api?m=search&q=a&page=1`, { headers: { 'User-Agent': UA, Referer: BASE + '/' }, signal: AbortSignal.timeout(15e3) });
@@ -508,6 +644,8 @@ module.exports = {
     handle, bridge, healthCheck, setFetcher, setSolver, getSolver, clearance, CMDS, BASE, HOST,
     parseSearchRows, parseReleaseRows, parsePickDownload, extractFormTokens, resolveDirect,
     fetchReleases, epLabel, isApUrl, _sessions: sessions, _cfCache: cfCache,
+    parseConsumetSearch, parseConsumetInfo, parseConsumetWatch, consumetBase, probeConsumetBase,
+    cSearch, cInfo, cWatch, _cTest,
     _cfTest: (p = {}) => {   // tests: deterministic solver-ladder state
         if ('failStreak' in p) failStreak = p.failStreak;
         if ('lastSolveAt' in p) lastSolveAt = p.lastSolveAt;
