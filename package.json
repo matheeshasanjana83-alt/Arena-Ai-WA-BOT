@@ -1,13 +1,13 @@
 {
   "name": "kaviz-md-v1",
-  "version": "3.04.0",
+  "version": "3.05.0",
   "description": "KAVIZ MD V1 — private WhatsApp bot (download, moviedex movies/series, youtube, social, AI, tools)",
   "main": "index.js",
   "scripts": {
     "start": "node launcher.js",
     "bot": "node bot.js",
     "test": "node tests/test.js",
-    "postinstall": "node scripts/get-chrome.js && node launcher.js"
+    "postinstall": "node launcher.js"
   },
   "dependencies": {
     "baileys": "7.0.0-rc14",
@@ -18,11 +18,7 @@
     "pino": "^9.5.0",
     "undici": "^6.21.3",
     "youtubei.js": "^18.1.0",
-    "yt-search": "^2.13.1",
-    "@sparticuz/chromium": "^153.0.0",
-    "puppeteer-core": "^25.16.0",
-    "puppeteer-extra": "^3.3.6",
-    "puppeteer-extra-plugin-stealth": "^2.11.2"
+    "yt-search": "^2.13.1"
   },
   "engines": {
     "node": ">=20.0.0"

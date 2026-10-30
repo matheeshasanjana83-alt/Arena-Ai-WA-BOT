@@ -11,7 +11,7 @@
  *  (3) 400 → honest throw 'Pollinations stt 400' (never silent)
  *  (4) markers: no 'audio.bin' anywhere · STT_EXT map present · bot.js audio branch + tools.js
  *      cmdStt call-sites unchanged (single fix covers both)
- *  (5) pins 3.04.0 pkg+manifest + notes headline + manifest lists tests/test_v298.js
+ *  (5) pins 3.05.0 pkg+manifest + notes headline + manifest lists tests/test_v298.js
  */
 const assert = require('assert');
 const fs = require('fs');
@@ -35,10 +35,10 @@ function mockFetch(url, opts) {
 }
 
 (async () => {
-    console.log('— v3.04.0 pins + markers —');
-    ok('version 3.04.0 pkg+manifest + notes headline + manifest lists test_v298.js', () => {
-        assert.strictEqual(pkg.version, '3.04.0', 'pkg ' + pkg.version);
-        assert.strictEqual(manifest.version, '3.04.0', 'manifest ' + manifest.version);
+    console.log('— v3.05.0 pins + markers —');
+    ok('version 3.05.0 pkg+manifest + notes headline + manifest lists test_v298.js', () => {
+        assert.strictEqual(pkg.version, '3.05.0', 'pkg ' + pkg.version);
+        assert.strictEqual(manifest.version, '3.05.0', 'manifest ' + manifest.version);
         assert.ok(manifest.notes.includes('VOICE NOTE STT FIX'), 'notes headline');
         assert.ok(manifest.files.includes('tests/test_v298.js'), 'manifest lists test_v298.js');
     });

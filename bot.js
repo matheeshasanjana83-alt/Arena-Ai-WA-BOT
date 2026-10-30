@@ -46,7 +46,7 @@ const animehub = require('./animehub');   // 🎌 v2.75 AniWorld + 🔞 NSFW (he
 const terabox = require('./terabox');   // ☁️ v2.84 TeraBox (jsToken → share/list → dlink)
 const metdn = require('./metdn');   // 🔞 v2.86 mat6tube (window.playlist → signed mp4)
 const cinesite = require('./cinesite');   // 🍿 v3.01 .cinesubz + .cineru — සිංහල sub movie/series (SEPARATE commands — never mixed into moviedex)
-const animepahe = require('./animepahe');   // 🎌 v3.02 .animepahe — anime search → episodes → quality → FILE (animepahe.pw internal API, ElijahCodes contract, keyless)
+const animepahe = require('./animepahe');   // 🎌 v3.05 .animepahe — anime search → episodes → quality → FILE (Consumet API ONLY — hardcoded default base, .setconsumet override)
 const antibug = require('./antibug');
 const antispam = require('./antispam');
 const { BRAND, foot, cut } = require('./style');
@@ -251,7 +251,7 @@ async function start() {
             log('✅ WhatsApp Connected! "Message yourself" chat එකේ .ping ගහලා බලන්න');
             reconnects = 0; replaced = 0;
             cinesite.healthCheck(8000);                               // 🍿 v3.01 cinesubz/cineru boot probe → console (panel-network truth)
-            animepahe.healthCheck(11000);                             // 🎌 v3.02 animepahe boot probe → console (panel-network truth — CF wall or JSON-OK)
+            animepahe.healthCheck(11000);                             // 🎌 v3.05 animepahe boot probe → console (panel-network truth — consumet base status)
             startAgentInbox(send);
             autoupdate.start({                                        // 🔄 GitHub auto-update — reconnect වුණත් timers refresh (idempotent)
                 log, send,
@@ -1057,21 +1057,21 @@ async function handleProxy(send, del, jid, msg, arg) {
     await send(jid, { text: `🧩 Proxy save කළා ✅ ${hide(d.proxy)}\nBlock වෙන sites වලට ඉබේම පාවිච්චි වෙනවා. Test: *.net <link>*` });
 }
 
-// ───────── .setconsumet — animepahe Consumet provider base (v3.04) ─────────
-// Official api.consumet.org = DEAD (HTTP 451, probed 2026-10-30). This points .animepahe at any
-// live consumet instance (self-hosted docker riimuru/consumet-api / mirror) — saved to
-// settings.json "consumetBase", LIVE-probed before the success card (never fakes readiness).
+// ───────── .setconsumet — animepahe Consumet provider base (v3.05) ─────────
+// .animepahe consumes a Consumet API instance ONLY. Default base is hardcoded in animepahe.js
+// (matheeshasanjana83-alt/api.consumet.org → Vercel). This owner cmd points it at any other
+// live instance — saved to settings.json "consumetBase", LIVE-probed (never fakes readiness).
 async function handleConsumet(send, jid, msg, arg) {
     const f = require('path').join(__dirname, 'settings.json');
     let d = {}; try { d = JSON.parse(require('fs').readFileSync(f, 'utf8')); } catch { }
     const ap = require('./animepahe');
     if (!arg) {
-        const cur = d.consumetBase || 'https://api.consumet.org (default — DEAD, HTTP 451)';
-        return send(jid, { text: `🎌 Consumet base: ${cur}\n(වෙනස් කරන්න: *.setconsumet <api-url>* · default එකට: *.setconsumet off*)\n\n✦ .animepahe දැන් data ගන්නේ Consumet API instance එකකින් — official එක legal reasons නිසා වැහුණා (451)\n✦ වැඩ කරන instance එකක් (self-host: docker riimuru/consumet-api / mirror එකක්) url එක දාන්න — probe කරලා save කරනවා\n✦ fallback: animepahe.pw direct (*.setproxy* residential proxy එකක් දැම්මොත් ඒකෙන් වැඩ)` }, { quoted: msg });
+        const cur = d.consumetBase || (ap.CONSUMET_DEFAULT + ' (hardcoded default)');
+        return send(jid, { text: `🎌 Consumet base: ${cur}\n(වෙනස් කරන්න: *.setconsumet <api-url>* · default එකට: *.setconsumet off*)\n\n✦ .animepahe දැන් data ගන්නේ Consumet API instance එකකින් — වැඩ කරන instance එකක url එක දාන්න, probe කරලා save කරනවා\n✦ වෙන instance එකක් ඕන නම්: docker run -p 3000:3000 riimuru/consumet-api` }, { quoted: msg });
     }
     if (/^(off|default|delete|remove)$/i.test(arg)) {
         delete d.consumetBase; require('fs').writeFileSync(f, JSON.stringify(d, null, 2)); ap._cTest({ reset: true });
-        return send(jid, { text: '🎌 Consumet base default එකට ආපහු ✅ (https://api.consumet.org)' });
+        return send(jid, { text: `🎌 Consumet base default එකට ආපහු ✅ (${ap.CONSUMET_DEFAULT})` });
     }
     const base = arg.replace(/\/+$/, '');
     if (!/^https?:\/\/[^\s]+$/i.test(base)) return send(jid, { text: '❌ Format එක: *.setconsumet https://your-consumet-api.example.com*' }, { quoted: msg });
@@ -1080,7 +1080,7 @@ async function handleConsumet(send, jid, msg, arg) {
     d.consumetBase = base; require('fs').writeFileSync(f, JSON.stringify(d, null, 2)); ap._cTest({ reset: true });
     return send(jid, { text: p.ok
         ? `🎌 Consumet base save ✅ ${base}\n✅ probe = HTTP ${p.status} JSON-OK — .animepahe දැන් මේ instance එකෙන් වැඩ 🎌\nTest: *.animepahe <නම>*`
-        : `🎌 Consumet base save ✅ ${base}\n⚠️ probe = ${p.why} — instance එක දැන් dead වෙන්න පුළුවන්. Save වුණා — 10 min පාරක් retry කරනවා, alive උනාම auto වැඩ.\n💡 docker එකෙන් self-host: *docker run -p 3000:3000 riimuru/consumet-api*` });
+        : `🎌 Consumet base save ✅ ${base}\n⚠️ probe = ${p.why} — save වුණා. 10 min පාරක් retry කරනවා, instance එක answer කළාම auto වැඩ.` });
 }
 
 // ───────── .setcookies — YouTube bot-check fix (cookies.txt) ─────────
