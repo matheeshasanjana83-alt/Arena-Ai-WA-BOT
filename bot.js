@@ -46,6 +46,7 @@ const animehub = require('./animehub');   // 🎌 v2.75 AniWorld + 🔞 NSFW (he
 const terabox = require('./terabox');   // ☁️ v2.84 TeraBox (jsToken → share/list → dlink)
 const metdn = require('./metdn');   // 🔞 v2.86 mat6tube (window.playlist → signed mp4)
 const cinesite = require('./cinesite');   // 🍿 v3.01 .cinesubz + .cineru — සිංහල sub movie/series (SEPARATE commands — never mixed into moviedex)
+const animepahe = require('./animepahe');   // 🎌 v3.02 .animepahe — anime search → episodes → quality → FILE (animepahe.pw internal API, ElijahCodes contract, keyless)
 const antibug = require('./antibug');
 const antispam = require('./antispam');
 const { BRAND, foot, cut } = require('./style');
@@ -136,6 +137,7 @@ const HELP = `*◈ KAVIZ MD V1 ◈* — commands
 📥 *.mirror <link>* · *.gitclone user/repo*
 🍿 *.moviedex* <movie/series name> — movie & 📺 TV download (MovieBox)
 🍿 *.cinesubz* <නම> — CineSubz සිංහල sub → quality menu → file · *.cineru* <නම> — Cineru.lk (වෙන වෙනම commands)
+🎌 *.animepahe* <anime> — anime episodes → quality → file (*.aphe*)
 🎬 *.yts* <නම> · *.song* <නම/link> — 🎧 M4A/MP3 menu · *.video* <නම/link> — 🎬 quality menu [2160..144]
 📱 *.tiktok* · *.fb* · *.ig* · *.x* <link>
 🖼️ *.s* (reply) · *.take* Pack | Author
@@ -249,6 +251,7 @@ async function start() {
             log('✅ WhatsApp Connected! "Message yourself" chat එකේ .ping ගහලා බලන්න');
             reconnects = 0; replaced = 0;
             cinesite.healthCheck(8000);                               // 🍿 v3.01 cinesubz/cineru boot probe → console (panel-network truth)
+            animepahe.healthCheck(11000);                             // 🎌 v3.02 animepahe boot probe → console (panel-network truth — CF wall or JSON-OK)
             startAgentInbox(send);
             autoupdate.start({                                        // 🔄 GitHub auto-update — reconnect වුණත් timers refresh (idempotent)
                 log, send,
@@ -321,6 +324,7 @@ async function onMessages({ messages, type }, send, del = async () => { }) {
                             else { const t = terabox.bridge(jid0, qid, text); if (t) text = t;
                             else { const m = metdn.bridge(jid0, qid, text); if (m) text = m;
                             else { const z = cinesite.bridge(jid0, qid, text); if (z) text = z;   // 🍿 v3.01 cinesubz/cineru card quotes
+                            else { const ap = animepahe.bridge(jid0, qid, text); if (ap) text = ap;   // 🎌 v3.02 animepahe card quotes
                             else if (accessible && sentIds.has(String(qid))) {   // 🔢 v2.89: stale/deleted BOT card quote (sentIds = bot එකෙන් ආපු card විතරයි) — was ABSOLUTE silence (owner chat never AI'd) = "bot එක මැරුණා වගේ"; වෙන message එකකට quote කරොත් v2.58 silence ම තියෙනවා
                                 await send(jid0, { text: '🔢 මේ card එකට දැන් menu එකක් active නෑ (expire වෙලා / flow එක ඉවර).\n\nඅලුත් command එකක් ගහලා අලුත් menu එකක් open කරලා *ඒ card එකට* reply කරන්න.' }, { quoted: msg });
                                 continue;
@@ -331,7 +335,7 @@ async function onMessages({ messages, type }, send, del = async () => { }) {
                                     await send(jid0, { text: '🔢 මේ card එක මේ bot එකෙන් ආව එකක් නෙමෙයි (restart / වෙන linked device එකක්).\n\nමගෙ menu card එකට reply කරන්න — නැත්නම් අලුත් command එකක් ගහලා *අලුත් card එකට* reply කරන්න.' }, { quoted: msg });
                                     continue;
                                 }
-                            } } } } } } } }   // moviedex + 🎌 v2.75 aniworld + ☁️ v2.84 terabox + 🔞 v2.88 metdn + 🍿 v3.01 cinesubz/cineru card quotes
+                            } } } } } } } } }   // moviedex + 🎌 v2.75 aniworld + ☁️ v2.84 terabox + 🔞 v2.88 metdn + 🍿 v3.01 cinesubz/cineru + 🎌 v3.02 animepahe card quotes
                     }
                 }
                 if (!text.startsWith('.')) { maybeAiReply({ msg, jid: replyJid(msg.key), text, owner, send }); continue; }   // 🤖 AI chat (v2.41 — own modes, works even when bot commands are private)
@@ -453,6 +457,7 @@ async function onMessages({ messages, type }, send, del = async () => { }) {
                 if (await runJob(() => terabox.handle(c, { send, jid, msg, rest, react, download: (link, tag) => dlQueue(() => handleDownload(send, jid, msg, link, tag), { send, jid, msg, label: tag || 'TeraBox' }) }))) continue;   // ☁️ .terabox (v2.84 — info card → file)
                 if (await runJob(() => metdn.handle(c, { send, jid, msg, rest, react, download: (link, tag) => dlQueue(() => handleDownload(send, jid, msg, link, tag), { send, jid, msg, label: tag || 'mat6tube' }) }))) continue;   // 🔞 .metdn (v2.88 — search menu → quality menu → mp4)
                 if (await runJob(() => cinesite.handle(c, { send, jid, msg, rest, react, download: (link, tag) => dlQueue(() => handleDownload(send, jid, msg, link, tag), { send, jid, msg, label: tag || 'CineSubz' }) }))) continue;   // 🍿 .cinesubz/.cineru (v3.01 — search → movie quality / series episodes → file)
+                if (await runJob(() => animepahe.handle(c, { send, jid, msg, rest, react, download: (link, tag) => dlQueue(() => handleDownload(send, jid, msg, link, tag), { send, jid, msg, label: tag || 'AnimePahe' }) }))) continue;   // 🎌 .animepahe (v3.02 — search → episodes → quality → file)
                 if (c === '.tbcookie') { await terabox.cmdCookie(send, jid, msg, rest.join(' ').trim()); continue; }   // 🔑 owner-only (v2.84)
 
                 // 🆕 v2.59: site-locked downloaders — .mediafire / .mega / .gdrive
@@ -509,7 +514,7 @@ const reactTo = (key, emoji) => {   // ⏳ → ✅/❌ pro-bot feedback (respect
     if (!reactOn() || !key?.id) return;
     try { SOCK?.sendMessage(key.remoteJid, { react: { text: emoji, key } }).catch(() => { }); } catch { }
 };
-const HEAVY = new Set(['.download', '.dl', '.dn', '.mediafire', '.mega', '.gdrive', '.moviedex', '.mdx', '.song', '.play', '.yta', '.video', '.ytv', '.yt', '.ytmenu', '.fb', '.facebook', '.faceboock', '.fbvid', '.ig', '.insta', '.x', '.twitter', '.tiktok', '.tt', '.mirror', '.link', '.tourl', '.url', '.uploadtra', '.uploadgo', '.uploadtm', '.gitclone', '.ai', '.ask', '.gpt', '.anime', '.manga', '.imagine', '.img', '.s', '.sticker', '.take', '.tts', '.say', '.stt', '.totext', '.ss', '.setcookies', '.setlogo', '.update', '.apk', '.app', '.apkdl', '.getdp', '.dp', '.pp', '.vv', '.viewonce', '.reveal', '.aniworld', '.aw', '.hentaiv', '.ep', '.eporner', '.hentaimng', '.hmanga', '.javdn', '.terabox', '.tbcookie', '.metdn', '.cinesubz', '.cineru']);
+const HEAVY = new Set(['.download', '.dl', '.dn', '.mediafire', '.mega', '.gdrive', '.moviedex', '.mdx', '.song', '.play', '.yta', '.video', '.ytv', '.yt', '.ytmenu', '.fb', '.facebook', '.faceboock', '.fbvid', '.ig', '.insta', '.x', '.twitter', '.tiktok', '.tt', '.mirror', '.link', '.tourl', '.url', '.uploadtra', '.uploadgo', '.uploadtm', '.gitclone', '.ai', '.ask', '.gpt', '.anime', '.manga', '.imagine', '.img', '.s', '.sticker', '.take', '.tts', '.say', '.stt', '.totext', '.ss', '.setcookies', '.setlogo', '.update', '.apk', '.app', '.apkdl', '.getdp', '.dp', '.pp', '.vv', '.viewonce', '.reveal', '.aniworld', '.aw', '.hentaiv', '.ep', '.eporner', '.hentaimng', '.hmanga', '.javdn', '.terabox', '.tbcookie', '.metdn', '.cinesubz', '.cineru', '.animepahe', '.aphe']);
 // 🆕 v2.59: site-locked download commands — each one downloads ONLY its own site (menu: 📥 DOWNLOAD).
 // resolve() already scrapes all 3 hosts → router just validates the link + brands the progress bubble.
 const SITE_DL = {
@@ -540,7 +545,7 @@ async function handleReact(send, jid, msg, arg) {
 }
 
 const CATS = [
-    ['📥', 'Download', `*📥 DOWNLOAD*\n\n✦ *.download <link>* — file එක එවනවා (*.dl*)\n✦ *.mediafire <link>* — 🔥 MediaFire\n✦ *.mega <link>* — 🟢 MEGA\n✦ *.gdrive <link>* — 🔵 Google Drive\n✦ *.terabox <link>* — ☁️ TeraBox → file (cookie: *.tbcookie*)\n✦ *.metdn <නම/link>* — 🔞 mat6tube search → quality menu → mp4 (18+)\n✦ *.cinesubz <නම>* — 🍿 CineSubz → movie quality / 📺 series episodes → file\n✦ *.cineru <නම>* — 🍿 Cineru.lk සිංහල sub (වෙනම command — moviedex mix නෑ)\n✦ *.video <link/නම>* — 🎬 YouTube quality menu (*.yt*)\n✦ *.song <link/නම>* — 🎧 YouTube audio menu (*.play*)\n✦ *.aniworld <anime>* — 🎌 AniWorld anime → season → episode → stream link (*.aw*)\n✦ *.apk <app නම / package / url>* — 📦 APK downloader\n✦ *.dl link1 link2* — links 5 දක්වා\n✦ *.mirror <link>* — 🔗 direct share link\n✦ *.gitclone user/repo* — repo → zip\n\n> 📏 max {MAX} / file · *.maxmb* වෙනස් කරන්න · ⚡ multi-connection fast download`],
+    ['📥', 'Download', `*📥 DOWNLOAD*\n\n✦ *.download <link>* — file එක එවනවා (*.dl*)\n✦ *.mediafire <link>* — 🔥 MediaFire\n✦ *.mega <link>* — 🟢 MEGA\n✦ *.gdrive <link>* — 🔵 Google Drive\n✦ *.terabox <link>* — ☁️ TeraBox → file (cookie: *.tbcookie*)\n✦ *.metdn <නම/link>* — 🔞 mat6tube search → quality menu → mp4 (18+)\n✦ *.cinesubz <නම>* — 🍿 CineSubz → movie quality / 📺 series episodes → file\n✦ *.cineru <නම>* — 🍿 Cineru.lk සිංහල sub (වෙනම command — moviedex mix නෑ)\n✦ *.animepahe <anime>* — 🎌 AnimePahe → episodes → quality → file (*.aphe*)\n✦ *.video <link/නම>* — 🎬 YouTube quality menu (*.yt*)\n✦ *.song <link/නම>* — 🎧 YouTube audio menu (*.play*)\n✦ *.aniworld <anime>* — 🎌 AniWorld anime → season → episode → stream link (*.aw*)\n✦ *.apk <app නම / package / url>* — 📦 APK downloader\n✦ *.dl link1 link2* — links 5 දක්වා\n✦ *.mirror <link>* — 🔗 direct share link\n✦ *.gitclone user/repo* — repo → zip\n\n> 📏 max {MAX} / file · *.maxmb* වෙනස් කරන්න · ⚡ multi-connection fast download`],
     ['🎬', 'YouTube', `*🎬 YOUTUBE*\n\n✦ *.yts <නම>* — search\n✦ *.song <නම / link>* — 🎧 format menu — M4A / MP3 320 / 128 (*.play*)\n✦ *.video <නම / link>* — 🎬 quality menu — sizes එක්ක (*.yt*)\n✦ *.video <link> 1080* — instant pick (menu නැතුව)\n\n> menu card එකට අංකය *reply* කරන්න · 2160p → 144p`],
     ['🍿', 'MovieDex', `*🍿 MOVIEDEX* — movies + 📺 series\n\n✦ *.moviedex <නම>* — search (*.mdx*)\n✦ අංකය reply — card → options\n✦ *.moviedex <n> <q#>* — 🍿 movie file\n✦ series: season 🧳 pack files · episode 🎬 files\n✦ *.moviedex <n> <q#> link* — 🔗 share link\n\n> DASH 1080p/720p/480p · ffmpeg mux · *.maxmb* limit`],
     ['📱', 'Social', `*📱 SOCIAL*\n\n✦ *.tiktok <link>* — watermark නෑ (*.tt*)\n✦ *.fb <link>* — Facebook (*.facebook*)\n✦ *.ig <link>* — Instagram\n✦ *.x <link>* — X / Twitter`],

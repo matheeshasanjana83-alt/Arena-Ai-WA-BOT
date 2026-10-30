@@ -12,7 +12,7 @@
  *  (2) chain: Gemini stage first (seam) · Groq stage · Pollinations auto → lang=si recovery ('පොන්නයා' e2e) · all-fail → null · shaky carry
  *  (3) sttText language param → FormData 'language' field (absent without opt) + sttExtName allowlist
  *  (4) bot.js audio branch + tools.js cmdStt → ai.transcribeAudio wired + honesty instructions in prompts
- *  (5) pins 3.01.0 pkg+manifest + notes headline + manifest lists tests/test_v299.js
+ *  (5) pins 3.02.0 pkg+manifest + notes headline + manifest lists tests/test_v299.js
  */
 process.env.ARENA_AI_MEMORY_FILE = __dirname + '/../.test_v299_mem.json';
 try { fs.unlinkSync(__dirname + '/../.test_v299_mem.json'); } catch { }
@@ -31,10 +31,10 @@ const botSrc = fs.readFileSync(__dirname + '/../bot.js', 'utf8');
 const toolsSrc = fs.readFileSync(__dirname + '/../tools.js', 'utf8');
 
 (async () => {
-    console.log('— v3.01.0 pins + markers —');
-    ok('version 3.01.0 pkg+manifest + notes headline + manifest lists test_v299.js', () => {
-        assert.strictEqual(pkg.version, '3.01.0', 'pkg ' + pkg.version);
-        assert.strictEqual(manifest.version, '3.01.0', 'manifest ' + manifest.version);
+    console.log('— v3.02.0 pins + markers —');
+    ok('version 3.02.0 pkg+manifest + notes headline + manifest lists test_v299.js', () => {
+        assert.strictEqual(pkg.version, '3.02.0', 'pkg ' + pkg.version);
+        assert.strictEqual(manifest.version, '3.02.0', 'manifest ' + manifest.version);
         assert.ok(manifest.notes.includes('SINHALA STT'), 'notes headline');
         assert.ok(manifest.files.includes('tests/test_v299.js'), 'manifest lists test_v299.js');
     });
