@@ -1,0 +1,15 @@
+name: animepahe datacenter probe
+on:
+  workflow_dispatch: {}
+permissions: {}
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: probe animepahe from datacenter IP
+        run: node .github/probe/animepahe_ci.mjs
