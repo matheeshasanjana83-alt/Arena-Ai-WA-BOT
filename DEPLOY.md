@@ -60,10 +60,17 @@ nohup node panel.js > panel.log 2>&1 &                   # හෝ systemd servic
 
 ## 🔐 Panel එකෙන් bot එක pair කරන හැටි (අලුත් host එකක පළවෙනි පාර)
 
-1. Login වෙන්න → bot එක Start වෙලා `connecting` වෙනවා
-2. Log එකේ `🔢 PAIRING CODE:  XXXX-XXXX` ආවම **dashboard එකේම ලොකුවට පේනවා**
-3. Phone එකෙන්: **WhatsApp → Linked devices → Link a device → "Link with phone number instead"** → code එක ගහන්න
-4. `🟢 WhatsApp connected` වුණාම done — `Message yourself` chat එකේ `.ping` ගහලා බලන්න
+1. **පළවෙනි පාරට WhatsApp number එක env එකෙන් දෙන්න** (panel log එකේ typing බැරි නිසා):
+   ```bash
+   WA_PHONE_NUMBER=94771234567 ARENA_PANEL_PW=ඔයාගේමුරපදය node panel.js
+   ```
+   (number එක `settings.json` එකේ save වෙනවා — ඊළඟ පාරවල්වල env එක ඕනේ නෑ)
+2. Login වෙන්න → bot එක Start වෙලා `connecting` වෙනවා
+3. Log එකේ `🔢 PAIRING CODE:  XXXX-XXXX` ආවම **dashboard එකේම ලොකුවට පේනවා**
+4. Phone එකෙන්: **WhatsApp → Linked devices → Link a device → "Link with phone number instead"** → code එක ගහන්න
+5. `🟢 WhatsApp connected` වුණාම done — `Message yourself` chat එකේ `.ping` ගහලා බලන්න
+
+> 💡 Bot එකේම pair site එකකුත් තියෙනවා: log එකේ `🌐 Pair site: http://<host>:3000/?key=...` — ඒකෙනුත් pair කරන්න පුළුවන් (port 3000 open නම්).
 
 ## 🔑 Password වෙනස් කරන හැටි
 
