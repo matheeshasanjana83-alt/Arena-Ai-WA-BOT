@@ -1,5 +1,5 @@
 /**
- * test_v308.js — v3.05.0 🎌 .animepahe — CONSUMET-ONLY rewrite (ALL OFFLINE)
+ * test_v308.js — v3.06.0 🎌 .animepahe — CONSUMET-ONLY rewrite (ALL OFFLINE)
  * User directive 2026-10-30: "Rewrite animepahe.js completely. Delete the massive CF solver, vm
  * sandbox, and direct scraping logic. Hardcode the new base URL. ONLY use this new API."
  *
@@ -15,7 +15,7 @@
  *  (9)  non-direct source guard (raw kwik page → honest short error, no wall commentary)
  *  (10) neutral error cards — NO 'Cloudflare/dead/blocked' words (user directive #6)
  *  (11) bridge reply-only + cardId guard · isApUrl · epLabel
- *  (12) repo hygiene: package.json solver deps GONE, postinstall clean, manifest/pins 3.05.0
+ *  (12) repo hygiene: package.json solver deps GONE, postinstall clean, manifest/pins 3.06.0
  */
 const assert = require('assert');
 const fs = require('fs');
@@ -82,11 +82,11 @@ const WATCH_JSON = { headers: { Referer: 'https://kwik.cx/' }, sources: [
 ] };
 
 (async () => {
-    console.log('— v3.05.0 consumet-only animepahe suite —');
+    console.log('— v3.06.0 consumet-only animepahe suite —');
 
-    await ok('pins: package.json + manifest.json = 3.05.0', () => {
-        assert.strictEqual(pkg.version, '3.05.0');
-        assert.strictEqual(man.version, '3.05.0');
+    await ok('pins: package.json + manifest.json = 3.06.0', () => {
+        assert.strictEqual(pkg.version, '3.06.0');
+        assert.strictEqual(man.version, '3.06.0');
     });
 
     await ok('NEGATIVE markers: vm sandbox · cfsolver · cf_clearance · direct-scrape machinery ALL GONE', () => {
